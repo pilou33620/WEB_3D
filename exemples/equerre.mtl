@@ -1,0 +1,14 @@
+# Bibliotheque de materiaux de equerre.obj
+newmtl acier
+Ka 0.10 0.10 0.11
+Kd 0.62 0.66 0.71
+Ks 0.35 0.35 0.35
+Ns 60
+d 1.0
+
+newmtl laiton
+Ka 0.12 0.10 0.04
+Kd 0.78 0.62 0.24
+Ks 0.45 0.40 0.20
+Ns 90
+d 1.0

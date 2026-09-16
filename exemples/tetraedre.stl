@@ -1,0 +1,30 @@
+solid tetra
+  facet normal 0.000000 0.000000 -1.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 20.000000 35.000000 0.000000
+      vertex 40.000000 0.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -0.928477 0.371391
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 40.000000 0.000000 0.000000
+      vertex 20.000000 12.000000 30.000000
+    endloop
+  endfacet
+  facet normal 0.811519 0.463725 0.355523
+    outer loop
+      vertex 40.000000 0.000000 0.000000
+      vertex 20.000000 35.000000 0.000000
+      vertex 20.000000 12.000000 30.000000
+    endloop
+  endfacet
+  facet normal -0.811519 0.463725 0.355523
+    outer loop
+      vertex 20.000000 35.000000 0.000000
+      vertex 0.000000 0.000000 0.000000
+      vertex 20.000000 12.000000 30.000000
+    endloop
+  endfacet
+endsolid tetra

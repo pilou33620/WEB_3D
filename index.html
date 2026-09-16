@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visionneuse 3D — STEP / IGES / BREP / 3MF / OBJ / STL</title>
+<link rel="stylesheet" href="css/visionneuse-3d.css">
+
+<!-- three.js est servi depuis vendor/ : la visionneuse fonctionne hors ligne,
+     comme le reste de la suite. L'import map évite tout empaquetage. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body>
+
+<header>
+  <div class="brand"><i></i><b>Visionneuse 3D</b><span>V1.1 · STEP · IGES · BREP · 3MF · OBJ · STL</span>
+    <span class="proj" id="nomFichier" hidden></span>
+  </div>
+  <div class="tools">
+    <button class="tb on" id="bOuvrir" title="Ouvrir un fichier 3D (.stp, .step, .igs, .iges, .brep, .3mf, .obj, .stl) — Ctrl+O">📂 Ouvrir…</button>
+    <button class="tb" id="bFermer" title="Vider la scène" disabled>Fermer</button>
+    <div class="sep"></div>
+    <button class="tb" id="bAjuster" title="Cadrer tout le modèle">Ajuster <kbd>F</kbd></button>
+    <button class="tb" id="bProjection" title="Basculer perspective / orthographique — en CAO, l'orthographique conserve les proportions">Perspective <kbd>O</kbd></button>
+    <div class="sep"></div>
+    <button class="tb" id="bAretes" title="Arêtes vives du modèle">Arêtes <kbd>A</kbd></button>
+    <button class="tb" id="bFilaire" title="Filaire seul">Filaire <kbd>W</kbd></button>
+    <button class="tb" id="bTransparence" title="Rayons X : voir à travers les pièces">Rayons X <kbd>X</kbd></button>
+    <button class="tb" id="bGrille" title="Grille et plan de sol">Grille <kbd>G</kbd></button>
+    <button class="tb" id="bCoupe" title="Plan de coupe le long d'un axe">Coupe <kbd>C</kbd></button>
+    <div class="sep"></div>
+    <button class="tb" id="bMesure" title="Mesurer : point à point (accrochage sur les sommets), arête à arête (entraxes, parallélisme), face à face (épaisseurs, entraxes, jeux). M change de mode.">📏 Mesurer <kbd>K</kbd></button>
+    <button class="tb" id="bIsoler" title="N'afficher que la sélection" disabled>Isoler <kbd>I</kbd></button>
+    <div class="sep"></div>
+    <button class="tb" id="bPng" title="Capture de la vue courante en PNG">Exporter .png</button>
+    <button class="tb" id="bGlb" title="Exporter la scène triangulée en glTF binaire" disabled>Exporter .glb</button>
+    <div class="sep"></div>
+    <button class="tb" id="bPrefs" title="Configuration de la souris, orbite, sensibilités">🖱 Souris &amp; vue…</button>
+    <button class="tb" id="bAide" title="Raccourcis clavier">?</button>
+  </div>
+</header>
+
+<main>
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Panneau gauche : l'arbre du modèle, tel qu'il vient du fichier STEP -->
+  <!-- ------------------------------------------------------------------ -->
+  <aside class="dock" id="dockG">
+    <section class="pan">
+      <h3>Arbre du modèle <span class="cpt" id="cptPieces">—</span></h3>
+      <div class="rech"><input type="search" id="rechArbre" placeholder="Filtrer les pièces…" autocomplete="off"></div>
+      <div class="barrette">
+        <button class="tb mini" id="bToutVoir">Tout afficher</button>
+        <button class="tb mini" id="bToutReplier">Replier</button>
+        <button class="tb mini" id="bZoomSel" disabled>Zoomer la sélection</button>
+      </div>
+      <div class="scroll" id="arbre"><p class="vide-p">Aucun modèle chargé.</p></div>
+    </section>
+    <section class="pan pan-props">
+      <h3>Propriétés</h3>
+      <div class="scroll" id="props"><p class="vide-p">Sélectionnez une pièce dans l'arbre ou dans la vue.</p></div>
+    </section>
+  </aside>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- La vue 3D                                                          -->
+  <!-- ------------------------------------------------------------------ -->
+  <div class="ctr" id="ctr">
+    <canvas id="vue3d"></canvas>
+
+    <!-- Le cube de vues : même rôle que dans un logiciel de conception —
+         savoir où l'on est, et y retourner d'un clic. Rendu dans son propre
+         canevas pour rester net quel que soit le contenu de la scène. -->
+    <div id="coinCube" title="Cube de vues — cliquez une face, une arête ou un coin">
+      <canvas id="cubeVue" width="150" height="150"></canvas>
+      <div class="cubeOutils">
+        <button id="bMaison" title="Vue isométrique d'origine">⌂</button>
+        <button id="bOrbiteType" title="Type d'orbite : libre ou contrainte autour de l'axe vertical">↻</button>
+      </div>
+    </div>
+
+    <!-- Vues normalisées, en complément du cube -->
+    <div id="vuesRapides">
+      <button data-vue="avant" title="Vue de face (−Y) — touche 1">Avant</button>
+      <button data-vue="arriere" title="Vue arrière (+Y) — touche 2">Arrière</button>
+      <button data-vue="gauche" title="Vue de gauche (−X) — touche 3">Gauche</button>
+      <button data-vue="droite" title="Vue de droite (+X) — touche 4">Droite</button>
+      <button data-vue="dessus" title="Vue de dessus (+Z) — touche 5">Dessus</button>
+      <button data-vue="dessous" title="Vue de dessous (−Z) — touche 6">Dessous</button>
+      <button data-vue="iso" title="Vue isométrique — touche 7">Iso</button>
+    </div>
+
+    <!-- Tant qu'aucun fichier n'est ouvert, c'est cet écran qui occupe la
+         place, et il ne dit qu'une chose : celle qu'il faut faire. -->
+    <div id="accueil">
+      <div class="vide">
+        <h2>Ouvrir un modèle 3D</h2>
+        <p>Le format <b>STEP</b> (<code>.stp</code>, <code>.step</code>) est l'échange standard entre
+           logiciels de CAO : il porte la géométrie exacte (B-Rep), la hiérarchie
+           d'assemblage, les noms de pièces et les couleurs. La lecture se fait
+           <b>ici, dans le navigateur</b>, par le noyau OpenCascade compilé en WebAssembly :
+           aucun fichier ne quitte votre poste. Les formats de maillage
+           <b>3MF</b>, <b>OBJ</b> et <b>STL</b> — ce que produisent les chaînes
+           d'impression 3D et les outils de rendu — sont lus directement.</p>
+        <div class="depot" id="depot">
+          <b>Déposez un fichier ici</b>
+          <small>.stp · .step · .igs · .iges · .brep · .3mf · .obj · .stl<br>
+                 ou plusieurs fichiers à la fois pour composer un assemblage —
+                 un <code>.obj</code> déposé avec son <code>.mtl</code> et ses images
+                 garde ses matériaux</small>
+          <button class="tb on" id="bParcourir">Parcourir…</button>
+          <span class="err" id="errDepot" hidden></span>
+        </div>
+        <p class="note">Le maillage d'affichage est calculé à l'ouverture : plus la tolérance
+           est fine, plus les surfaces courbes sont lisses — et plus le fichier est long à ouvrir.
+           Elle se règle dans <b>🖱 Souris &amp; vue…</b>, onglet <i>Qualité</i>.</p>
+      </div>
+    </div>
+
+    <div id="attente" hidden>
+      <div>
+        <b id="attenteTitre">Lecture du fichier…</b>
+        <span id="attenteDetail">OpenCascade triangule les surfaces.</span>
+        <div class="jauge"><span id="jaugeBarre"></span></div>
+      </div>
+    </div>
+
+    <div id="etat">
+      <span id="etatNav" class="mono"></span>
+      <span class="grow"></span>
+      <span id="etatMesure" class="mono" hidden></span>
+      <span id="etatSel" class="mono"></span>
+      <span id="etatStats" class="mono"></span>
+    </div>
+  </div>
+</main>
+
+<!-- ====================================================================== -->
+<!-- Réglages : la souris d'abord — chacun arrive avec les réflexes de son   -->
+<!-- logiciel de CAO, et c'est le premier obstacle d'une visionneuse.        -->
+<!-- ====================================================================== -->
+<dialog id="dlgPrefs">
+  <form method="dialog">
+    <h2>Souris &amp; vue</h2>
+    <div class="onglets" id="ongletsPrefs">
+      <button type="button" class="ong on" data-onglet="souris">Souris</button>
+      <button type="button" class="ong" data-onglet="vue">Vue</button>
+      <button type="button" class="ong" data-onglet="qualite">Qualité</button>
+    </div>
+
+    <!-- ---------------- Souris ---------------- -->
+    <div class="volet" data-volet="souris">
+      <div class="lg">
+        <label for="selSouris">Configuration souris (panoramique, zoom, orbite)</label>
+        <select id="selSouris"></select>
+      </div>
+      <div class="lg">
+        <label for="selOrbite">Type d'orbite par défaut</label>
+        <select id="selOrbite">
+          <option value="libre">Orbite libre</option>
+          <option value="contrainte">Orbite contrainte (axe vertical fixe)</option>
+        </select>
+      </div>
+      <p class="aide" id="aideOrbite"></p>
+
+      <h4>Gestes actifs</h4>
+      <table class="gestes" id="tabGestes"></table>
+      <p class="aide">Choisissez <b>Personnalisé</b> pour modifier chaque geste. Le bouton
+         gauche reste attribué à la sélection, sauf si vous lui donnez un autre rôle
+         (utile sur portable sans molette).</p>
+
+      <h4>Molette et sensibilité</h4>
+      <div class="lg"><label for="cbMoletteInv">Inverser le sens de la molette</label>
+        <input type="checkbox" id="cbMoletteInv"></div>
+      <div class="lg"><label for="cbZoomCurseur">Zoomer vers le curseur</label>
+        <input type="checkbox" id="cbZoomCurseur"></div>
+      <div class="lg"><label for="cbInertie">Inertie (amortissement des mouvements)</label>
+        <input type="checkbox" id="cbInertie"></div>
+      <div class="lg"><label for="cbPave">Pavé tactile : deux doigts = panoramique</label>
+        <input type="checkbox" id="cbPave"></div>
+      <div class="lg"><label for="rgOrbite">Sensibilité orbite <output id="outOrbite"></output></label>
+        <input type="range" id="rgOrbite" min="0.2" max="3" step="0.1"></div>
+      <div class="lg"><label for="rgPano">Sensibilité panoramique <output id="outPano"></output></label>
+        <input type="range" id="rgPano" min="0.2" max="3" step="0.1"></div>
+      <div class="lg"><label for="rgZoom">Sensibilité zoom <output id="outZoom"></output></label>
+        <input type="range" id="rgZoom" min="0.2" max="3" step="0.1"></div>
+    </div>
+
+    <!-- ---------------- Vue ---------------- -->
+    <div class="volet" data-volet="vue" hidden>
+      <div class="lg">
+        <label for="selAxe">Axe vertical de la scène</label>
+        <select id="selAxe">
+          <option value="z">Z vers le haut (CAO : SolidWorks, Onshape, CATIA)</option>
+          <option value="y">Y vers le haut (3D temps réel : glTF, jeux)</option>
+        </select>
+      </div>
+      <div class="lg">
+        <label for="selProjection">Projection</label>
+        <select id="selProjection">
+          <option value="perspective">Perspective</option>
+          <option value="ortho">Orthographique</option>
+        </select>
+      </div>
+      <div class="lg"><label for="cbCube">Afficher le cube de vues</label>
+        <input type="checkbox" id="cbCube"></div>
+      <div class="lg"><label for="cbGrille">Afficher la grille</label>
+        <input type="checkbox" id="cbGrille"></div>
+      <div class="lg"><label for="cbOmbres">Ombres portées</label>
+        <input type="checkbox" id="cbOmbres"></div>
+      <div class="lg"><label for="cbAretes">Arêtes vives au chargement</label>
+        <input type="checkbox" id="cbAretes"></div>
+      <div class="lg"><label for="rgAretes">Angle de détection des arêtes <output id="outAretes"></output></label>
+        <input type="range" id="rgAretes" min="5" max="80" step="1"></div>
+      <div class="lg">
+        <label for="selFond">Fond</label>
+        <select id="selFond">
+          <option value="degrade">Dégradé d'atelier</option>
+          <option value="sombre">Uni sombre</option>
+          <option value="clair">Uni clair (impression)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ---------------- Qualité ---------------- -->
+    <div class="volet" data-volet="qualite" hidden>
+      <p class="aide">La géométrie STEP est exacte ; l'affichage, lui, est triangulé.
+         Ces deux tolérances décident du compromis entre finesse des congés et
+         temps d'ouverture. Elles s'appliquent au prochain fichier ouvert.</p>
+      <div class="lg"><label for="rgLin">Tolérance linéaire <output id="outLin"></output></label>
+        <input type="range" id="rgLin" min="0.0005" max="0.02" step="0.0005"></div>
+      <p class="aide">Exprimée en fraction de la diagonale de l'encombrement : 0,001 donne
+         un maillage fin, 0,01 un maillage rapide mais facetté.</p>
+      <div class="lg"><label for="rgAng">Tolérance angulaire <output id="outAng"></output></label>
+        <input type="range" id="rgAng" min="5" max="45" step="1"></div>
+      <div class="lg">
+        <label for="selUnite">Unité de sortie du fichier</label>
+        <select id="selUnite">
+          <option value="millimeter">Millimètre</option>
+          <option value="centimeter">Centimètre</option>
+          <option value="meter">Mètre</option>
+          <option value="inch">Pouce</option>
+          <option value="foot">Pied</option>
+        </select>
+      </div>
+      <div class="lg"><label for="cbAretesLourd">Calculer les arêtes même sur les gros modèles (&gt; 2 M triangles)</label>
+        <input type="checkbox" id="cbAretesLourd"></div>
+    </div>
+
+    <menu>
+      <button type="button" class="tb" id="bResetPrefs">Réglages d'origine</button>
+      <span class="grow"></span>
+      <button class="tb on" value="ok">Fermer</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="dlgAide">
+  <form method="dialog">
+    <h2>Raccourcis</h2>
+    <table class="raccourcis">
+      <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Ouvrir un fichier</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Ajuster la vue au modèle (ou à la sélection)</td></tr>
+      <tr><td><kbd>O</kbd></td><td>Perspective ↔ orthographique</td></tr>
+      <tr><td><kbd>A</kbd></td><td>Arêtes vives</td></tr>
+      <tr><td><kbd>W</kbd></td><td>Filaire</td></tr>
+      <tr><td><kbd>X</kbd></td><td>Rayons X (transparence)</td></tr>
+      <tr><td><kbd>G</kbd></td><td>Grille</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Plan de coupe</td></tr>
+      <tr><td><kbd>K</kbd></td><td>Ouvrir / fermer la mesure</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Mode de mesure : point → arête → face</td></tr>
+      <tr><td><kbd>I</kbd></td><td>Isoler la sélection</td></tr>
+      <tr><td><kbd>Échap</kbd></td><td>Effacer la mesure en cours, puis fermer l'outil / désélectionner / sortir de l'isolement</td></tr>
+      <tr><td><kbd>1</kbd>…<kbd>6</kbd></td><td>Avant, arrière, gauche, droite, dessus, dessous</td></tr>
+      <tr><td><kbd>7</kbd></td><td>Vue isométrique</td></tr>
+      <tr><td><kbd>Suppr</kbd></td><td>Masquer la sélection</td></tr>
+      <tr><td><kbd>H</kbd></td><td>Tout réafficher</td></tr>
+    </table>
+    <menu><span class="grow"></span><button class="tb on" value="ok">Fermer</button></menu>
+  </form>
+</dialog>
+
+<input type="file" id="fichier" accept=".stp,.step,.igs,.iges,.brep,.brp,.3mf,.obj,.stl,.mtl,.png,.jpg,.jpeg,.webp" multiple hidden>
+
+<script type="module" src="js/09-demarrage.js"></script>
+</body>
+</html>
