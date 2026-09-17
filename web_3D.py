@@ -56,6 +56,13 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         ".glb": "model/gltf-binary",
     }
 
+    def do_GET(self):
+        if self.path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+        super().do_GET()
+
     def end_headers(self):
         # En développement, un fichier modifié doit être servi modifié : le cache
         # du navigateur ferait perdre plus de temps qu'il n'en fait gagner.
@@ -63,7 +70,9 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, format, *args):
-        # Le journal par défaut noie les erreurs sous les requêtes réussies.
+        # Ignorer favicon.ico et masquer les requêtes réussies ordinaires
+        if args and "favicon.ico" in str(args[0]):
+            return
         if not args or not str(args[0]).startswith(("GET", "HEAD")) or str(args[1]) != "200":
             super().log_message(format, *args)
 
