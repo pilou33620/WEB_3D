@@ -24,6 +24,10 @@ export class Interface {
     Object.assign(this, { vue, nav, cube, arbre, mesure });
     this.coupe = { actif:false, axe:"x", ratio:0.5, inverse:false };
 
+    arbre.surSelection = (piece) => {
+      mesure.majPieceSelectionnee(piece);
+    };
+
     this.brancherBarre();
     this.brancherFichiers();
     this.brancherClavier();
@@ -184,6 +188,11 @@ export class Interface {
           .join("")
       }</span>
       <kbd>M</kbd>
+      <button class="tb mini" id="mesureDelta" title="Afficher la décomposition orthogonale ΔX, ΔY, ΔZ (style CAO)">ΔXYZ</button>
+      <span class="modes" id="mesureRef">
+        <button class="tb mini" data-ref="projet" title="Référentiel global du projet">Projet</button>
+        <button class="tb mini" data-ref="piece" title="Référentiel local de la pièce (sélectionnée dans l'arbre ou mesurée)">Pièce</button>
+      </span>
       <button class="tb mini" id="mesureRaz" title="Effacer la mesure en cours (Échap)">✕</button>`;
     $("ctr").appendChild(p);
     this.panneauMesure = p;
@@ -193,6 +202,22 @@ export class Interface {
       if(b) this.mesure.definirMode(b.dataset.mode);
       this.majPanneauMesure();
     };
+    p.querySelector("#mesureDelta").onclick = () => {
+      this.mesure.afficherDeltas = !this.mesure.afficherDeltas;
+      prefs.mesureDelta = this.mesure.afficherDeltas;
+      prefsModifiees("mesureDelta");
+      this.majPanneauMesure();
+      this.mesure.rafraichir();
+    };
+    p.querySelector("#mesureRef").onclick = (e) => {
+      const b = e.target.closest("button[data-ref]");
+      if(b){
+        this.mesure.definirReferentiel(b.dataset.ref);
+        prefs.mesureReferentiel = b.dataset.ref;
+        prefsModifiees("mesureReferentiel");
+        this.majPanneauMesure();
+      }
+    };
     p.querySelector("#mesureRaz").onclick = () => this.mesure.annuler();
   }
 
@@ -200,6 +225,12 @@ export class Interface {
     if(!this.panneauMesure) return;
     for(const b of this.panneauMesure.querySelectorAll("button[data-mode]")){
       b.classList.toggle("on", b.dataset.mode === this.mesure.mode);
+    }
+    const bDelta = this.panneauMesure.querySelector("#mesureDelta");
+    if(bDelta) bDelta.classList.toggle("on", !!this.mesure.afficherDeltas);
+
+    for(const b of this.panneauMesure.querySelectorAll("button[data-ref]")){
+      b.classList.toggle("on", b.dataset.ref === this.mesure.referentiel);
     }
   }
 

@@ -103,16 +103,17 @@ Un modèle peut aussi être ouvert directement par l'URL :
 
 ### Mesurer
 
-<kbd>K</kbd> ouvre l'outil, <kbd>M</kbd> fait tourner les trois modes.
+<kbd>K</kbd> ouvre l'outil, <kbd>M</kbd> fait tourner les quatre modes (Auto par défaut).
 On ne mesure pas des triangles : la visionneuse reconstruit d'abord les arêtes
 et les faces du modèle, puis reconnaît ce qu'elles sont — une droite, un cercle,
 un plan, un cylindre — et donne la cote qu'un mécanicien attend de ce couple-là.
 
 | Mode | Ce qu'on désigne | Ce qu'on obtient |
 | :--- | :--- | :--- |
+| **Auto** *(défaut)* | un élément seul ou deux entités : approche d'un bord → arête, surface → face | clic unique : cercle complet → **diamètre ⌀**, arc → **rayon R**, arête → longueur. Deux entités : distance, **angle**, entraxe, épaisseur, hauteur d'axe |
 | **Point** | deux points, accrochés aux sommets | distance, ΔX, ΔY, ΔZ |
-| **Arête** | deux arêtes | deux perçages → **entraxe** de centre à centre et les deux ⌀ ; deux droites parallèles → écartement ; sécantes → angle et point de croisement ; gauches → perpendiculaire commune ; un perçage et un bord → cote de pose et distance au bord du trou |
-| **Face** | deux faces | deux plans parallèles → **épaisseur** (et si les normales s'opposent, c'est bien de la matière entre les deux) ; deux cylindres → **entraxe**, ⌀ et jeu ; un cylindre et un plan → hauteur d'axe et jeu sous la matière ; sinon → plus court chemin |
+| **Arête** | une arête ou deux arêtes | clic unique : cercle complet → **diamètre ⌀**, arc → **rayon R**, droite → longueur. Deux arêtes : perçages → **entraxe** de centre à centre et ⌀/R ; droites parallèles → écartement ; sécantes → angle ; perçage et bord → cote de pose |
+| **Face** | une face ou deux faces | clic unique : cylindre → ⌀/R et hauteur, plan → aire. Deux faces : plans parallèles → **épaisseur** ; cylindres → **entraxe**, ⌀/R et jeu ; cylindre et plan → hauteur d'axe et jeu |
 
 Ce qui est désigné est surligné : la nappe teintée et, surtout, le trait de son
 contour — une teinte seule se confond avec la couleur de la pièce.

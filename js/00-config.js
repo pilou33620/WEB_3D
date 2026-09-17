@@ -152,6 +152,10 @@ export const PREFS_DEFAUT = {
   tolAngulaire:15,         // degrés
   unite:"millimeter",
   aretesSurGrosModeles:false,
+
+  /* mesure */
+  mesureDelta:true,        // décomposition orthogonale ΔX, ΔY, ΔZ style CAO
+  mesureReferentiel:"projet", // "projet" (repère global) ou "piece" (repère local de la pièce)
 };
 
 const CLE = "web3d.prefs";

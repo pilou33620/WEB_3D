@@ -224,6 +224,42 @@ table.raccourcis td{padding:3px 6px;border-bottom:1px solid #212429}
 table.raccourcis td:first-child{width:130px;white-space:nowrap}
 
 /* ---------- étiquettes de mesure, posées sur la vue ---------- */
-.cote{position:absolute;transform:translate(-50%,-50%);background:rgba(15,16,18,.9);
-  border:1px solid var(--yellow);color:var(--yellow);border-radius:4px;padding:2px 6px;
-  font-family:var(--mono);font-size:11px;white-space:nowrap;pointer-events:none;z-index:5}
+.cote{position:absolute;transform:translate(-50%,-50%);background:rgba(15,16,18,.92);
+  border:1px solid var(--yellow);color:var(--yellow);border-radius:4px;padding:2px 8px;
+  font-family:var(--mono);font-size:11px;white-space:nowrap;pointer-events:auto;
+  cursor:grab;user-select:none;z-index:10;display:inline-flex;align-items:center;gap:6px;
+  box-shadow:0 2px 8px rgba(0,0,0,.55);transition:border-color .15s, box-shadow .15s}
+.cote:hover{border-color:#fff;box-shadow:0 0 10px rgba(242,199,68,.4)}
+.cote.glissement{cursor:grabbing;border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px rgba(138,240,255,.6)}
+.cote.glissement .cote-btn{border-color:rgba(138,240,255,.5);color:var(--cyan)}
+.cote-actions{display:inline-flex;align-items:center;gap:3px;margin-left:4px;border-left:1px solid rgba(242,199,68,.3);padding-left:6px}
+.cote-btn{background:rgba(255,255,255,.08);border:1px solid rgba(242,199,68,.4);color:var(--yellow);
+  border-radius:3px;padding:1px 5px;font-family:var(--mono);font-size:10px;cursor:pointer;line-height:1.2;transition:all .15s}
+.cote-btn:hover{background:var(--yellow);color:#111;border-color:var(--yellow)}
+.cote-btn.actif{background:var(--yellow);color:#111;font-weight:bold}
+.cote-poignee{opacity:.65;font-size:12px;cursor:grab;padding:0 2px}
+.cote.glissement .cote-poignee{cursor:grabbing}
+
+/* ---------- étiquettes et lignes de rappel CAO (Dist, dX, dY, dZ) ---------- */
+.mesure-calque-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8;overflow:visible}
+.mesure-calque-svg line{stroke:#111;stroke-width:1.2;stroke-linecap:round;filter:drop-shadow(0 0 1px rgba(255,255,255,.75))}
+.mesure-calque-svg circle{fill:#111;stroke:#fff;stroke-width:1}
+
+.cote-cad{position:absolute;transform:translate(-50%,-50%);display:inline-flex;align-items:stretch;
+  font-family:var(--mono);font-size:11px;white-space:nowrap;pointer-events:auto;cursor:grab;
+  user-select:none;z-index:10;box-shadow:0 1px 5px rgba(0,0,0,.45);border-radius:2px;
+  line-height:1.2;transition:box-shadow .15s}
+.cote-cad:hover{box-shadow:0 0 8px rgba(255,255,255,.5)}
+.cote-cad.glissement{cursor:grabbing;box-shadow:0 0 10px rgba(138,240,255,.85)}
+
+.cote-cad-badge{padding:2px 5px;font-weight:700;color:#fff;display:flex;align-items:center;
+  border-top-left-radius:2px;border-bottom-left-radius:2px}
+.cote-cad-valeur{background:#fff;color:#000;border:1px solid #000;border-left:none;
+  padding:2px 6px;font-weight:600;display:flex;align-items:center;
+  border-top-right-radius:2px;border-bottom-right-radius:2px}
+
+.cote-cad-dist .cote-cad-badge{background:#111;border:1px solid #111}
+.cote-cad-dx .cote-cad-badge{background:#e53935;border:1px solid #c62828}
+.cote-cad-dy .cote-cad-badge{background:#2e7d32;border:1px solid #1b5e20}
+.cote-cad-dz .cote-cad-badge{background:#1565c0;border:1px solid #0d47a1}
+

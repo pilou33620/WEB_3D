@@ -16,6 +16,7 @@
 
 import * as THREE from "three";
 import { visibleEnLignee } from "./01-scene.js";
+import { repereDePiece } from "./06-topologie.js";
 
 const COULEUR_SEL = 0x2b7fbf;
 
@@ -294,6 +295,30 @@ export class Arbre {
       ["Diagonale", mm(t.length())],
       ["Centre", `${nb(b.min.x + t.x/2)} ; ${nb(b.min.y + t.y/2)} ; ${nb(b.min.z + t.z/2)}`],
     ];
+
+    if(objet.isMesh){
+      const rep = repereDePiece(objet);
+      if(rep && rep.uX){
+        const pos = objet.geometry?.attributes?.position;
+        if(pos && pos.count > 0){
+          let minX = Infinity, maxX = -Infinity;
+          let minY = Infinity, maxY = -Infinity;
+          let minZ = Infinity, maxZ = -Infinity;
+          const p = new THREE.Vector3();
+          const M = objet.matrixWorld;
+          const pas = Math.max(1, Math.floor(pos.count / 2000));
+          for(let i = 0; i < pos.count; i += pas){
+            p.fromBufferAttribute(pos, i).applyMatrix4(M);
+            const x = p.dot(rep.uX), y = p.dot(rep.uY), z = p.dot(rep.uZ);
+            if(x < minX) minX = x; if(x > maxX) maxX = x;
+            if(y < minY) minY = y; if(y > maxY) maxY = y;
+            if(z < minZ) minZ = z; if(z > maxZ) maxZ = z;
+          }
+          const lx = maxX - minX, ly = maxY - minY, lz = maxZ - minZ;
+          dim.push(["Cotes propres (L × l × h)", `${nb(lx)} × ${nb(ly)} × ${nb(lz)} mm`]);
+        }
+      }
+    }
 
     /* Volume et surface sont des sommes sur les triangles : sur un gros
        ensemble, le calcul se voit. On le réserve à ce qui reste instantané. */
