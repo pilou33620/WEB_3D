@@ -1,6 +1,14 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # =============================================================================
 # Visionneuse 3D — web_3D.py
+#
+# PAS « /usr/bin/env python3 » DANS LA PREMIERE LIGNE. Sous Windows, le
+# double-clic passe par py.exe, qui lit ce shebang : « env » lui fait chercher
+# python3.exe dans le PATH, où il ne trouve que l'alias du Microsoft Store —
+# lequel affiche « Python est introuvable » et rend la main aussitôt. La
+# fenêtre se refermait donc avant d'avoir rien lancé. « /usr/bin/python3 » est
+# un nom que py.exe reconnaît et fait pointer sur le Python installé ; sous
+# Linux et macOS c'est un chemin réel, et Pyto ignore la ligne.
 #
 # Un serveur de fichiers statiques, et rien d'autre : la lecture des fichiers
 # CAO se fait entièrement dans le navigateur. Il n'existe que pour deux raisons.
@@ -83,21 +91,78 @@ def adresse_locale() -> str:
         return "127.0.0.1"
 
 
-def lance_par_double_clic() -> bool:
-    """Vrai quand la fenêtre a été créée pour ce script — double-clic dans
-    l'explorateur — et non héritée d'un terminal déjà ouvert. Dans ce cas elle
-    se referme à la seconde où le script se termine : un message d'erreur y
-    passerait inaperçu."""
+# Les executables qui peuvent se trouver sur la console d'un double-clic sans
+# que personne n'ait rien tape : l'association Windows des .py passe par
+# py.exe, qui lance python.exe et attend -- les deux sont donc attaches.
+LANCEURS_PYTHON = ("py.exe", "pyw.exe", "python.exe", "pythonw.exe",
+                   "python3.exe", "python3w.exe")
+
+
+def processus_de_la_console():
+    """Noms des executables attaches a la console, le notre compris.
+
+    Renvoie () quand la question n'a pas de reponse sure -- pas de console, ou
+    un processus qu'on n'a pas le droit de nommer. L'appelant doit alors s'en
+    tenir au comportement par defaut plutot que de deviner.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.GetConsoleProcessList.argtypes = [ctypes.POINTER(wintypes.DWORD),
+                                          wintypes.DWORD]
+    k32.GetConsoleProcessList.restype = wintypes.DWORD
+    taille = 16
+    tampon = (wintypes.DWORD * taille)()
+    combien = k32.GetConsoleProcessList(tampon, taille)
+    if not combien or combien > taille:
+        return ()
+
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.QueryFullProcessImageNameW.argtypes = [
+        wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD)]
+    k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+    noms = []
+    for pid in tampon[:combien]:
+        handle = k32.OpenProcess(0x1000, False, pid)   # QUERY_LIMITED_INFORMATION
+        if not handle:
+            return ()
+        try:
+            longueur = wintypes.DWORD(32768)
+            chemin = ctypes.create_unicode_buffer(longueur.value)
+            if not k32.QueryFullProcessImageNameW(handle, 0, chemin,
+                                                  ctypes.byref(longueur)):
+                return ()
+            noms.append(os.path.basename(chemin.value).lower())
+        finally:
+            k32.CloseHandle(handle)
+    return tuple(noms)
+
+
+def lance_par_double_clic():
+    """Vrai quand Windows a cree la console POUR ce script -- c'est-a-dire
+    quand il a ete lance depuis l'Explorateur.
+
+    Elle sert a retenir la fenetre : sans cela, une erreur de demarrage
+    disparait avec elle, et l'outil a « juste rien fait ».
+
+    COMMENT ON LE SAIT. Un terminal laisse son shell attache a la console :
+    cmd.exe, powershell.exe, bash.exe y figurent a cote de nous. Un
+    double-clic, lui, ne fait venir que Python -- et pas un seul processus,
+    car l'association des .py passe par py.exe, qui lance python.exe et
+    attend. Compter les processus ne suffisait donc pas : on les nomme.
+    """
     if os.name != "nt":
         return False
     try:
-        import ctypes
-        tampon = (ctypes.c_uint * 2)()
-        # Un seul processus attaché à la console : c'est Windows qui l'a ouverte
-        # pour nous. Depuis cmd ou PowerShell, le shell y figure aussi.
-        return ctypes.windll.kernel32.GetConsoleProcessList(tampon, 2) == 1
-    except Exception:
-        return bool(sys.stdin) and sys.stdin.isatty()
+        noms = processus_de_la_console()
+    except Exception:                                  # noqa: BLE001
+        return False
+    return bool(noms) and all(n in LANCEURS_PYTHON for n in noms)
 
 
 def attendre(interactif: bool) -> None:
