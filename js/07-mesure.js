@@ -62,6 +62,7 @@ export class Mesure {
     this.actif = false;
     this.mode = "auto";
     this.referentiel = prefs.mesureReferentiel || "projet"; // "projet" | "piece"
+    this.choixPieceRef = 2;      // 2 par défaut (Pièce 2 - style Fusion 360) quand 2 pièces distinctes sont mesurées
     this.pieceSelectionnee = null; // pièce sélectionnée dans l'arbre
     this.points = [];            // mode point
     this.pointsMaillages = [];   // maillages correspondant aux points
@@ -71,6 +72,7 @@ export class Mesure {
     this.afficherDeltas = prefs.mesureDelta !== false;
     this.donneesDelta = null;
     this.raison = null;          // pourquoi le dernier survol n'a rien désigné
+    this.surMesureChange = null; // notification interface pour màj des boutons P1/P2
 
     this.groupe = new THREE.Group();
     this.groupe.name = "cotes";
@@ -204,6 +206,7 @@ export class Mesure {
     this.points = [];
     this.pointsMaillages = [];
     this.entites = [];
+    this.choixPieceRef = 2; // réinitialise à 2 par défaut (Pièce 2 - Fusion 360)
     this.ligne.visible = false;
     this.annulerDelta();
     for(const r of this.reperes) r.visible = false;
@@ -213,6 +216,7 @@ export class Mesure {
     this.viderSurlignages();
     this.dernierResultat = null;
     this.annoncer(this.actif ? MODES[this.mode].aide : null);
+    this.surMesureChange?.();
     this.vue.invalider();
   }
 
@@ -237,6 +241,7 @@ export class Mesure {
     this.referentiel = ref;
     prefs.mesureReferentiel = ref;
     this.rafraichir();
+    this.surMesureChange?.();
     return this.referentiel;
   }
 
@@ -244,7 +249,29 @@ export class Mesure {
     this.pieceSelectionnee = (piece && piece.isMesh) ? piece : null;
     if(this.actif && this.referentiel === "piece"){
       this.rafraichir();
+      this.surMesureChange?.();
     }
+  }
+
+  /** Renvoie les maillages des 2 éléments mesurés et indique s'ils sont distincts. */
+  piecesMesurees(){
+    let mA = null, mB = null;
+    if(this.entites.length > 0){
+      mA = this.entites[0]?.maillage || null;
+      mB = this.entites[1]?.maillage || null;
+    }else if(this.pointsMaillages.length > 0){
+      mA = this.pointsMaillages[0] || null;
+      mB = this.pointsMaillages[1] || null;
+    }
+    return { mA, mB, deuxPiecesDistinctes: !!(mA && mB && mA !== mB) };
+  }
+
+  /** Permet de basculer entre Pièce 1 et Pièce 2 en référence (Pièce 2 par défaut) */
+  definirChoixPieceRef(idx){
+    if(idx !== 1 && idx !== 2) return;
+    this.choixPieceRef = idx;
+    this.rafraichir();
+    this.surMesureChange?.();
   }
 
   /** Détermine le référentiel orthonormé (projet ou pièce) à appliquer pour la mesure. */
@@ -260,33 +287,29 @@ export class Mesure {
     }
 
     let cible = null;
+    const { mA, mB, deuxPiecesDistinctes } = this.piecesMesurees();
 
-    // 1. Pièce sélectionnée dans l'arbre si c'est un maillage
+    // 1. Pièce sélectionnée dans l'arbre si l'utilisateur l'a explicitement choisie
     if(this.pieceSelectionnee && this.pieceSelectionnee.isMesh){
       cible = this.pieceSelectionnee;
     }
 
-    // 2. Si non définie ou groupe, vérifier les entités mesurées (modes auto, arête, face)
-    if(!cible && this.entites.length > 0){
-      const mA = this.entites[0]?.maillage;
-      const mB = this.entites[1]?.maillage;
-      if(mA && mB && mA === mB) cible = mA;
-      else if(mA) cible = mA;
-      else if(mB) cible = mB;
-    }
-
-    // 3. Mode point : maillages mémorisés
-    if(!cible && this.pointsMaillages.length > 0){
-      const mA = this.pointsMaillages[0];
-      const mB = this.pointsMaillages[1];
-      if(mA && mB && mA === mB) cible = mA;
-      else if(mA) cible = mA;
-      else if(mB) cible = mB;
+    // 2. Si non sélectionnée dans l'arbre :
+    if(!cible){
+      if(deuxPiecesDistinctes){
+        // Deux pièces distinctes mesurées : Pièce 2 par défaut (style Fusion 360) ou Pièce 1 si choisi
+        cible = (this.choixPieceRef === 1) ? mA : mB;
+      }else if(mB){
+        cible = mB;
+      }else if(mA){
+        cible = mA;
+      }
     }
 
     if(cible){
       const rep = repereDePiece(cible);
       if(rep){
+        const indexPiece = deuxPiecesDistinctes ? (cible === mA ? 1 : 2) : null;
         return {
           mode: "piece",
           nom: rep.nom || "Pièce",
@@ -295,6 +318,10 @@ export class Mesure {
           uZ: rep.uZ,
           centre: rep.centre,
           maillage: cible,
+          deuxPiecesDistinctes,
+          indexPiece,
+          piece1: mA,
+          piece2: mB,
         };
       }
     }
@@ -333,12 +360,22 @@ export class Mesure {
       const dX = Math.abs(vecD.dot(repActif.uX));
       const dY = Math.abs(vecD.dot(repActif.uY));
       const dZ = Math.abs(vecD.dot(repActif.uZ));
-      const infoRep = repActif.mode === "piece" ? `  ·  [Repère : Pièce « ${repActif.nom} »]` : "";
+      let infoRep = "";
+      if(repActif.mode === "piece"){
+        if(repActif.deuxPiecesDistinctes){
+          const tagFusion = repActif.indexPiece === 2 ? " (défaut Fusion 360)" : "";
+          infoRep = `  ·  [Réf : Pièce ${repActif.indexPiece} « ${repActif.nom} »${tagFusion}]`;
+        }else{
+          infoRep = `  ·  [Repère : Pièce « ${repActif.nom} »]`;
+        }
+      }
       this.annoncer(`Distance ${cote(d)} mm  ·  ΔX ${cote(dX)}  ` +
                     `ΔY ${cote(dY)}  ΔZ ${cote(dZ)} mm${infoRep}`);
+      this.surMesureChange?.();
       this.vue.invalider();
     }else if(this.dernierResultat){
       this.poserResultat(this.dernierResultat);
+      this.surMesureChange?.();
       this.vue.invalider();
     }
   }
@@ -597,9 +634,18 @@ export class Mesure {
         }
         this.poserEtiquette(a.clone().lerp(b, 0.5), `${cote(d)} mm`);
       }
-      const infoRep = repActif.mode === "piece" ? `  ·  [Repère : Pièce « ${repActif.nom} »]` : "";
+      let infoRep = "";
+      if(repActif.mode === "piece"){
+        if(repActif.deuxPiecesDistinctes){
+          const tagFusion = repActif.indexPiece === 2 ? " (défaut Fusion 360)" : "";
+          infoRep = `  ·  [Réf : Pièce ${repActif.indexPiece} « ${repActif.nom} »${tagFusion}]`;
+        }else{
+          infoRep = `  ·  [Repère : Pièce « ${repActif.nom} »]`;
+        }
+      }
       this.annoncer(`Distance ${cote(d)} mm  ·  ΔX ${cote(dX)}  ` +
                     `ΔY ${cote(dY)}  ΔZ ${cote(dZ)} mm${infoRep}`);
+      this.surMesureChange?.();
     }
     this.vue.invalider();
     return true;
@@ -655,8 +701,17 @@ export class Mesure {
       this.actualiserRenduMesure(r);
       this.poserEtiquette(r.ancre || r.p1.clone().lerp(r.p2, 0.5), r.etiquette, r);
     }
-    const infoRep = repActif.mode === "piece" ? `  ·  [Repère : Pièce « ${repActif.nom} »]` : "";
+    let infoRep = "";
+    if(repActif.mode === "piece"){
+      if(repActif.deuxPiecesDistinctes){
+        const tagFusion = repActif.indexPiece === 2 ? " (défaut Fusion 360)" : "";
+        infoRep = `  ·  [Réf : Pièce ${repActif.indexPiece} « ${repActif.nom} »${tagFusion}]`;
+      }else{
+        infoRep = `  ·  [Repère : Pièce « ${repActif.nom} »]`;
+      }
+    }
     this.annoncer(`${r.titre}${infoRep}`);
+    this.surMesureChange?.();
   }
 
   tracerSegment(ligne, a, b){
@@ -736,9 +791,20 @@ export class Mesure {
       valDist = distTexte.replace(/\s*mm$/, "mm");
     }
 
-    const badgeDist = repActif.mode === "piece" ? "Dist (P):" : "Dist:";
+    let badgeDist = "Dist:";
+    let titreDist = "Référentiel projet (global)";
+    if(repActif.mode === "piece"){
+      if(repActif.deuxPiecesDistinctes){
+        badgeDist = `Dist (P${repActif.indexPiece}):`;
+        titreDist = `Référentiel : Pièce ${repActif.indexPiece} « ${repActif.nom} »${repActif.indexPiece === 2 ? " (défaut Fusion 360)" : ""} — basculer P1/P2 dans la barre`;
+      }else{
+        badgeDist = "Dist (P):";
+        titreDist = `Référentiel pièce : ${repActif.nom}`;
+      }
+    }
+
     const composantes = [
-      { cle:"dist", badge:badgeDist, valeur:valDist, ancre:ptA.clone().lerp(ptD, 0.5), defautOffset:{ x:50, y:25 }, visible:true, titre:repActif.mode === "piece" ? `Référentiel pièce : ${repActif.nom}` : "Référentiel projet (global)" },
+      { cle:"dist", badge:badgeDist, valeur:valDist, ancre:ptA.clone().lerp(ptD, 0.5), defautOffset:{ x:50, y:25 }, visible:true, titre:titreDist },
       { cle:"dx", badge:"dX:", valeur:formaterCoteCAD(dX), ancre:ptA.clone().lerp(ptB, 0.5), defautOffset:{ x:-20, y:-45 }, visible:aX },
       { cle:"dy", badge:"dY:", valeur:formaterCoteCAD(dY), ancre:ptB.clone().lerp(ptC, 0.5), defautOffset:{ x:-95, y:-15 }, visible:aY },
       { cle:"dz", badge:"dZ:", valeur:formaterCoteCAD(dZ), ancre:ptC.clone().lerp(ptD, 0.5), defautOffset:{ x:-95, y:25 }, visible:aZ },

@@ -27,6 +27,9 @@ export class Interface {
     arbre.surSelection = (piece) => {
       mesure.majPieceSelectionnee(piece);
     };
+    mesure.surMesureChange = () => {
+      this.majPanneauMesure();
+    };
 
     this.brancherBarre();
     this.brancherFichiers();
@@ -191,7 +194,11 @@ export class Interface {
       <button class="tb mini" id="mesureDelta" title="Afficher la décomposition orthogonale ΔX, ΔY, ΔZ (style CAO)">ΔXYZ</button>
       <span class="modes" id="mesureRef">
         <button class="tb mini" data-ref="projet" title="Référentiel global du projet">Projet</button>
-        <button class="tb mini" data-ref="piece" title="Référentiel local de la pièce (sélectionnée dans l'arbre ou mesurée)">Pièce</button>
+        <button class="tb mini" data-ref="piece" title="Référentiel local de la pièce (style Fusion 360)">Pièce</button>
+      </span>
+      <span class="modes" id="mesureChoixPiece" style="display:none">
+        <button class="tb mini" data-piece="1" title="Référence : Pièce 1 (premier élément cliqué)">P1</button>
+        <button class="tb mini on" data-piece="2" title="Référence : Pièce 2 (second élément cliqué - référence par défaut Fusion 360)">P2</button>
       </span>
       <button class="tb mini" id="mesureRaz" title="Effacer la mesure en cours (Échap)">✕</button>`;
     $("ctr").appendChild(p);
@@ -218,6 +225,14 @@ export class Interface {
         this.majPanneauMesure();
       }
     };
+    p.querySelector("#mesureChoixPiece").onclick = (e) => {
+      const b = e.target.closest("button[data-piece]");
+      if(b){
+        const idx = parseInt(b.dataset.piece, 10);
+        this.mesure.definirChoixPieceRef(idx);
+        this.majPanneauMesure();
+      }
+    };
     p.querySelector("#mesureRaz").onclick = () => this.mesure.annuler();
   }
 
@@ -231,6 +246,29 @@ export class Interface {
 
     for(const b of this.panneauMesure.querySelectorAll("button[data-ref]")){
       b.classList.toggle("on", b.dataset.ref === this.mesure.referentiel);
+    }
+
+    const blocChoix = this.panneauMesure.querySelector("#mesureChoixPiece");
+    if(blocChoix){
+      const { mA, mB, deuxPiecesDistinctes } = this.mesure.piecesMesurees();
+      const visible = this.mesure.referentiel === "piece" && deuxPiecesDistinctes;
+      blocChoix.style.display = visible ? "inline-flex" : "none";
+      if(visible){
+        const b1 = blocChoix.querySelector("button[data-piece='1']");
+        const b2 = blocChoix.querySelector("button[data-piece='2']");
+        const n1 = mA?.name ? (mA.name.length > 10 ? mA.name.slice(0, 9) + "…" : mA.name) : "1";
+        const n2 = mB?.name ? (mB.name.length > 10 ? mB.name.slice(0, 9) + "…" : mB.name) : "2";
+        if(b1){
+          b1.textContent = `P1 : ${n1}`;
+          b1.title = `Référentiel : Pièce 1 (${mA?.name || "Pièce 1"})`;
+          b1.classList.toggle("on", this.mesure.choixPieceRef === 1);
+        }
+        if(b2){
+          b2.textContent = `P2 : ${n2}`;
+          b2.title = `Référentiel : Pièce 2 (${mB?.name || "Pièce 2"}) — Référence par défaut (style Fusion 360)`;
+          b2.classList.toggle("on", this.mesure.choixPieceRef === 2);
+        }
+      }
     }
   }
 
