@@ -22,18 +22,22 @@ noms d'objets et, si le `.mtl` est déposé avec lui, ses matériaux.
 
 ## Démarrage
 
+**Double-cliquez sur `web_3D.py`** — ou, depuis un terminal :
+
 ```bash
-python serveur.py
+python web_3D.py
 ```
 
-La page s'ouvre sur `http://127.0.0.1:8139/`. Le serveur ne fait que servir des
-fichiers : il n'y a aucun calcul côté Python.
+Dans les deux cas le serveur démarre et la page s'ouvre seule sur
+`http://127.0.0.1:8139/` (le port suivant si celui-ci est déjà pris). Le serveur
+ne fait que servir des fichiers : il n'y a aucun calcul côté Python.
 
 > [!IMPORTANT]
 > Contrairement aux éditeurs de WEB_CAO, **le double-clic sur `index.html` ne
-> suffit pas**. En `file://`, le navigateur refuse de charger le module
-> WebAssembly (origine « null ») et ignore le type MIME `application/wasm`. Il
-> faut passer par le serveur — c'est sa seule raison d'être.
+> suffit pas** — c'est sur `web_3D.py` qu'il faut cliquer. En `file://`, le
+> navigateur refuse de charger le module WebAssembly (origine « null ») et
+> ignore le type MIME `application/wasm`. Il faut passer par le serveur —
+> c'est sa seule raison d'être.
 
 Options utiles :
 
@@ -199,7 +203,7 @@ signale — sauf si l'option correspondante est cochée.
 ```
 WEB_3D/
 ├── index.html                    structure de la page et carte des imports
-├── serveur.py                    serveur statique (bibliothèque standard)
+├── web_3D.py                     serveur statique (bibliothèque standard)
 ├── css/
 │   └── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
 ├── js/                           11 modules ES, chargés par 09-demarrage.js

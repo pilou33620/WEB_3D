@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # =============================================================================
-# Visionneuse 3D — serveur.py
+# Visionneuse 3D — web_3D.py
 #
 # Un serveur de fichiers statiques, et rien d'autre : la lecture des fichiers
 # CAO se fait entièrement dans le navigateur. Il n'existe que pour deux raisons.
@@ -63,7 +63,11 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
 class Serveur(socketserver.ThreadingTCPServer):
     """Plusieurs requêtes à la fois : le noyau WebAssembly pèse 7 Mo, et le
     navigateur charge le reste de la page pendant ce temps."""
-    allow_reuse_address = True
+    # SO_REUSEADDR évite le TIME_WAIT sous Unix ; sous Windows il permet à deux
+    # serveurs de se poser sur le même port, et le second vole la moitié des
+    # requêtes sans rien dire. Là-bas, mieux vaut l'échec franc : on change de
+    # port (voir ouvrir_serveur).
+    allow_reuse_address = os.name != "nt"
     daemon_threads = True
 
 
@@ -79,6 +83,45 @@ def adresse_locale() -> str:
         return "127.0.0.1"
 
 
+def lance_par_double_clic() -> bool:
+    """Vrai quand la fenêtre a été créée pour ce script — double-clic dans
+    l'explorateur — et non héritée d'un terminal déjà ouvert. Dans ce cas elle
+    se referme à la seconde où le script se termine : un message d'erreur y
+    passerait inaperçu."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        tampon = (ctypes.c_uint * 2)()
+        # Un seul processus attaché à la console : c'est Windows qui l'a ouverte
+        # pour nous. Depuis cmd ou PowerShell, le shell y figure aussi.
+        return ctypes.windll.kernel32.GetConsoleProcessList(tampon, 2) == 1
+    except Exception:
+        return bool(sys.stdin) and sys.stdin.isatty()
+
+
+def attendre(interactif: bool) -> None:
+    """Retient la fenêtre le temps de lire ce qui vient d'être écrit."""
+    if not interactif:
+        return
+    try:
+        input("\nAppuyez sur Entrée pour fermer…")
+    except EOFError:
+        pass
+
+
+def ouvrir_serveur(hote: str, port: int, essais: int):
+    """Le premier port libre à partir de `port`. Un double-clic ne doit pas
+    échouer simplement parce qu'un serveur de la veille occupe encore 8139."""
+    derniere: OSError | None = None
+    for p in range(port, port + essais):
+        try:
+            return Serveur((hote, p), Gestionnaire), p
+        except OSError as e:
+            derniere = e
+    raise derniere
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Serveur local de la visionneuse 3D.")
     ap.add_argument("--port", type=int, default=8139, help="port d'écoute (8139 par défaut)")
@@ -88,27 +131,34 @@ def main() -> int:
     ap.add_argument("--sans-pause", action="store_true", help="ne pas attendre de touche à l'arrêt")
     args = ap.parse_args()
 
+    # Sans argument ni terminal, le double-clic doit se débrouiller seul : trouver
+    # un port, ouvrir la page, et laisser ses erreurs à l'écran.
+    interactif = not args.sans_pause and lance_par_double_clic()
+
     dossier = os.path.abspath(args.dossier)
     if not os.path.isfile(os.path.join(dossier, "index.html")):
         print(f"Aucun index.html dans {dossier} : est-ce le bon dossier ?", file=sys.stderr)
+        attendre(interactif)
         return 2
 
     os.chdir(dossier)
     hote = "127.0.0.1" if args.local else "0.0.0.0"
 
     try:
-        serveur = Serveur((hote, args.port), Gestionnaire)
+        serveur, port = ouvrir_serveur(hote, args.port, 10)
     except OSError as e:
-        print(f"Impossible d'écouter sur le port {args.port} : {e}", file=sys.stderr)
-        print("Un autre serveur l'occupe peut-être. Essayez --port 8140.", file=sys.stderr)
+        print(f"Aucun port libre entre {args.port} et {args.port + 9} : {e}", file=sys.stderr)
+        attendre(interactif)
         return 1
 
-    url = f"http://127.0.0.1:{args.port}/"
+    url = f"http://127.0.0.1:{port}/"
     print("Visionneuse 3D — serveur local")
     print(f"  dossier : {dossier}")
     print(f"  adresse : {url}")
+    if port != args.port:
+        print(f"  (le port {args.port} était occupé)")
     if not args.local:
-        print(f"  réseau  : http://{adresse_locale()}:{args.port}/   (tablette, autre poste)")
+        print(f"  réseau  : http://{adresse_locale()}:{port}/   (tablette, autre poste)")
     print("  Ctrl+C pour arrêter.\n")
 
     if not args.sans_navigateur:
@@ -121,8 +171,7 @@ def main() -> int:
     finally:
         serveur.server_close()
 
-    if not args.sans_pause and os.name == "nt" and sys.stdin.isatty():
-        input("Appuyez sur Entrée pour fermer…")
+    attendre(interactif)
     return 0
 
 
