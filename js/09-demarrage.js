@@ -16,6 +16,7 @@ import { Navigation } from "./03-navigation.js";
 import { CubeVue } from "./04-cube-vue.js";
 import { Arbre } from "./05-arbre.js";
 import { Mesure } from "./07-mesure.js";
+import { CoupeManager } from "./07b-coupe.js";
 import { Interface, pieceSous } from "./08-interface.js";
 
 const $ = (id) => document.getElementById(id);
@@ -31,15 +32,24 @@ const vue = new Vue3D($("vue3d"));
 vue.rayonModele = 100;
 vue.cible.set(0, 0, 0);
 
+/* ---------------- coupe (déclarée avant nav pour les callbacks) ---------------- */
+let coupe;
+
 /* ---------------- navigation ---------------- */
 const nav = new Navigation(vue, {
+  surPointeurBasAvant:(ev) => coupe?.testerClicGizmo(ev),
   surSelection:(ev) => {
+    /* En mode coupe avec choix de face, le clic sélectionne la face */
+    if(coupe?.actif && coupe.enChoixFace && coupe.cliquer(ev)) return;
     /* En mode mesure, le clic gauche pose un point : il ne sélectionne pas. */
     if(mesure.actif && mesure.cliquer(ev)) return;
     const piece = pieceSous(vue, ev);
     arbre.selectionner(piece || null);
   },
-  surSurvol:(ev) => mesure.survoler(ev),
+  surSurvol:(ev) => {
+    if(coupe?.actif && coupe.enChoixFace) coupe.survoler(ev);
+    else mesure.survoler(ev);
+  },
 });
 nav.allerVersVue("iso", false);
 vue.perspective.position.setLength(320);
@@ -52,18 +62,19 @@ const cube = new CubeVue($("cubeVue"), vue, nav);
 vue.apresRendu.add(() => cube.rendre());
 $("coinCube").hidden = !prefs.cubeVisible;
 
-/* ---------------- arbre, mesure, interface ---------------- */
+/* ---------------- arbre, mesure, coupe, interface ---------------- */
 const arbre = new Arbre(vue, {
   arbre:$("arbre"), props:$("props"), cpt:$("cptPieces"),
   rech:$("rechArbre"), zoomSel:$("bZoomSel"), isoler:$("bIsoler"),
 });
 const mesure = new Mesure(vue, nav, { conteneur:$("ctr"), etat:$("etatMesure") });
+coupe = new CoupeManager(vue, nav, $("ctr"));
 
 arbre.surSelection = (objet) => {
   $("etatSel").textContent = objet ? `Sélection : ${objet.name || "sans nom"}` : "";
 };
 
-const ui = new Interface({ vue, nav, cube, arbre, mesure });
+const ui = new Interface({ vue, nav, cube, arbre, mesure, coupe });
 
 /* Le cube et la barre d'état suivent les préférences quelle que soit la
    manière dont elles ont changé — dialogue, clavier ou bouton du coin. */
@@ -95,4 +106,4 @@ if(depuisUrl){
 }
 
 /* De quoi inspecter la scène depuis la console du navigateur, sans outil. */
-window.W3D = { THREE, vue, nav, cube, arbre, mesure, ui, prefs };
+window.W3D = { THREE, vue, nav, cube, arbre, mesure, ui, prefs, coupe };

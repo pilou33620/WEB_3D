@@ -336,7 +336,14 @@ export class Arbre {
     hote.innerHTML =
       `<h4>Identité</h4><table>${lignes.map(([a, v]) => `<tr><td>${a}</td><td>${v}</td></tr>`).join("")}</table>
        <h4>Géométrie</h4><table>${dim.map(([a, v]) => `<tr><td>${a}</td><td>${v}</td></tr>`).join("")}</table>
-       ${masse}`;
+       ${masse}
+       <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border)">
+         <button type="button" class="tb on" id="bExportPieceDirect" style="width:100%;justify-content:center" title="Exporter cette pièce isolée ou avec l'assemblage">📦 Exporter cette pièce (.stp)…</button>
+       </div>`;
+
+    hote.querySelector("#bExportPieceDirect")?.addEventListener("click", () => {
+      this.surDemandeExportPiece?.(objet);
+    });
   }
 }
 

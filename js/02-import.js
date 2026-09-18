@@ -434,6 +434,14 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
         groupe = lire3mf(tampon);
         normaliserMateriaux(groupe);
       }else{
+        let texteStep = null;
+        if(format === "step"){
+          try {
+            texteStep = await fichier.text();
+          } catch(e) {
+            console.warn("Impossible de lire le texte STEP :", e);
+          }
+        }
         const reponse = await lireAvecOcct(format, tampon, fichier.name, {
           linearUnit: prefs.unite,
           linearDeflectionType: "bounding_box_ratio",
@@ -442,6 +450,7 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
         }, surProgres);
         duree += reponse.duree || 0;
         groupe = construireNoeud(reponse.racine, reponse.maillages, materiau);
+        if(texteStep) groupe.userData.stepTexte = texteStep;
       }
     }
 

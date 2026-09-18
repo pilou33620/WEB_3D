@@ -21,11 +21,12 @@ import { prefs, actionPourGeste, nomBouton } from "./00-config.js";
 const EPS = 1e-6;
 
 export class Navigation {
-  constructor(vue, { surSelection, surSurvol, surClic } = {}){
+  constructor(vue, { surSelection, surSurvol, surClic, surPointeurBasAvant } = {}){
     this.vue = vue;
     this.surSelection = surSelection;
     this.surSurvol = surSurvol;
     this.surClic = surClic;
+    this.surPointeurBasAvant = surPointeurBasAvant;
 
     this.pointeurs = new Map();      // pointerId -> {x, y, bouton}
     this.geste = null;               // 'orbite' | 'panoramique' | 'zoom'
@@ -183,6 +184,7 @@ export class Navigation {
      ========================================================================== */
   pointeurBas(ev){
     if(!this.actif) return;
+    if(this.surPointeurBasAvant && this.surPointeurBasAvant(ev)) return;
     this.vue.canvas.focus?.();
     this.pointeurs.set(ev.pointerId, { x:ev.clientX, y:ev.clientY });
 

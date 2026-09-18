@@ -146,6 +146,7 @@ export const PREFS_DEFAUT = {
   aretes:true,
   angleAretes:25,
   fond:"degrade",          // degrade | sombre | clair
+  theme:"sombre",          // sombre | clair
 
   /* qualité du maillage demandé à OpenCascade */
   tolLineaire:0.002,       // fraction de la diagonale de l'encombrement

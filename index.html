@@ -6,6 +6,12 @@
 <title>Visionneuse 3D — STEP / IGES / BREP / 3MF / OBJ / STL</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧊</text></svg>">
 <link rel="stylesheet" href="css/visionneuse-3d.css">
+<script>
+try{
+  const p = JSON.parse(localStorage.getItem("web3d.prefs") || "{}");
+  if(p.theme === "clair") document.documentElement.setAttribute("data-theme", "clair");
+}catch(e){}
+</script>
 
 <!-- three.js est servi depuis vendor/ : la visionneuse fonctionne hors ligne,
      comme le reste de la suite. L'import map évite tout empaquetage. -->
@@ -42,7 +48,9 @@
     <div class="sep"></div>
     <button class="tb" id="bPng" title="Capture de la vue courante en PNG">Exporter .png</button>
     <button class="tb" id="bGlb" title="Exporter la scène triangulée en glTF binaire" disabled>Exporter .glb</button>
+    <button class="tb" id="bExportPiece" title="Récupérer et réexporter une pièce ou les pièces visibles au format STEP (.stp)" disabled>📦 Exporter .stp…</button>
     <div class="sep"></div>
+    <button class="tb" id="bTheme" title="Passer au thème clair">☀️ Clair <kbd>T</kbd></button>
     <button class="tb" id="bPrefs" title="Configuration de la souris, orbite, sensibilités">🖱 Souris &amp; vue…</button>
     <button class="tb" id="bAide" title="Raccourcis clavier">?</button>
   </div>
@@ -227,6 +235,13 @@
           <option value="clair">Uni clair (impression)</option>
         </select>
       </div>
+      <div class="lg">
+        <label for="selTheme">Thème d'interface</label>
+        <select id="selTheme">
+          <option value="sombre">Sombre (défaut)</option>
+          <option value="clair">Clair</option>
+        </select>
+      </div>
     </div>
 
     <!-- ---------------- Qualité ---------------- -->
@@ -262,6 +277,82 @@
   </form>
 </dialog>
 
+<dialog id="dlgExportPiece">
+  <form method="dialog" id="formExportPiece">
+    <h2>Exporter / Récupérer une pièce</h2>
+    <p class="aide">Isolez et réexportez une pièce ou les pièces actuellement affichées dans un format standard CAO (STEP .stp) ou maillage.</p>
+
+    <h4>Périmètre d'exportation</h4>
+    <div class="choix-export">
+      <label class="carte-opt on" id="optExportVisible">
+        <input type="radio" name="perimetreExport" value="visible" checked>
+        <div class="carte-corps">
+          <b>Pièces visibles uniquement <span class="badge-recom">Recommandé</span></b>
+          <span class="desc" id="descExportVisible">Conserver uniquement les pièces affichées à l'écran (X visibles, Y masquées).</span>
+        </div>
+      </label>
+
+      <label class="carte-opt" id="optExportSel">
+        <input type="radio" name="perimetreExport" value="selection">
+        <div class="carte-corps">
+          <b>Pièce sélectionnée : <span id="nomExportSel" class="mono">—</span></b>
+          <span class="desc" id="descExportSel">Exporter uniquement cette pièce isolée.</span>
+        </div>
+      </label>
+
+      <label class="carte-opt" id="optExportManuel">
+        <input type="radio" name="perimetreExport" value="manuel">
+        <div class="carte-corps">
+          <b>Sélection personnalisée…</b>
+          <span class="desc">Cochez précisément les pièces de l'assemblage à inclure.</span>
+        </div>
+      </label>
+    </div>
+
+    <!-- Liste des pièces pour sélection personnalisée -->
+    <div id="blocListePiecesExport" hidden>
+      <div class="liste-barre">
+        <span class="mono" id="cptPiecesExport">0 pièce sélectionnée</span>
+        <span class="grow"></span>
+        <button type="button" class="tb mini" id="bExportToutCocher">Tout cocher</button>
+        <button type="button" class="tb mini" id="bExportVisiblesCocher">Visibles seules</button>
+        <button type="button" class="tb mini" id="bExportToutDecocher">Tout décocher</button>
+      </div>
+      <div class="scroll-export" id="listePiecesExport"></div>
+    </div>
+
+    <h4>Format et options</h4>
+    <div class="lg">
+      <label for="selFormatExport">Format de sortie</label>
+      <select id="selFormatExport">
+        <option value="stp">STEP (.stp) — CAO exacte B-Rep d'origine (ISO 10303)</option>
+        <option value="glb">glTF binaire (.glb) — Maillage triangulé 3D</option>
+      </select>
+    </div>
+    <div class="lg" id="lgRepereExport">
+      <label for="selRepereExport">Système de coordonnées (STEP)</label>
+      <select id="selRepereExport">
+        <option value="assemblage">Repère d'assemblage (conserve la position 3D dans le modèle)</option>
+        <option value="local">Repère local (centré à l'origine de la pièce)</option>
+      </select>
+    </div>
+
+    <h4>Fichier de sortie</h4>
+    <div class="lg">
+      <label for="inputNomFichierExport">Nom du fichier</label>
+      <input type="text" id="inputNomFichierExport" class="champ-texte" style="flex:0 0 260px" autocomplete="off">
+    </div>
+
+    <div id="infoExportMsg" class="aide" style="margin-top:8px"></div>
+
+    <menu>
+      <button type="button" class="tb" id="bAnnulerExport">Annuler</button>
+      <span class="grow"></span>
+      <button type="button" class="tb on" id="bValiderExport">💾 Exporter .stp</button>
+    </menu>
+  </form>
+</dialog>
+
 <dialog id="dlgAide">
   <form method="dialog">
     <h2>Raccourcis</h2>
@@ -273,6 +364,7 @@
       <tr><td><kbd>W</kbd></td><td>Filaire</td></tr>
       <tr><td><kbd>X</kbd></td><td>Rayons X (transparence)</td></tr>
       <tr><td><kbd>G</kbd></td><td>Grille</td></tr>
+      <tr><td><kbd>T</kbd></td><td>Basculer le thème (sombre ↔ clair)</td></tr>
       <tr><td><kbd>C</kbd></td><td>Plan de coupe</td></tr>
       <tr><td><kbd>K</kbd></td><td>Ouvrir / fermer la mesure</td></tr>
       <tr><td><kbd>M</kbd></td><td>Mode de mesure : auto → point → arête → face</td></tr>

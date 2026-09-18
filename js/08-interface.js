@@ -11,21 +11,26 @@
 "use strict";
 
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+import { visibleEnLignee } from "./01-scene.js";
 import { prefs, prefsModifiees, reinitialiserPrefs, resumeGestes,
          PRESETS_SOURIS, ACTIONS, EMPLACEMENTS, gestesActifs } from "./00-config.js";
 import { ouvrirFichiers, liberer, calculerAretes, formatDe, estAnnexe,
          LISTE_FORMATS } from "./02-import.js";
 import { MODES as MODES_MESURE } from "./07-mesure.js";
+import { StepExtractor, telechargerFichier, sanitiserNomFichier } from "./10-export-step.js";
 
 const $ = (id) => document.getElementById(id);
 
 export class Interface {
-  constructor({ vue, nav, cube, arbre, mesure }){
-    Object.assign(this, { vue, nav, cube, arbre, mesure });
-    this.coupe = { actif:false, axe:"x", ratio:0.5, inverse:false };
+  constructor({ vue, nav, cube, arbre, mesure, coupe }){
+    Object.assign(this, { vue, nav, cube, arbre, mesure, coupe });
+    if(coupe) coupe.bOutil = $("bCoupe");
 
     arbre.surSelection = (piece) => {
       mesure.majPieceSelectionnee(piece);
+    };
+    arbre.surDemandeExportPiece = (piece) => {
+      this.ouvrirModalExport(piece);
     };
     mesure.surMesureChange = () => {
       this.majPanneauMesure();
@@ -36,6 +41,8 @@ export class Interface {
     this.brancherClavier();
     this.brancherReglages();
     this.brancherVues();
+    this.brancherExportPiece();
+    this.definirTheme(prefs.theme, false);
     this.majEtatBoutons();
     this.majBarreEtat();
 
@@ -75,6 +82,8 @@ export class Interface {
     $("bIsoler").onclick = () => arbre.isoler();
     $("bPng").onclick = () => this.exporterPng();
     $("bGlb").onclick = () => this.exporterGlb();
+    $("bExportPiece").onclick = () => this.ouvrirModalExport();
+    $("bTheme").onclick = () => this.basculerTheme();
     $("bPrefs").onclick = () => { this.majReglages(); $("dlgPrefs").showModal(); };
     $("bAide").onclick = () => $("dlgAide").showModal();
 
@@ -121,51 +130,17 @@ export class Interface {
      Plan de coupe
      ========================================================================== */
   basculerCoupe(){
-    this.coupe.actif = !this.coupe.actif;
-    $("bCoupe").classList.toggle("on", this.coupe.actif);
-    if(!this.panneauCoupe) this.construirePanneauCoupe();
-    this.panneauCoupe.hidden = !this.coupe.actif;
-    this.appliquerCoupe();
-  }
-
-  construirePanneauCoupe(){
-    const p = document.createElement("div");
-    p.id = "panneauCoupe";
-    p.innerHTML = `<span class="etiq">Coupe</span>
-      <span class="axes" id="coupeAxes">
-        <button class="tb mini on" data-axe="x">X</button>
-        <button class="tb mini" data-axe="y">Y</button>
-        <button class="tb mini" data-axe="z">Z</button>
-      </span>
-      <input type="range" id="coupePos" min="0" max="1" step="0.005" value="0.5">
-      <button class="tb mini" id="coupeInv" title="Garder l'autre moitié">⇄</button>`;
-    $("ctr").appendChild(p);
-    this.panneauCoupe = p;
-
-    p.querySelector("#coupeAxes").onclick = (e) => {
-      const b = e.target.closest("button[data-axe]");
-      if(!b) return;
-      this.coupe.axe = b.dataset.axe;
-      for(const x of p.querySelectorAll("button[data-axe]")) x.classList.toggle("on", x === b);
-      this.appliquerCoupe();
-    };
-    p.querySelector("#coupePos").oninput = (e) => {
-      this.coupe.ratio = parseFloat(e.target.value);
-      this.appliquerCoupe();
-    };
-    p.querySelector("#coupeInv").onclick = () => {
-      this.coupe.inverse = !this.coupe.inverse;
-      p.querySelector("#coupeInv").classList.toggle("on", this.coupe.inverse);
-      this.appliquerCoupe();
-    };
+    this.coupe.basculer();
+    this.mesure.majCoupe();
   }
 
   appliquerCoupe(){
-    const c = this.coupe;
-    this.vue.definirCoupe(c.actif, c.axe, c.ratio, c.inverse);
-    /* Les surlignages de mesure sont des objets à part, avec leurs propres
-       matériaux : sans cet appel, une face désignée continuerait de flotter
-       dans la partie coupée. */
+    if(this.coupe.actif){
+      this.coupe.majBornes();
+      this.coupe.appliquer();
+    }else{
+      this.vue.definirCoupe(false);
+    }
     this.mesure.majCoupe();
   }
 
@@ -367,6 +342,7 @@ export class Interface {
     for(const g of [...this.vue.modele.children]){ liberer(g); this.vue.modele.remove(g); }
     this.vue.viderModele();
     this.mesure.annuler();
+    this.coupe?.definirActif(false);
     if(vraiment){
       this.arbre.reconstruire();
       $("accueil").hidden = false;
@@ -389,14 +365,46 @@ export class Interface {
     e.textContent = message || "";
   }
 
+  basculerTheme(){
+    const suivant = prefs.theme === "clair" ? "sombre" : "clair";
+    this.definirTheme(suivant, true);
+  }
+
+  definirTheme(theme, changerFond = false){
+    prefs.theme = theme;
+    document.documentElement.setAttribute("data-theme", theme);
+    if(changerFond){
+      if(theme === "clair" && (prefs.fond === "degrade" || prefs.fond === "sombre")){
+        prefs.fond = "clair";
+        this.vue.appliquerFond("clair");
+      }else if(theme === "sombre" && prefs.fond === "clair"){
+        prefs.fond = "degrade";
+        this.vue.appliquerFond("degrade");
+      }
+      if($("selFond")) $("selFond").value = prefs.fond;
+    }
+    const selTheme = $("selTheme");
+    if(selTheme) selTheme.value = theme;
+    prefsModifiees("theme");
+    this.majEtatBoutons();
+  }
+
   majEtatBoutons(){
     const plein = this.vue.modele.children.length > 0;
-    for(const id of ["bFermer", "bGlb"]) $(id).disabled = !plein;
+    for(const id of ["bFermer", "bGlb", "bExportPiece"]) $(id).disabled = !plein;
     $("bProjection").firstChild.nodeValue =
       this.vue.projection === "ortho" ? "Orthographique " : "Perspective ";
     $("bProjection").classList.toggle("on", this.vue.projection === "ortho");
     $("bGrille").classList.toggle("on", prefs.grille);
     $("bAretes").classList.toggle("on", prefs.aretes);
+
+    const bTheme = $("bTheme");
+    if(bTheme){
+      const estClair = prefs.theme === "clair";
+      bTheme.innerHTML = estClair ? "🌙 Sombre <kbd>T</kbd>" : "☀️ Clair <kbd>T</kbd>";
+      bTheme.title = estClair ? "Passer au thème sombre" : "Passer au thème clair";
+      bTheme.classList.toggle("on", estClair);
+    }
   }
 
   majBarreEtat(){
@@ -444,6 +452,309 @@ export class Interface {
   }
 
   /* ==========================================================================
+     Exportation de pièces (STEP / glTF)
+     ========================================================================== */
+  brancherExportPiece(){
+    const dlg = $("dlgExportPiece");
+    if(!dlg) return;
+
+    // Changement de périmètre (visible, selection, manuel)
+    for(const r of dlg.querySelectorAll("input[name='perimetreExport']")){
+      r.addEventListener("change", () => {
+        for(const carte of dlg.querySelectorAll(".carte-opt")){
+          carte.classList.toggle("on", carte.querySelector("input") === r);
+        }
+        const manuel = r.value === "manuel";
+        $("blocListePiecesExport").hidden = !manuel;
+        this.majNomFichierExportSuggere();
+      });
+    }
+
+    // Gestion des boutons de cochage de la liste
+    $("bExportToutCocher")?.addEventListener("click", () => {
+      dlg.querySelectorAll("#listePiecesExport input[type='checkbox']").forEach(cb => cb.checked = true);
+      this.majCompteurPiecesExport();
+      this.majNomFichierExportSuggere();
+    });
+    $("bExportToutDecocher")?.addEventListener("click", () => {
+      dlg.querySelectorAll("#listePiecesExport input[type='checkbox']").forEach(cb => cb.checked = false);
+      this.majCompteurPiecesExport();
+      this.majNomFichierExportSuggere();
+    });
+    $("bExportVisiblesCocher")?.addEventListener("click", () => {
+      dlg.querySelectorAll("#listePiecesExport .item-export").forEach(item => {
+        const cb = item.querySelector("input[type='checkbox']");
+        if(cb) cb.checked = item.dataset.visible === "true";
+      });
+      this.majCompteurPiecesExport();
+      this.majNomFichierExportSuggere();
+    });
+
+    // Format
+    $("selFormatExport")?.addEventListener("change", () => {
+      const format = $("selFormatExport").value;
+      const lgRep = $("lgRepereExport");
+      if(lgRep) lgRep.style.display = format === "stp" ? "flex" : "none";
+      $("bValiderExport").textContent = format === "stp" ? "💾 Exporter .stp" : "💾 Exporter .glb";
+      this.majNomFichierExportSuggere();
+    });
+
+    // Boutons de validation / annulation
+    $("bAnnulerExport")?.addEventListener("click", () => dlg.close());
+    $("bValiderExport")?.addEventListener("click", () => this.executerExportPiece());
+  }
+
+  ouvrirModalExport(piecePreselectionnee = null){
+    if(!this.vue.modele.children.length) return;
+    const dlg = $("dlgExportPiece");
+    if(!dlg) return;
+
+    // Collecter les pièces maillées
+    const pieces = [];
+    this.vue.modele.traverse(o => {
+      if(o.isMesh && o.userData.estPiece){
+        const visible = o.visible && visibleEnLignee(o);
+        pieces.push({ objet:o, visible });
+      }
+    });
+
+    const nbVisibles = pieces.filter(p => p.visible).length;
+    const nbTotal = pieces.length;
+    const nbMasquees = nbTotal - nbVisibles;
+
+    $("descExportVisible").textContent =
+      `Conserver uniquement les pièces affichées à l'écran (${nbVisibles} visible${nbVisibles > 1 ? "s" : ""}, ${nbMasquees} masquée${nbMasquees > 1 ? "s" : ""}).`;
+
+    // Pièce sélectionnée
+    const sel = piecePreselectionnee || this.arbre.selection;
+    let selMesh = null;
+    if(sel){
+      if(sel.isMesh) selMesh = sel;
+      else sel.traverse(o => { if(o.isMesh && !selMesh) selMesh = o; });
+    }
+
+    const rSel = dlg.querySelector("input[name='perimetreExport'][value='selection']");
+    const rVis = dlg.querySelector("input[name='perimetreExport'][value='visible']");
+    const optSel = $("optExportSel");
+
+    if(selMesh){
+      $("nomExportSel").textContent = selMesh.name || "Pièce sélectionnée";
+      optSel.classList.remove("desactive");
+      if(rSel) rSel.disabled = false;
+      if(piecePreselectionnee && rSel){
+        rSel.checked = true;
+      }
+    }else{
+      $("nomExportSel").textContent = "(aucune sélection)";
+      optSel.classList.add("desactive");
+      if(rSel){
+        rSel.disabled = true;
+        if(rSel.checked && rVis) rVis.checked = true;
+      }
+    }
+
+    // Définir la classe "on" sur la carte active
+    for(const carte of dlg.querySelectorAll(".carte-opt")){
+      carte.classList.toggle("on", carte.querySelector("input")?.checked || false);
+    }
+    $("blocListePiecesExport").hidden = !dlg.querySelector("input[name='perimetreExport'][value='manuel']")?.checked;
+
+    // Remplir la liste pour le choix personnalisé
+    const contListe = $("listePiecesExport");
+    contListe.innerHTML = "";
+    pieces.forEach(({ objet, visible }, idx) => {
+      const item = document.createElement("div");
+      item.className = "item-export";
+      item.dataset.visible = String(visible);
+      const col = objet.userData?.matSauve?.color || objet.material?.color;
+      const coulHex = col ? "#" + col.getHexString() : "#888888";
+      item.innerHTML = `
+        <input type="checkbox" id="cbExp_${idx}" ${visible ? "checked" : ""}>
+        <span class="puce" style="background:${coulHex}"></span>
+        <label for="cbExp_${idx}" class="nom" title="${objet.name || "Pièce"}">${objet.name || `Pièce ${idx+1}`}</label>
+        <span class="badge-vis ${visible ? "ok" : "off"}">${visible ? "affichée" : "masquée"}</span>
+        <span class="tri">${objet.userData.triangles ? Math.round(objet.userData.triangles) + " △" : ""}</span>
+      `;
+      item.__objet = objet;
+      item.querySelector("input").addEventListener("change", () => {
+        this.majCompteurPiecesExport();
+        this.majNomFichierExportSuggere();
+      });
+      contListe.appendChild(item);
+    });
+    this.majCompteurPiecesExport();
+
+    // Détecter si le modèle vient d'un fichier STEP
+    let stepTexteTrouve = false;
+    for(const g of this.vue.modele.children){
+      if(g.userData.stepTexte || g.userData.format === "step"){
+        stepTexteTrouve = true;
+        break;
+      }
+    }
+
+    const selFormat = $("selFormatExport");
+    const optStep = selFormat.querySelector("option[value='stp']");
+
+    if(!stepTexteTrouve){
+      optStep.disabled = true;
+      optStep.textContent = "STEP (.stp) — Non disponible (fichier source non-STEP)";
+      selFormat.value = "glb";
+      $("infoExportMsg").textContent = "ℹ Ce modèle est issu d'un format maillé. L'export se fera en maillage 3D (.glb).";
+    }else{
+      optStep.disabled = false;
+      optStep.textContent = "STEP (.stp) — CAO exacte B-Rep d'origine (ISO 10303)";
+      selFormat.value = "stp";
+      $("infoExportMsg").textContent = "✨ Les géométries B-Rep exactes (courbes, cylindres, congés, tolérances) sont conservées sans aucune perte.";
+    }
+
+    const format = selFormat.value;
+    const lgRep = $("lgRepereExport");
+    if(lgRep) lgRep.style.display = format === "stp" ? "flex" : "none";
+    $("bValiderExport").textContent = format === "stp" ? "💾 Exporter .stp" : "💾 Exporter .glb";
+
+    this.majNomFichierExportSuggere();
+    dlg.showModal();
+  }
+
+  majCompteurPiecesExport(){
+    const coches = $("listePiecesExport")?.querySelectorAll("input[type='checkbox']:checked").length || 0;
+    $("cptPiecesExport").textContent = `${coches} pièce${coches > 1 ? "s" : ""} sélectionnée${coches > 1 ? "s" : ""}`;
+  }
+
+  majNomFichierExportSuggere(){
+    const perimetre = $("dlgExportPiece")?.querySelector("input[name='perimetreExport']:checked")?.value || "visible";
+    const format = $("selFormatExport")?.value || "stp";
+    const ext = "." + format;
+    const nomBase = this.nomCourt() || "modele";
+
+    let suggestion = nomBase;
+    if(perimetre === "selection"){
+      const sel = this.arbre.selection;
+      let nomPiece = sel?.name || "";
+      if(!nomPiece && sel && !sel.isMesh){
+        sel.traverse(o => { if(o.isMesh && !nomPiece) nomPiece = o.name; });
+      }
+      suggestion = sanitiserNomFichier(nomPiece || "piece", ext);
+    }else if(perimetre === "visible"){
+      suggestion = sanitiserNomFichier(nomBase + "_visible", ext);
+    }else{
+      suggestion = sanitiserNomFichier(nomBase + "_selection", ext);
+    }
+
+    $("inputNomFichierExport").value = suggestion;
+  }
+
+  async executerExportPiece(){
+    const dlg = $("dlgExportPiece");
+    const perimetre = dlg.querySelector("input[name='perimetreExport']:checked")?.value || "visible";
+    const format = $("selFormatExport").value;
+    const repere = $("selRepereExport").value;
+    let nomFichier = $("inputNomFichierExport").value.trim();
+    if(!nomFichier.toLowerCase().endsWith("." + format)){
+      nomFichier += "." + format;
+    }
+
+    let piecesCibles = [];
+    if(perimetre === "selection"){
+      const sel = this.arbre.selection;
+      let m = (sel && sel.isMesh) ? sel : null;
+      if(!m && sel) sel.traverse(o => { if(o.isMesh && !m) m = o; });
+      if(!m){
+        alert("Veuillez sélectionner une pièce à exporter.");
+        return;
+      }
+      piecesCibles = [m];
+    }else if(perimetre === "visible"){
+      this.vue.modele.traverse(o => {
+        if(o.isMesh && o.userData.estPiece && o.visible && visibleEnLignee(o)){
+          piecesCibles.push(o);
+        }
+      });
+      if(!piecesCibles.length){
+        alert("Aucune pièce n'est actuellement visible à l'écran.");
+        return;
+      }
+    }else{
+      const items = dlg.querySelectorAll("#listePiecesExport .item-export");
+      for(const it of items){
+        const cb = it.querySelector("input[type='checkbox']");
+        if(cb && cb.checked && it.__objet){
+          piecesCibles.push(it.__objet);
+        }
+      }
+      if(!piecesCibles.length){
+        alert("Veuillez cocher au moins une pièce à exporter.");
+        return;
+      }
+    }
+
+    dlg.close();
+    this.attendre(true, `Export ${format.toUpperCase()} en cours…`, "Préparation des données géométriques.");
+
+    try{
+      if(format === "stp"){
+        let stepTexte = null;
+        for(const g of this.vue.modele.children){
+          if(g.userData.stepTexte){
+            stepTexte = g.userData.stepTexte;
+            break;
+          }
+        }
+        if(!stepTexte){
+          throw new Error("Le texte source STEP n'est pas disponible pour ce fichier.");
+        }
+
+        const extracteur = new StepExtractor(stepTexte);
+        let contenuSortie = "";
+
+        if(piecesCibles.length === 1 && repere === "local"){
+          const nomPiece = piecesCibles[0].name;
+          contenuSortie = extracteur.exportPiece(nomPiece);
+        }else{
+          const noms = piecesCibles.map(p => p.name);
+          contenuSortie = extracteur.exportAssemblageFiltre(noms);
+        }
+
+        telechargerFichier(contenuSortie, nomFichier, "application/octet-stream");
+      }else{
+        const masquesTemp = [];
+        this.vue.modele.traverse(o => {
+          if(o.isMesh && !piecesCibles.includes(o)){
+            if(o.visible){
+              o.visible = false;
+              masquesTemp.push(o);
+            }
+          }
+          if(o.userData.estArete && o.visible){
+            o.visible = false;
+            masquesTemp.push(o);
+          }
+        });
+
+        await new Promise((resoudre, rejeter) => {
+          new GLTFExporter().parse(this.vue.modele, (glb) => {
+            for(const o of masquesTemp) o.visible = true;
+            telechargerFichier(glb, nomFichier, "model/gltf-binary");
+            resoudre();
+          }, (err) => {
+            for(const o of masquesTemp) o.visible = true;
+            rejeter(err);
+          }, { binary:true });
+        });
+      }
+
+      this.attendre(false);
+      const msg = `Export de ${piecesCibles.length} pièce${piecesCibles.length > 1 ? "s" : ""} vers "${nomFichier}" réussi.`;
+      $("etatStats").textContent = msg;
+    }catch(e){
+      this.attendre(false);
+      console.error(e);
+      this.erreur("Erreur lors de l'export : " + (e.message || String(e)));
+    }
+  }
+
+  /* ==========================================================================
      Clavier
      ========================================================================== */
   brancherClavier(){
@@ -467,6 +778,7 @@ export class Interface {
         case "w": $("bFilaire").click(); break;
         case "x": $("bTransparence").click(); break;
         case "g": $("bGrille").click(); break;
+        case "t": this.basculerTheme(); break;
         case "c": this.basculerCoupe(); break;
         case "k": this.basculerMesure(); break;
         /* M ouvre la mesure s'il le faut, puis fait tourner les modes :
@@ -479,10 +791,11 @@ export class Interface {
         case "h": this.arbre.toutAfficher(); break;
         case "delete": case "backspace": this.arbre.masquerSelection(); break;
         case "escape":
-          /* Échap efface d'abord la mesure en cours : on se trompe plus souvent
-             de point que d'outil, et refermer l'outil pour recommencer serait
-             une manipulation de trop. */
-          if(this.mesure.actif && this.mesure.enCours()) this.mesure.annuler();
+          /* Échap efface d'abord le choix de face de coupe ou la mesure en cours :
+             on se trompe plus souvent de point que d'outil, et refermer l'outil pour
+             recommencer serait une manipulation de trop. */
+          if(this.coupe?.actif && this.coupe.enChoixFace) this.coupe.desactiverChoixFace();
+          else if(this.mesure.actif && this.mesure.enCours()) this.mesure.annuler();
           else if(this.mesure.actif) this.basculerMesure(false);
           else if(this.arbre.isole) this.arbre.toutAfficher();
           else this.arbre.selectionner(null);
@@ -562,6 +875,7 @@ export class Interface {
     lier("cbAretes", "aretes", Boolean, () => this.definirAretes(prefs.aretes));
     lier("rgAretes", "angleAretes", parseFloat, () => this.recalculerAretes());
     lier("selFond", "fond", (v) => v, () => this.vue.appliquerFond(prefs.fond));
+    lier("selTheme", "theme", (v) => v, (val) => this.definirTheme(val, true));
 
     lier("rgLin", "tolLineaire", parseFloat);
     lier("rgAng", "tolAngulaire", parseFloat);
@@ -625,6 +939,7 @@ export class Interface {
     $("cbAretes").checked = prefs.aretes;
     $("rgAretes").value = prefs.angleAretes;
     $("selFond").value = prefs.fond;
+    if($("selTheme")) $("selTheme").value = prefs.theme;
     $("rgLin").value = prefs.tolLineaire;
     $("rgAng").value = prefs.tolAngulaire;
     $("selUnite").value = prefs.unite;
@@ -681,6 +996,7 @@ export class Interface {
     v.definirGrille(prefs.grille);
     v.definirOmbres(prefs.ombres);
     v.appliquerFond(prefs.fond);
+    this.definirTheme(prefs.theme, false);
     v.definirAretes(prefs.aretes);
     $("coinCube").hidden = !prefs.cubeVisible;
     this.majEtatBoutons();

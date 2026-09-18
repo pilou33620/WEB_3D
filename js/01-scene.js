@@ -275,7 +275,7 @@ export class Vue3D {
 
     this.grille = new THREE.GridHelper(etendue, divisions, 0x4a5058, 0x2a2e34);
     this.grille.material.transparent = true;
-    this.grille.material.opacity = 0.55;
+    this.grille.material.opacity = prefs.fond === "clair" ? 0.28 : 0.55;
     this.grille.material.depthWrite = false;
     this.grille.renderOrder = -1;
 
@@ -356,12 +356,15 @@ export class Vue3D {
     if(mode === "clair"){
       this.scene.background = new THREE.Color(0xeef1f4);
       this.scene.environmentIntensity = 0.75;
+      if(this.grille?.material) this.grille.material.opacity = 0.28;
     }else if(mode === "sombre"){
       this.scene.background = new THREE.Color(0x0f1012);
       this.scene.environmentIntensity = 0.55;
+      if(this.grille?.material) this.grille.material.opacity = 0.55;
     }else{
       this.scene.background = this.textureDegrade();
       this.scene.environmentIntensity = 0.55;
+      if(this.grille?.material) this.grille.material.opacity = 0.55;
     }
     this.invalider();
   }
@@ -420,7 +423,7 @@ export class Vue3D {
   /* ==========================================================================
      Plan de coupe
      ========================================================================== */
-  definirCoupe(actif, axe = "x", ratio = 0.5, inverse = false){
+  definirCoupe(actif, planOuAxe = "x", ratio = 0.5, inverse = false){
     /* Les arêtes vives sont des objets à part, avec leurs propres matériaux :
        sans cette seconde passe, le fil de fer des pièces coupées continuerait
        de flotter dans le vide. */
@@ -440,16 +443,23 @@ export class Vue3D {
       return;
     }
 
-    const b = this.boite() || new THREE.Box3(new THREE.Vector3(-1,-1,-1), new THREE.Vector3(1,1,1));
-    const min = b.min, max = b.max;
-    const n = new THREE.Vector3(axe === "x" ? 1 : 0, axe === "y" ? 1 : 0, axe === "z" ? 1 : 0);
-    if(inverse) n.negate();
-    const pos = new THREE.Vector3(
-      min.x + (max.x - min.x) * ratio,
-      min.y + (max.y - min.y) * ratio,
-      min.z + (max.z - min.z) * ratio,
-    );
-    const plan = new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), pos);
+    let plan;
+    if(planOuAxe && (planOuAxe.isPlane || planOuAxe instanceof THREE.Plane)){
+      plan = planOuAxe;
+    }else{
+      const axe = planOuAxe;
+      const b = this.boite() || new THREE.Box3(new THREE.Vector3(-1,-1,-1), new THREE.Vector3(1,1,1));
+      const min = b.min, max = b.max;
+      const n = new THREE.Vector3(axe === "x" ? 1 : 0, axe === "y" ? 1 : 0, axe === "z" ? 1 : 0);
+      if(inverse) n.negate();
+      const pos = new THREE.Vector3(
+        min.x + (max.x - min.x) * ratio,
+        min.y + (max.y - min.y) * ratio,
+        min.z + (max.z - min.z) * ratio,
+      );
+      plan = new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), pos);
+    }
+
     this.plansCoupe = [plan];
     for(const m of this.materiaux){
       m.clippingPlanes = this.plansCoupe;
