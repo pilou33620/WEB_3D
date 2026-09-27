@@ -119,13 +119,147 @@ function barycentre(points, poids = null){
   return total > 1e-20 ? c.divideScalar(total) : c;
 }
 
+/* Les axes du monde, dans l'ordre X, Y, Z. */
+const AXES_MONDE = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+const COS_MEME_PLAN = Math.cos(1 * Math.PI / 180);     // deux normales à moins de 1° : même direction
+const SIN_PERPENDICULAIRE = Math.sin(1 * Math.PI / 180);
+const COS_ALIGNE_MONDE = Math.cos(0.01 * Math.PI / 180); // en deçà, on recale sur l'axe exact
+const PLAFOND_ECHANTILLON = 400_000;                   // triangles lus au plus pour trouver les plans
+
+/**
+ * Les directions des faces planes d'une pièce, pondérées par leur aire,
+ * regroupées au signe près (le dessus et le dessous d'une plaque sont une
+ * seule direction), de la plus étendue à la moins étendue.
+ *
+ * Avec les faces B-Rep d'OpenCascade, une face compte si toutes ses facettes
+ * ont la même normale : un cylindre, même finement découpé, n'entre pas en
+ * jeu. Sans elles (STL, OBJ, 3MF), chaque facette vote pour sa direction ;
+ * les plans l'emportent par leur aire, les surfaces courbes s'éparpillent.
+ */
+function directionsPlanes(maillage){
+  const geo = maillage.geometry;
+  const pos = geo?.attributes?.position;
+  if(!pos) return { directions:[], aireTotale:0 };
+  const index = geo.index;
+  const nbTri = index ? index.count / 3 : pos.count / 3;
+  const M = maillage.matrixWorld;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), n = new THREE.Vector3();
+
+  /* Normale non normée (sa longueur vaut deux fois l'aire) du triangle t. */
+  const normaleTri = (t) => {
+    const i0 = index ? index.getX(t*3) : t*3;
+    const i1 = index ? index.getX(t*3 + 1) : t*3 + 1;
+    const i2 = index ? index.getX(t*3 + 2) : t*3 + 2;
+    a.fromBufferAttribute(pos, i0).applyMatrix4(M);
+    b.fromBufferAttribute(pos, i1).applyMatrix4(M);
+    c.fromBufferAttribute(pos, i2).applyMatrix4(M);
+    return n.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a));
+  };
+
+  /* Les « morceaux plans » : faces B-Rep planes, ou facettes une à une. */
+  const morceaux = [];
+  let aireTotale = 0;
+  const plages = geo.userData.facesBrep;
+  if(plages && plages.length){
+    const somme = new THREE.Vector3();
+    for(const [premier, dernier] of plages){
+      somme.set(0, 0, 0);
+      let aire = 0;
+      for(let t = premier; t <= Math.min(dernier, nbTri - 1); t++){
+        const v = normaleTri(t);
+        somme.add(v);
+        aire += v.length();
+      }
+      aireTotale += aire;
+      /* Des normales toutes identiques s'additionnent sans rien perdre. */
+      if(aire > 0 && somme.length() > aire * 0.99995) morceaux.push({ n:somme.clone().normalize(), aire });
+    }
+  }else{
+    const pas = Math.max(1, Math.ceil(nbTri / PLAFOND_ECHANTILLON));
+    for(let t = 0; t < nbTri; t += pas){
+      const v = normaleTri(t);
+      const aire = v.length();
+      if(aire <= 0) continue;
+      aireTotale += aire;
+      morceaux.push({ n:v.divideScalar(aire).clone(), aire });
+    }
+  }
+
+  /* Un premier tri grossier par case d'environ 0,6°, puis une fusion au signe
+     près des cases voisines : la case sépare parfois ce qui est un seul plan,
+     la fusion recolle. */
+  const cases = new Map();
+  for(const m of morceaux){
+    const v = m.n;
+    const k = Math.abs(v.x) >= Math.abs(v.y) && Math.abs(v.x) >= Math.abs(v.z) ? v.x
+            : (Math.abs(v.y) >= Math.abs(v.z) ? v.y : v.z);
+    const sg = k < 0 ? -1 : 1;
+    const cle = `${Math.round(sg*v.x*100)},${Math.round(sg*v.y*100)},${Math.round(sg*v.z*100)}`;
+    let e = cases.get(cle);
+    if(!e){ e = { somme:new THREE.Vector3(), aire:0 }; cases.set(cle, e); }
+    e.somme.addScaledVector(v, sg * m.aire);
+    e.aire += m.aire;
+  }
+  const triees = [...cases.values()].sort((x, y) => y.aire - x.aire).slice(0, 300);
+  const directions = [];
+  for(const e of triees){
+    const v = e.somme.clone().normalize();
+    const proche = directions.find(d => Math.abs(d.n.dot(v)) > COS_MEME_PLAN);
+    if(proche){
+      proche.somme.addScaledVector(v, (proche.n.dot(v) < 0 ? -1 : 1) * e.aire);
+      proche.aire += e.aire;
+      proche.n.copy(proche.somme).normalize();
+    }else{
+      directions.push({ n:v, somme:v.clone().multiplyScalar(e.aire), aire:e.aire });
+    }
+  }
+  directions.sort((x, y) => y.aire - x.aire);
+  return { directions, aireTotale };
+}
+
+/** Recale un axe sur l'axe du monde dont il ne s'écarte que d'un bruit de calcul. */
+function recaler(u){
+  for(const w of AXES_MONDE){
+    const d = u.dot(w);
+    if(Math.abs(d) > COS_ALIGNE_MONDE) return u.copy(w).multiplyScalar(Math.sign(d));
+  }
+  return u;
+}
+
+/**
+ * Nomme X, Y et Z parmi trois directions orthogonales : chacune prend l'axe du
+ * monde dont elle est la plus proche, orientée dans son sens. Une pièce posée
+ * droite retrouve ainsi exactement les axes du projet ; une pièce tournée
+ * garde des axes qui se lisent comme ceux du projet.
+ */
+function nommerAxes(d1, d2, d3){
+  const dirs = [d1, d2, d3];
+  const perms = [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+  let meilleure = perms[0], score = -1;
+  for(const p of perms){
+    const s = p.reduce((acc, j, i) => acc + Math.abs(dirs[j].dot(AXES_MONDE[i])), 0);
+    if(s > score + 1e-9){ score = s; meilleure = p; }
+  }
+  const uX = dirs[meilleure[0]].clone(), uY = dirs[meilleure[1]].clone();
+  if(uX.x < 0) uX.negate();
+  if(uY.y < 0) uY.negate();
+  const uZ = new THREE.Vector3().crossVectors(uX, uY).normalize();
+  return { uX, uY, uZ };
+}
+
 /**
  * Calcule ou récupère le repère propre (local) d'une pièce :
- * - Si le maillage porte une transformation non alignée (matrixWorld),
- *   on utilise les axes directeurs issus de sa rotation.
- * - Sinon (géométrie tessellée dans le repère global), on calcule les axes
- *   principaux d'inertie (ACP / PCA) des sommets via la matrice de covariance.
- * Renvoie { nom, maillage, uX, uY, uZ, centre } avec (uX, uY, uZ) base orthonormée directe.
+ * - Si le maillage porte une rotation (matrixWorld), ce sont ses axes.
+ * - Sinon — OpenCascade livre la géométrie déjà placée dans l'assemblage, la
+ *   rotation de l'instance est perdue — on la retrouve par les faces planes :
+ *   la normale de la plus grande direction plane, puis celle de la plus grande
+ *   qui lui est perpendiculaire. C'est ce qu'un mécanicien prendrait pour
+ *   axes : le dessus et un flanc, pas des axes d'inertie qui, sur une pièce
+ *   presque symétrique, tournent au gré des congés.
+ * - Sans face plane exploitable, les axes du projet.
+ * Renvoie { nom, maillage, uX, uY, uZ, centre, source } avec (uX, uY, uZ) base
+ * orthonormée directe et `source` parmi "rotation", "faces", "projet".
  */
 export function repereDePiece(maillage){
   if(!maillage) return null;
@@ -135,60 +269,55 @@ export function repereDePiece(maillage){
   maillage.updateWorldMatrix(true, false);
 
   const M = maillage.matrixWorld;
-  const rot = new THREE.Matrix4().extractRotation(M);
-  const e = rot.elements;
+  const e = new THREE.Matrix4().extractRotation(M).elements;
   const estIdentite = Math.abs(e[0] - 1) < 1e-4 && Math.abs(e[5] - 1) < 1e-4 && Math.abs(e[10] - 1) < 1e-4 &&
                       Math.abs(e[1]) < 1e-4 && Math.abs(e[2]) < 1e-4 && Math.abs(e[4]) < 1e-4 &&
                       Math.abs(e[6]) < 1e-4 && Math.abs(e[8]) < 1e-4 && Math.abs(e[9]) < 1e-4;
 
-  const uX = new THREE.Vector3();
-  const uY = new THREE.Vector3();
-  const uZ = new THREE.Vector3();
-  let centre = new THREE.Vector3();
-
   const geo = maillage.geometry;
+  const centre = new THREE.Vector3();
   if(geo){
     if(!geo.boundingBox) geo.computeBoundingBox();
-    centre = geo.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(M);
+    geo.boundingBox.getCenter(centre).applyMatrix4(M);
   }
 
+  let axes = null, source = "projet";
   if(!estIdentite){
-    uX.set(e[0], e[1], e[2]).normalize();
-    uY.set(e[4], e[5], e[6]).normalize();
-    uZ.set(e[8], e[9], e[10]).normalize();
-  }else if(geo && geo.attributes?.position){
-    const pos = geo.attributes.position;
-    const nbSommets = pos.count;
-    const pas = Math.max(1, Math.floor(nbSommets / 2000));
-    const echantillon = [];
-    const p = new THREE.Vector3();
-    for(let i = 0; i < nbSommets; i += pas){
-      p.fromBufferAttribute(pos, i).applyMatrix4(M);
-      echantillon.push(p.clone());
+    /* La pièce connaît ses axes : on les garde tels quels, retournés
+       seulement s'ils regardent franchement à l'opposé du projet. */
+    const uX = new THREE.Vector3(e[0], e[1], e[2]).normalize();
+    const uY = new THREE.Vector3(e[4], e[5], e[6]).normalize();
+    if(uX.x < -0.1) uX.negate();
+    if(uY.y < -0.1) uY.negate();
+    axes = { uX, uY, uZ:new THREE.Vector3().crossVectors(uX, uY).normalize() };
+    source = "rotation";
+  }else if(geo){
+    const { directions, aireTotale } = directionsPlanes(maillage);
+    const premier = directions[0];
+    /* Une direction plane qui ne pèse presque rien (facettes d'une sphère)
+       n'est pas une face : mieux vaut le repère du projet qu'un axe au hasard. */
+    if(premier && premier.aire > aireTotale * 0.02){
+      const d1 = recaler(premier.n.clone());
+      const second = directions.find(d => d !== premier && Math.abs(d.n.dot(d1)) < SIN_PERPENDICULAIRE);
+      let d2;
+      if(second){
+        d2 = second.n.clone();
+      }else{
+        /* Une seule direction plane (un axe de révolution, une tôle ronde) :
+           le second axe est celui du projet le plus perpendiculaire. */
+        d2 = AXES_MONDE.reduce((m, w) => Math.abs(w.dot(d1)) < Math.abs(m.dot(d1)) ? w : m).clone();
+      }
+      d2.addScaledVector(d1, -d2.dot(d1)).normalize();
+      recaler(d2);
+      d2.addScaledVector(d1, -d2.dot(d1)).normalize();
+      const d3 = new THREE.Vector3().crossVectors(d1, d2).normalize();
+      axes = nommerAxes(d1, d2, d3);
+      source = "faces";
     }
-
-    if(echantillon.length >= 4){
-      const c = barycentre(echantillon);
-      centre.copy(c);
-      const cov = covariance(echantillon, c);
-      const vp = proprer(cov);
-
-      uX.copy(vp[2].vecteur).normalize();
-      uY.copy(vp[1].vecteur).normalize();
-      uZ.crossVectors(uX, uY).normalize();
-      uY.crossVectors(uZ, uX).normalize();
-    }else{
-      uX.set(1, 0, 0); uY.set(0, 1, 0); uZ.set(0, 0, 1);
-    }
-  }else{
-    uX.set(1, 0, 0); uY.set(0, 1, 0); uZ.set(0, 0, 1);
   }
+  if(!axes) axes = { uX:AXES_MONDE[0].clone(), uY:AXES_MONDE[1].clone(), uZ:AXES_MONDE[2].clone() };
 
-  if(uX.dot(new THREE.Vector3(1, 0, 0)) < -0.1) uX.negate();
-  if(uY.dot(new THREE.Vector3(0, 1, 0)) < -0.1) uY.negate();
-  uZ.crossVectors(uX, uY).normalize();
-
-  const repere = { nom, maillage, uX, uY, uZ, centre };
+  const repere = { nom, maillage, ...axes, centre, source };
   maillage.userData.reperePropre = repere;
   return repere;
 }
@@ -696,6 +825,97 @@ export function faceSous(vue, toucher){
   return r === undefined ? null : entiteFace(maillage, topo, r);
 }
 
+/* ---------------------------------------------------------------------------
+   Points d'accroche
+   ------------------------------------------------------------------------- */
+
+/** Le point d'une polyligne à mi-longueur (pas au sommet du milieu). */
+function milieuCurviligne(pts){
+  let total = 0;
+  for(let i = 1; i < pts.length; i++) total += pts[i].distanceTo(pts[i-1]);
+  let reste = total / 2;
+  for(let i = 1; i < pts.length; i++){
+    const l = pts[i].distanceTo(pts[i-1]);
+    if(l >= reste) return pts[i-1].clone().lerp(pts[i], l > 0 ? reste / l : 0);
+    reste -= l;
+  }
+  return pts[pts.length - 1].clone();
+}
+
+/**
+ * Les points où une cote a des chances de vouloir tomber, en coordonnées du
+ * monde : les sommets (bouts des arêtes, sans doublons), le milieu de chaque
+ * arête ouverte, le centre de chaque cercle ou arc. Chaque point porte le
+ * numéro de son arête, pour que l'affichage montre ceux de l'arête survolée.
+ * Calculés une fois par pièce, gardés tant que la pièce ne bouge pas.
+ */
+export function pointsAccroche(maillage){
+  const topo = analyser(maillage);
+  if(!topo) return null;
+  maillage.updateWorldMatrix(true, false);
+  const garde = maillage.userData.accroches;
+  if(garde && garde.matrice.equals(maillage.matrixWorld)) return garde.points;
+
+  const points = [];
+  const sommets = new Map();
+  const pas = Math.max(topo.tol * echelleDe(maillage), 1e-9);
+  const cle = (p) => `${Math.round(p.x / pas)},${Math.round(p.y / pas)},${Math.round(p.z / pas)}`;
+  for(let i = 0; i < topo.chaines.length; i++){
+    const e = entiteArete(maillage, topo, i);
+    const pts = e.pts;
+    const ferme = pts[0].distanceTo(pts[pts.length - 1]) <= e.tol;
+    if(!ferme){
+      for(const p of [pts[0], pts[pts.length - 1]]){
+        const k = cle(p);
+        const deja = sommets.get(k);
+        if(deja) deja.aretes.push(i);
+        else{
+          const s = { p:p.clone(), type:"sommet", aretes:[i] };
+          sommets.set(k, s);
+          points.push(s);
+        }
+      }
+      points.push({ p:e.type === "droite" ? e.milieu.clone() : milieuCurviligne(pts), type:"milieu", aretes:[i] });
+    }
+    if(e.type === "cercle") points.push({ p:e.centre.clone(), type:e.ferme ? "centreCercle" : "centreArc", aretes:[i] });
+  }
+  maillage.userData.accroches = { matrice:maillage.matrixWorld.clone(), points };
+  return points;
+}
+
+/** Le numéro d'une entité arête dans sa pièce, pour retrouver ses points d'accroche. */
+export function numeroArete(e){
+  const m = /\/a(\d+)$/.exec(e?.cle || "");
+  return m ? Number(m[1]) : -1;
+}
+
+/** Le centre de gravité (surfacique) d'une face, gardé sur l'entité. */
+export function centreDeFace(e){
+  if(e.centreAire) return e.centreAire;
+  const { maillage, tris } = e;
+  const topo = maillage.geometry.userData.topo;
+  const pos = maillage.geometry.attributes.position;
+  const M = maillage.matrixWorld;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const somme = new THREE.Vector3();
+  let aire = 0;
+  for(const t of tris){
+    a.fromBufferAttribute(pos, topo.sommetsTri(t, 0)).applyMatrix4(M);
+    b.fromBufferAttribute(pos, topo.sommetsTri(t, 1)).applyMatrix4(M);
+    c.fromBufferAttribute(pos, topo.sommetsTri(t, 2)).applyMatrix4(M);
+    const s = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).length() / 2;
+    somme.addScaledVector(a.add(b).add(c).divideScalar(3), s);
+    aire += s;
+  }
+  e.centreAire = aire > 0 ? somme.divideScalar(aire) : (e.centre?.clone() || a.clone());
+  return e.centreAire;
+}
+
+/** Le point d'une arête le plus proche du rayon du curseur. */
+export function pointSurArete(e, ray){
+  return pointPolyProcheRayon(e.pts, ray).p;
+}
+
 function entiteArete(maillage, topo, i){
   /* Les entités sont décrites dans le repère du monde ; deux instances qui
      partageraient la même géométrie n'y sont pas au même endroit. La clé porte
@@ -802,12 +1022,26 @@ export function contourFace(entite){
    ========================================================================== */
 
 const nf = new Intl.NumberFormat("fr-FR");
-/** Une cote s'écrit à la française : virgule décimale. */
-export function cote(v, dec = 3){ return (Math.abs(v) < 5e-9 ? 0 : v).toFixed(dec).replace(".", ","); }
+/**
+ * Une cote s'écrit à la française : virgule décimale. Le nombre de décimales
+ * suit la précision choisie dans le panneau de mesure, et les zéros de queue
+ * tombent jusqu'à deux décimales, comme dans Fusion 360 : 2,00 et 63,64 plutôt
+ * que 2,000 et 63,640, mais 58,693 tel quel.
+ */
+export function cote(v, dec = prefs.mesurePrecision){
+  if(!Number.isInteger(dec) || dec < 0 || dec > 8) dec = 3;
+  const f = 10 ** dec;
+  const r = Math.round(v * f) / f;
+  let s = (r === 0 ? 0 : r).toFixed(dec);       // r === 0 vaut aussi pour -0
+  const mini = Math.min(2, dec);
+  if(dec > mini) s = s.replace(new RegExp(`0{1,${dec - mini}}$`), "");
+  return s.replace(".", ",");
+}
+/* Les angles gardent leurs deux décimales : la précision du panneau vaut pour les longueurs. */
 export function degres(rad){ return cote(rad * 180 / Math.PI, 2) + "°"; }
 export function mm(v){ return cote(v) + " mm"; }
-export function diam(r){ return "⌀" + cote(2*r, 2); }
-export function rayon(r){ return "R" + cote(r, 2); }
+export function diam(r){ return "⌀" + cote(2*r); }
+export function rayon(r){ return "R" + cote(r); }
 export function dimCercle(c){ return (c && c.ferme === false) ? rayon(c.rayon) : diam(c.rayon); }
 export function nombre(v){ return nf.format(Math.round(v)); }
 
@@ -908,20 +1142,24 @@ function glisserAretes(A, B, ray){
     p1 = pointPolyProchePoint(A.pts, p2).p;
   }
   const d = p1.distanceTo(p2);
-  let infoAxe = "";
+  let infoAxe = "", ligneAxe = null;
   if(A.type === "cercle" && B.type === "cercle"){
     const dCentres = A.centre.distanceTo(B.centre);
-    if(dCentres >= 1e-3) infoAxe = ` (entraxe ${mm(dCentres)})`;
+    if(dCentres >= 1e-3){
+      infoAxe = ` (entraxe ${mm(dCentres)})`;
+      ligneAxe = ["Entraxe", mm(dCentres)];
+    }
   }else if(A.type === "cercle" || B.type === "cercle"){
     const c = A.type === "cercle" ? A : B;
     const pAutre = A.type === "cercle" ? p2 : p1;
     const dAxe = c.centre.distanceTo(pAutre);
     infoAxe = ` (axe ${mm(dAxe)})`;
+    ligneAxe = ["Centre → point", mm(dAxe)];
   }
   return {
     p1, p2, d,
     etiquette:`${mm(d)}${infoAxe}`,
-    titre:`Mesure le long de la zone : ${mm(d)}${infoAxe}  ·  ${deltas(p1, p2)}`,
+    fiche:fiche("Cote glissée le long des arêtes", ["Distance", mm(d)], ligneAxe),
   };
 }
 
@@ -949,19 +1187,17 @@ function droiteDroite(pA, dA, pB, dB, milieuB){
   return { parallele:false, angle, d:c1.distanceTo(c2), c1, c2 };
 }
 
-/** Les écarts en X, Y, Z, qu'un mécanicien lit aussi souvent que la distance. */
-export function deltas(p1, p2, repere = null){
-  if(repere && repere.uX){
-    const d = new THREE.Vector3().subVectors(p2, p1);
-    const dx = Math.abs(d.dot(repere.uX));
-    const dy = Math.abs(d.dot(repere.uY));
-    const dz = Math.abs(d.dot(repere.uZ));
-    const sfx = repere.nom ? ` [${repere.nom}]` : "";
-    return `ΔX ${cote(dx)}  ΔY ${cote(dy)}  ΔZ ${cote(dz)} mm${sfx}`;
-  }
-  return `ΔX ${cote(Math.abs(p2.x - p1.x))}  ΔY ${cote(Math.abs(p2.y - p1.y))}  ` +
-         `ΔZ ${cote(Math.abs(p2.z - p1.z))} mm`;
+/**
+ * La fiche d'un résultat, telle que la fenêtre de mesure l'affiche : la nature
+ * de la mesure, puis des lignes libellé → valeur. Une ligne `null` tombe, ce
+ * qui laisse écrire les cas optionnels en place. Les écarts ΔX, ΔY, ΔZ n'y
+ * figurent pas : la fenêtre les calcule dans le repère choisi.
+ */
+function fiche(nature, ...lignes){
+  return { nature, lignes:lignes.filter(Boolean) };
 }
+const coordonnees = (p) => `${cote(p.x)} ; ${cote(p.y)} ; ${cote(p.z)}`;
+const longueurs = (A, B) => ["Longueurs", `${cote(A.longueur)} / ${cote(B.longueur)} mm`];
 
 /* ---------------------------------------------------------------------------
    Arête ↔ arête
@@ -978,18 +1214,18 @@ export function mesurerAretes(A, B){
     const angle = Math.acos(Math.min(1, Math.abs(A.normale.dot(B.normale))));
     const mini = polyPoly(A.pts, B.pts);
     const concentrique = dCentres < 1e-3;
-    const texteAxe = concentrique ? "cercles concentriques" : (angle < 1e-3 ? "axes parallèles" : `axes à ${degres(angle)}`);
+    const axes = ["Axes", concentrique ? "confondus (concentriques)" : (angle < 1e-3 ? "parallèles" : `à ${degres(angle)}`)];
+    const entraxe = concentrique ? null : ["Entraxe", mm(dCentres)];
+    const cercles = ["Cercles", `${dimCercle(A)} / ${dimCercle(B)} mm`];
     const etMin = concentrique ? mm(mini.d) : `${mm(mini.d)} (entraxe ${mm(dCentres)})`;
-    const titMin = `Bord à bord (Min) ${mm(mini.d)}` + (concentrique ? "" : `  ·  entraxe ${mm(dCentres)}`) +
-                   `  ·  ${dimCercle(A)} / ${dimCercle(B)}  ·  ${texteAxe}  ·  ${deltas(mini.c1, mini.c2)}`;
+    const ficheMin = fiche("Cercle et cercle", ["Bord à bord", mm(mini.d)], entraxe, cercles, axes);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Bord à bord (Max) ${mm(maxi.d)}` + (concentrique ? "" : `  ·  entraxe ${mm(dCentres)}`) +
-                   `  ·  ${dimCercle(A)} / ${dimCercle(B)}  ·  ${texteAxe}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+    const ficheMax = fiche("Cercle et cercle", ["Bord à bord max", mm(maxi.d)], entraxe, cercles, axes);
     return {
-      p1:mini.c1, p2:mini.c2, etiquette:etMin, titre:titMin,
+      p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1003,8 +1239,7 @@ export function mesurerAretes(A, B){
     if(mini.d < Math.max(A.tol, B.tol, 1e-3)){
       return {
         p1:mini.c1, p2:mini.c2, etiquette:degres(angle),
-        titre:`Arêtes sécantes  ·  angle ${degres(angle)}  ·  point ` +
-              `${cote(mini.c1.x,2)} ; ${cote(mini.c1.y,2)} ; ${cote(mini.c1.z,2)}`,
+        fiche:fiche("Arêtes sécantes", ["Angle", degres(angle)], ["Point commun", coordonnees(mini.c1)]),
         extensible:false,
       };
     }
@@ -1026,38 +1261,38 @@ export function mesurerAretes(A, B){
         const p2 = B.a.clone().addScaledVector(B.dir, tOnB);
         const d = p1.distanceTo(p2);
         const et = mm(d);
-        const tit = `Arêtes parallèles  ·  écartement ${mm(d)}  ·  longueurs ` +
-                    `${cote(A.longueur,2)} / ${cote(B.longueur,2)} mm  ·  ${deltas(p1, p2)}`;
+        const fch = fiche("Arêtes parallèles", ["Écartement", mm(d)], longueurs(A, B));
         return {
-          p1, p2, etiquette:et, titre:tit,
+          p1, p2, etiquette:et, fiche:fch,
           extensible:true, positionActuelle:"min",
-          min:{ p1, p2, d, etiquette:et, titre:tit },
-          max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:`${mm(maxi.d)} (Max)`, titre:`Écartement max ${mm(maxi.d)}  ·  ${deltas(maxi.c1, maxi.c2)}` },
+          min:{ p1, p2, d, etiquette:et, fiche:fch },
+          max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:`${mm(maxi.d)} (Max)`,
+               fiche:fiche("Arêtes parallèles", ["Distance max", mm(maxi.d)], longueurs(A, B)) },
           glisser,
         };
       }
       const et = mm(mini.d);
-      const tit = `Arêtes parallèles décalées  ·  plus court chemin ${mm(mini.d)}  ·  longueurs ` +
-                  `${cote(A.longueur,2)} / ${cote(B.longueur,2)} mm  ·  ${deltas(mini.c1, mini.c2)}`;
+      const fch = fiche("Arêtes parallèles décalées", ["Plus court chemin", mm(mini.d)], longueurs(A, B));
       return {
-        p1:mini.c1, p2:mini.c2, etiquette:et, titre:tit,
+        p1:mini.c1, p2:mini.c2, etiquette:et, fiche:fch,
         extensible:true, positionActuelle:"min",
-        min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:et, titre:tit },
-        max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:`${mm(maxi.d)} (Max)`, titre:`Plus long chemin ${mm(maxi.d)}  ·  ${deltas(maxi.c1, maxi.c2)}` },
+        min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:et, fiche:fch },
+        max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:`${mm(maxi.d)} (Max)`,
+             fiche:fiche("Arêtes parallèles décalées", ["Plus long chemin", mm(maxi.d)], longueurs(A, B)) },
         glisser,
       };
     }
 
     /* 3. Arêtes gauches / non coplanaires avec un angle : toujours bornées sur les arêtes réelles */
     const etMin = `${mm(mini.d)} · ${degres(angle)}`;
-    const titMin = `Arêtes gauches (Min)  ·  plus court chemin ${mm(mini.d)}  ·  angle ${degres(angle)}  ·  ${deltas(mini.c1, mini.c2)}`;
+    const ficheMin = fiche("Arêtes non parallèles", ["Plus court chemin", mm(mini.d)], ["Angle", degres(angle)]);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Arêtes gauches (Max)  ·  distance ${mm(maxi.d)}  ·  angle ${degres(angle)}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+    const ficheMax = fiche("Arêtes non parallèles", ["Distance max", mm(maxi.d)], ["Angle", degres(angle)]);
     return {
-      p1:mini.c1, p2:mini.c2, etiquette:etMin, titre:titMin,
+      p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1072,28 +1307,29 @@ export function mesurerAretes(A, B){
     const dAxe = pied.distanceTo(cercle.centre);
     const mini = polyPoly(cercle.pts, droite.pts);
     const etMin = `${mm(mini.d)} (axe ${mm(dAxe)})`;
-    const titMin = `Bord à bord (Min) ${mm(mini.d)}  ·  centre → arête ${mm(dAxe)}  ·  ${dimCercle(cercle)}  ·  ${deltas(mini.c2, mini.c1)}`;
+    const dim = [cercle.ferme ? "Cercle" : "Arc", `${dimCercle(cercle)} mm`];
+    const ficheMin = fiche("Cercle et arête droite", ["Bord à bord", mm(mini.d)], ["Centre → arête", mm(dAxe)], dim);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Bord à bord (Max) ${mm(maxi.d)}  ·  centre → arête ${mm(dAxe)}  ·  ${dimCercle(cercle)}  ·  ${deltas(maxi.c2, maxi.c1)}`;
+    const ficheMax = fiche("Cercle et arête droite", ["Bord à bord max", mm(maxi.d)], ["Centre → arête", mm(dAxe)], dim);
     return {
-      p1:mini.c2, p2:mini.c1, etiquette:etMin, titre:titMin,
+      p1:mini.c2, p2:mini.c1, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c2, p2:mini.c1, d:mini.d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:mini.c2, p2:mini.c1, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
 
   const mini = polyPoly(A.pts, B.pts);
   const etMin = mm(mini.d);
-  const titMin = `Plus court chemin (Min) ${mm(mini.d)}  ·  ${deltas(mini.c1, mini.c2)}`;
+  const ficheMin = fiche("Arête et arête", ["Plus court chemin", mm(mini.d)]);
   const etMax = `${mm(maxi.d)} (Max)`;
-  const titMax = `Plus long chemin (Max) ${mm(maxi.d)}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+  const ficheMax = fiche("Arête et arête", ["Plus long chemin", mm(maxi.d)]);
   return {
-    p1:mini.c1, p2:mini.c2, etiquette:etMin, titre:titMin,
+    p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
     extensible:true, positionActuelle:"min",
-    min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, titre:titMin },
-    max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+    min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+    max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
     glisser,
   };
 }
@@ -1202,15 +1438,18 @@ function glisserFaces(A, B, ray){
     }
   }
   const d = p1.distanceTo(p2);
-  let infoAxe = "";
+  let infoAxe = "", ligneAxe = null;
   if(A.type === "cylindre" && B.type === "cylindre"){
     const r = droiteDroite(A.point, A.axe, B.point, B.axe, B.centre);
-    if(r.d >= 1e-3) infoAxe = ` (entraxe ${mm(r.d)})`;
+    if(r.d >= 1e-3){
+      infoAxe = ` (entraxe ${mm(r.d)})`;
+      ligneAxe = ["Entraxe", mm(r.d)];
+    }
   }
   return {
     p1, p2, d,
     etiquette:`${mm(d)}${infoAxe}`,
-    titre:`Mesure le long de la zone : ${mm(d)}${infoAxe}  ·  ${deltas(p1, p2)}`,
+    fiche:fiche("Cote glissée sur les faces", ["Distance", mm(d)], ligneAxe),
   };
 }
 
@@ -1233,7 +1472,7 @@ function glisserAreteFace(A, B, ray){
   return {
     p1, p2, d,
     etiquette:mm(d),
-    titre:`Mesure le long de la zone : ${mm(d)}  ·  ${deltas(p1, p2)}`,
+    fiche:fiche("Cote glissée", ["Distance", mm(d)]),
   };
 }
 
@@ -1251,28 +1490,28 @@ export function mesurerFaces(A, B){
       const p2 = B.centre.clone();
       const d = Math.abs(ecart);
       const et = mm(d);
-      const tit = `Plans parallèles  ·  écart ${mm(d)}  ·  ` +
-                  (A.normale.dot(B.normale) < 0 ? "normales opposées (épaisseur de matière)"
-                                                : "normales de même sens (décalage)") +
-                  `  ·  surfaces ${nombre(A.aire)} / ${nombre(B.aire)} mm²`;
+      const fch = fiche("Plans parallèles", ["Écart", mm(d)],
+                        ["Normales", A.normale.dot(B.normale) < 0 ? "opposées (épaisseur de matière)"
+                                                                  : "de même sens (décalage)"],
+                        ["Aires", `${nombre(A.aire)} / ${nombre(B.aire)} mm²`]);
       return {
-        p1, p2, etiquette:et, titre:tit,
+        p1, p2, etiquette:et, fiche:fch,
         extensible:true, positionActuelle:"min",
-        min:{ p1, p2, d, etiquette:et, titre:tit },
-        max:{ p1, p2, d, etiquette:et, titre:tit },
+        min:{ p1, p2, d, etiquette:et, fiche:fch },
+        max:{ p1, p2, d, etiquette:et, fiche:fch },
         glisser,
       };
     }
     const mini = nappeNappe(A, B);
     const etMin = degres(angle);
-    const titMin = `Plans sécants  ·  angle ${degres(angle)}  ·  plus court chemin ${mm(mini.d)} (sur le maillage)`;
+    const ficheMin = fiche("Plans sécants", ["Angle", degres(angle)], ["Plus court chemin (maillage)", mm(mini.d)]);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Plans sécants  ·  angle ${degres(angle)}  ·  plus long chemin ${mm(maxi.d)} (sur le maillage)`;
+    const ficheMax = fiche("Plans sécants", ["Angle", degres(angle)], ["Plus long chemin (maillage)", mm(maxi.d)]);
     return {
-      p1:mini.c1, p2:mini.c2, etiquette:etMin, titre:titMin,
+      p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1283,18 +1522,18 @@ export function mesurerFaces(A, B){
     const mini = nappeNappe(A, B);
     const dAxes = r.d;
     const concentrique = dAxes < 1e-3;
-    const texteAxes = concentrique ? "cylindres coaxiaux" : (r.parallele ? "axes parallèles" : `axes à ${degres(r.angle)}`);
+    const axes = ["Axes", concentrique ? "confondus (coaxiaux)" : (r.parallele ? "parallèles" : `à ${degres(r.angle)}`)];
+    const entraxe = concentrique ? null : ["Entraxe", mm(dAxes)];
+    const diametres = ["Diamètres", `${diam(A.rayon)} / ${diam(B.rayon)} mm`];
     const etMin = concentrique ? mm(mini.d) : `${mm(mini.d)} (entraxe ${mm(dAxes)})`;
-    const titMin = `Bord à bord (Min) ${mm(mini.d)}` + (concentrique ? "" : `  ·  entraxe ${mm(dAxes)}`) +
-                   `  ·  ${diam(A.rayon)} / ${diam(B.rayon)}  ·  ${texteAxes}  ·  ${deltas(mini.c1, mini.c2)}`;
+    const ficheMin = fiche("Cylindre et cylindre", ["Bord à bord", mm(mini.d)], entraxe, diametres, axes);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Bord à bord (Max) ${mm(maxi.d)}` + (concentrique ? "" : `  ·  entraxe ${mm(dAxes)}`) +
-                   `  ·  ${diam(A.rayon)} / ${diam(B.rayon)}  ·  ${texteAxes}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+    const ficheMax = fiche("Cylindre et cylindre", ["Bord à bord max", mm(maxi.d)], entraxe, diametres, axes);
     return {
-      p1:mini.c1, p2:mini.c2, etiquette:etMin, titre:titMin,
+      p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1309,32 +1548,31 @@ export function mesurerFaces(A, B){
     const dAxe = Math.abs(ecart);
     const mini = nappeNappe(cyl, plan);
     const angleAxe = Math.asin(Math.min(1, sinus));
-    const texteAxe = sinus < 1e-3 ? "axe parallèle au plan" : `axe à ${degres(angleAxe)} du plan`;
+    const axe = ["Axe", sinus < 1e-3 ? "parallèle au plan" : `à ${degres(angleAxe)} du plan`];
+    const communes = [["Axe → plan", mm(dAxe)], ["Diamètre", `${diam(cyl.rayon)} mm`], axe];
     const etMin = `${mm(mini.d)} (axe ${mm(dAxe)})`;
-    const titMin = `Surface → plan (Min) ${mm(mini.d)}  ·  axe → plan ${mm(dAxe)}  ·  ` +
-                   `${diam(cyl.rayon)}  ·  ${texteAxe}  ·  ${deltas(mini.c2, mini.c1)}`;
+    const ficheMin = fiche("Cylindre et plan", ["Surface → plan", mm(mini.d)], ...communes);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Surface → plan (Max) ${mm(maxi.d)}  ·  axe → plan ${mm(dAxe)}  ·  ` +
-                   `${diam(cyl.rayon)}  ·  ${texteAxe}  ·  ${deltas(maxi.c2, maxi.c1)}`;
+    const ficheMax = fiche("Cylindre et plan", ["Surface → plan max", mm(maxi.d)], ...communes);
     return {
-      p1:mini.c2, p2:mini.c1, etiquette:etMin, titre:titMin,
+      p1:mini.c2, p2:mini.c1, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c2, p2:mini.c1, d:mini.d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:mini.c2, p2:mini.c1, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
 
   const mini = nappeNappe(A, B);
   const etMin = mm(mini.d);
-  const titMin = `Plus court chemin (Min) ${mm(mini.d)}  ·  ${deltas(mini.c1, mini.c2)}  ·  sur le maillage`;
+  const ficheMin = fiche("Face et face", ["Plus court chemin (maillage)", mm(mini.d)]);
   const etMax = `${mm(maxi.d)} (Max)`;
-  const titMax = `Plus long chemin (Max) ${mm(maxi.d)}  ·  ${deltas(maxi.c1, maxi.c2)}  ·  sur le maillage`;
+  const ficheMax = fiche("Face et face", ["Plus long chemin (maillage)", mm(maxi.d)]);
   return {
-    p1:mini.c1, p2:mini.c2, etiquette:etMin, titre:titMin,
+    p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
     extensible:true, positionActuelle:"min",
-    min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, titre:titMin },
-    max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+    min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+    max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
     glisser,
   };
 }
@@ -1362,12 +1600,12 @@ export function mesurerAreteFace(A, B){
       const p1 = m.clone();
       const p2 = m.clone().addScaledVector(face.normale, -ecart);
       const et = mm(d);
-      const tit = `Arête parallèle au plan  ·  distance ${mm(d)}  ·  ${deltas(p1, p2)}`;
+      const fch = fiche("Arête parallèle au plan", ["Distance", mm(d)], ["Longueur de l'arête", mm(arete.longueur)]);
       return {
-        p1, p2, etiquette:et, titre:tit,
+        p1, p2, etiquette:et, fiche:fch,
         extensible:true, positionActuelle:"min",
-        min:{ p1, p2, d, etiquette:et, titre:tit },
-        max:{ p1, p2, d, etiquette:et, titre:tit },
+        min:{ p1, p2, d, etiquette:et, fiche:fch },
+        max:{ p1, p2, d, etiquette:et, fiche:fch },
         glisser,
       };
     }
@@ -1381,8 +1619,7 @@ export function mesurerAreteFace(A, B){
       const inter = arete.a.clone().addScaledVector(arete.dir, t);
       return {
         p1:inter, p2:inter, etiquette:degres(angle),
-        titre:`Arête coupant le plan  ·  angle ${degres(angle)}  ·  point ` +
-              `${cote(inter.x,2)} ; ${cote(inter.y,2)} ; ${cote(inter.z,2)}`,
+        fiche:fiche("Arête coupant le plan", ["Angle", degres(angle)], ["Point d'intersection", coordonnees(inter)]),
         extensible:false,
       };
     }
@@ -1394,14 +1631,14 @@ export function mesurerAreteFace(A, B){
     const p2 = p1.clone().addScaledVector(face.normale, -ecart);
     const d = p1.distanceTo(p2);
     const etMin = `${mm(d)} · ${degres(angle)}`;
-    const titMin = `Arête inclinée par rapport au plan (Min)  ·  distance ${mm(d)}  ·  angle ${degres(angle)}  ·  ${deltas(p1, p2)}`;
+    const ficheMin = fiche("Arête inclinée sur le plan", ["Distance", mm(d)], ["Angle", degres(angle)]);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Arête inclinée par rapport au plan (Max)  ·  distance ${mm(maxi.d)}  ·  angle ${degres(angle)}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+    const ficheMax = fiche("Arête inclinée sur le plan", ["Distance max", mm(maxi.d)], ["Angle", degres(angle)]);
     return {
-      p1, p2, etiquette:etMin, titre:titMin,
+      p1, p2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1, p2, d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1, p2, d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1422,17 +1659,19 @@ export function mesurerAreteFace(A, B){
     const pPlan = pProche.clone().addScaledVector(face.normale, -distP);
     const dMin = pProche.distanceTo(pPlan);
     const etMin = `${mm(dMin)} (centre ${mm(dAxe)})`;
-    const titMin = `Bord ${arete.ferme ? "perçage" : "arc"} → plan (Min) ${mm(dMin)}  ·  centre → plan ${mm(dAxe)}  ·  ${dimCercle(arete)}  ·  ` +
-                   (angle < 1e-3 ? "plan du perçage parallèle" : `axe à ${degres(Math.abs(Math.PI/2 - angle))}`) +
-                   `  ·  ${deltas(pProche, pPlan)}`;
+    const nature = arete.ferme ? "Cercle et plan" : "Arc et plan";
+    const communes = [["Centre → plan", mm(dAxe)], [arete.ferme ? "Cercle" : "Arc", `${dimCercle(arete)} mm`],
+                      angle < 1e-3 ? ["Plan du cercle", "parallèle au plan"]
+                                   : ["Axe du cercle", `à ${degres(Math.abs(Math.PI/2 - angle))} du plan`]];
+    const ficheMin = fiche(nature, ["Bord → plan", mm(dMin)], ...communes);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Bord ${arete.ferme ? "perçage" : "arc"} → plan (Max) ${mm(maxi.d)}  ·  centre → plan ${mm(dAxe)}  ·  ${dimCercle(arete)}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+    const ficheMax = fiche(nature, ["Bord → plan max", mm(maxi.d)], ...communes);
 
     return {
-      p1:pProche, p2:pPlan, etiquette:etMin, titre:titMin,
+      p1:pProche, p2:pPlan, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:pProche, p2:pPlan, d:dMin, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:pProche, p2:pPlan, d:dMin, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1456,16 +1695,16 @@ export function mesurerAreteFace(A, B){
     const concentrique = dAxe < 1e-3;
     const dimFace = face.ferme === false ? rayon(face.rayon) : diam(face.rayon);
     const etMin = concentrique ? mm(meilleur.d) : `${mm(meilleur.d)} (axe ${mm(dAxe)})`;
-    const titMin = `Bord à bord (Min) ${mm(meilleur.d)}` + (concentrique ? "" : `  ·  entraxe ${mm(dAxe)}`) +
-                   `  ·  ${dimCercle(arete)} / ${dimFace}  ·  ${deltas(meilleur.c1, meilleur.c2)}`;
+    const communes = [concentrique ? ["Axes", "confondus (concentriques)"] : ["Centre → axe", mm(dAxe)],
+                      ["Cercle / cylindre", `${dimCercle(arete)} / ${dimFace} mm`]];
+    const ficheMin = fiche("Cercle et cylindre", ["Bord à bord", mm(meilleur.d)], ...communes);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Bord à bord (Max) ${mm(maxi.d)}` + (concentrique ? "" : `  ·  entraxe ${mm(dAxe)}`) +
-                   `  ·  ${dimCercle(arete)} / ${dimFace}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+    const ficheMax = fiche("Cercle et cylindre", ["Bord à bord max", mm(maxi.d)], ...communes);
     return {
-      p1:meilleur.c1, p2:meilleur.c2, etiquette:etMin, titre:titMin,
+      p1:meilleur.c1, p2:meilleur.c2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:meilleur.c1, p2:meilleur.c2, d:meilleur.d, etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1:meilleur.c1, p2:meilleur.c2, d:meilleur.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1485,15 +1724,15 @@ export function mesurerAreteFace(A, B){
     const angle = Math.acos(Math.min(1, Math.abs(arete.dir.dot(face.axe))));
     const jeu = distAxe - face.rayon;
     const etMin = mm(Math.abs(jeu));
-    const titMin = `Arête et cylindre (Min)  ·  distance axe ${mm(distAxe)}  ·  ${diam(face.rayon)}  ·  ` +
-                   `${jeu >= 0 ? "jeu" : "recouvrement"} ${mm(Math.abs(jeu))}  ·  angle ${degres(angle)}`;
+    const communes = [["Arête → axe", mm(distAxe)], ["Diamètre", `${diam(face.rayon)} mm`], ["Angle arête / axe", degres(angle)]];
+    const ficheMin = fiche("Arête et cylindre", [jeu >= 0 ? "Jeu" : "Recouvrement", mm(Math.abs(jeu))], ...communes);
     const etMax = `${mm(maxi.d)} (Max)`;
-    const titMax = `Arête et cylindre (Max)  ·  distance axe ${mm(distAxe)}  ·  ${diam(face.rayon)}  ·  ${deltas(maxi.c1, maxi.c2)}`;
+    const ficheMax = fiche("Arête et cylindre", ["Distance max", mm(maxi.d)], ...communes);
     return {
-      p1, p2, etiquette:etMin, titre:titMin,
+      p1, p2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1, p2, d:Math.abs(jeu), etiquette:etMin, titre:titMin },
-      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+      min:{ p1, p2, d:Math.abs(jeu), etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1514,15 +1753,15 @@ export function mesurerAreteFace(A, B){
   }
 
   const etMin = mm(meilleur.d);
-  const titMin = `Plus court chemin (Min) ${mm(meilleur.d)}  ·  ${deltas(meilleur.c1, meilleur.c2)}  ·  sur le maillage`;
+  const ficheMin = fiche("Arête et face", ["Plus court chemin (maillage)", mm(meilleur.d)]);
   const etMax = `${mm(maxi.d)} (Max)`;
-  const titMax = `Plus long chemin (Max) ${mm(maxi.d)}  ·  ${deltas(maxi.c1, maxi.c2)}  ·  sur le maillage`;
+  const ficheMax = fiche("Arête et face", ["Plus long chemin (maillage)", mm(maxi.d)]);
 
   return {
-    p1:meilleur.c1, p2:meilleur.c2, etiquette:etMin, titre:titMin,
+    p1:meilleur.c1, p2:meilleur.c2, etiquette:etMin, fiche:ficheMin,
     extensible:true, positionActuelle:"min",
-    min:{ p1:meilleur.c1, p2:meilleur.c2, d:meilleur.d, etiquette:etMin, titre:titMin },
-    max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, titre:titMax },
+    min:{ p1:meilleur.c1, p2:meilleur.c2, d:meilleur.d, etiquette:etMin, fiche:ficheMin },
+    max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
     glisser,
   };
 }
@@ -1549,7 +1788,7 @@ export function resumer(e){
     return `Arête ${mm(e.longueur)}${nom}`;
   }
   if(e.type === "plan")     return `Face plane ${nombre(e.aire)} mm²${nom}`;
-  if(e.type === "cylindre") return (e.ferme === false ? `Face cylindrique (congé) ${rayon(e.rayon)}` : `Face cylindrique ${diam(e.rayon)}`) + ` · hauteur ${cote(e.hauteur, 2)} mm${nom}`;
+  if(e.type === "cylindre") return (e.ferme === false ? `Face cylindrique (congé) ${rayon(e.rayon)}` : `Face cylindrique ${diam(e.rayon)}`) + ` · hauteur ${cote(e.hauteur)} mm${nom}`;
   return `Face ${nombre(e.aire)} mm²${nom}`;
 }
 
@@ -1576,30 +1815,20 @@ export function mesurerEntiteSeule(e){
         dir.normalize().multiplyScalar(e.rayon);
         const p1 = e.centre.clone().add(dir);
         const p2 = e.centre.clone().sub(dir);
-        const et = `${diam(e.rayon)} mm`;
-        const tit = `Cercle complet  ·  diamètre ${diam(e.rayon)} mm  (rayon ${rayon(e.rayon)} mm)` +
-                    `  ·  centre (${cote(e.centre.x, 1)}, ${cote(e.centre.y, 1)}, ${cote(e.centre.z, 1)})` +
-                    `  ·  choisissez un second élément`;
         return {
           genre: "cercle",
           p1, p2, ancre: e.centre.clone(),
-          etiquette: et,
-          titre: tit,
+          etiquette: `${diam(e.rayon)} mm`,
           d: 2 * e.rayon,
         };
       }else{
         // Arc de cercle -> Rayon
         const p1 = e.centre.clone();
         const p2 = (e.milieu || (e.pts && e.pts[Math.floor(e.pts.length/2)]))?.clone() || p1;
-        const et = `${rayon(e.rayon)} mm`;
-        const tit = `Arc de cercle  ·  rayon ${rayon(e.rayon)} mm  (diamètre ${diam(e.rayon)} mm)` +
-                    `  ·  angle ${degres(e.balaye)}  ·  longueur ${mm(e.longueur)}` +
-                    `  ·  choisissez un second élément`;
         return {
           genre: "arc",
           p1, p2, ancre: p1.clone().lerp(p2, 0.5),
-          etiquette: et,
-          titre: tit,
+          etiquette: `${rayon(e.rayon)} mm`,
           d: e.rayon,
         };
       }
@@ -1611,7 +1840,6 @@ export function mesurerEntiteSeule(e){
         p2: e.b.clone(),
         ancre: e.milieu.clone(),
         etiquette: mm(e.longueur),
-        titre: `Arête droite  ·  longueur ${mm(e.longueur)}  ·  choisissez un second élément`,
         d: e.longueur,
       };
     }
@@ -1621,7 +1849,6 @@ export function mesurerEntiteSeule(e){
       p1, p2,
       ancre: (e.milieu || p1).clone(),
       etiquette: mm(e.longueur),
-      titre: `Arête  ·  longueur ${mm(e.longueur)}  ·  choisissez un second élément`,
       d: e.longueur,
     };
   }
@@ -1637,7 +1864,6 @@ export function mesurerEntiteSeule(e){
           genre: "cylindre",
           p1, p2, ancre: e.centre.clone(),
           etiquette: `${diam(e.rayon)} mm`,
-          titre: `Face cylindrique  ·  diamètre ${diam(e.rayon)} mm  (rayon ${rayon(e.rayon)} mm)  ·  hauteur ${cote(e.hauteur, 2)} mm  ·  choisissez un second élément`,
           d: 2 * e.rayon,
         };
       }else{
@@ -1647,7 +1873,6 @@ export function mesurerEntiteSeule(e){
           genre: "arc_cylindre",
           p1, p2, ancre: p1.clone().lerp(p2, 0.5),
           etiquette: `${rayon(e.rayon)} mm`,
-          titre: `Face cylindrique (congé)  ·  rayon ${rayon(e.rayon)} mm  (diamètre ${diam(e.rayon)} mm)  ·  hauteur ${cote(e.hauteur, 2)} mm  ·  choisissez un second élément`,
           d: e.rayon,
         };
       }
@@ -1659,7 +1884,6 @@ export function mesurerEntiteSeule(e){
         p2: e.centre.clone(),
         ancre: e.centre.clone(),
         etiquette: `${nombre(e.aire)} mm²`,
-        titre: `Face plane  ·  aire ${nombre(e.aire)} mm²  ·  choisissez un second élément`,
         d: 0,
       };
     }
@@ -1669,7 +1893,6 @@ export function mesurerEntiteSeule(e){
       p2: e.centre.clone(),
       ancre: e.centre.clone(),
       etiquette: `${nombre(e.aire)} mm²`,
-      titre: `Face  ·  aire ${nombre(e.aire)} mm²  ·  choisissez un second élément`,
       d: 0,
     };
   }

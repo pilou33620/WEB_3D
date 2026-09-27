@@ -16,7 +16,7 @@ import { prefs, prefsModifiees, reinitialiserPrefs, resumeGestes,
          PRESETS_SOURIS, ACTIONS, EMPLACEMENTS, gestesActifs } from "./00-config.js";
 import { ouvrirFichiers, liberer, calculerAretes, formatDe, estAnnexe,
          LISTE_FORMATS } from "./02-import.js";
-import { MODES as MODES_MESURE } from "./07-mesure.js";
+import { MODES as MODES_MESURE, MODES_DELTA } from "./07-mesure.js";
 import { StepExtractor, telechargerFichier, sanitiserNomFichier } from "./10-export-step.js";
 
 const $ = (id) => document.getElementById(id);
@@ -26,9 +26,6 @@ export class Interface {
     Object.assign(this, { vue, nav, cube, arbre, mesure, coupe });
     if(coupe) coupe.bOutil = $("bCoupe");
 
-    arbre.surSelection = (piece) => {
-      mesure.majPieceSelectionnee(piece);
-    };
     arbre.surDemandeExportPiece = (piece) => {
       this.ouvrirModalExport(piece);
     };
@@ -166,15 +163,17 @@ export class Interface {
           .join("")
       }</span>
       <kbd>M</kbd>
-      <button class="tb mini" id="mesureDelta" title="Afficher la décomposition orthogonale ΔX, ΔY, ΔZ (style CAO)">ΔXYZ</button>
-      <span class="modes" id="mesureRef">
-        <button class="tb mini" data-ref="projet" title="Référentiel global du projet">Projet</button>
-        <button class="tb mini" data-ref="piece" title="Référentiel local de la pièce (style Fusion 360)">Pièce</button>
-      </span>
-      <span class="modes" id="mesureChoixPiece" style="display:none">
-        <button class="tb mini" data-piece="1" title="Référence : Pièce 1 (premier élément cliqué)">P1</button>
-        <button class="tb mini on" data-piece="2" title="Référence : Pièce 2 (second élément cliqué - référence par défaut Fusion 360)">P2</button>
-      </span>
+      <span class="etiq">ΔXYZ</span>
+      <span class="modes" id="mesureDelta">${
+        Object.entries(MODES_DELTA)
+          .map(([cle, m]) => `<button class="tb mini" data-delta="${cle}" title="${m.aide}">${m.nom}</button>`)
+          .join("")
+      }</span>
+      <label class="etiq" title="Nombre de décimales des cotes">Précision
+        <select id="mesurePrecision">${
+          [0, 1, 2, 3, 4, 5].map(n => `<option value="${n}">${n ? "0." + "12345".slice(0, n) : "0"}</option>`).join("")
+        }</select>
+      </label>
       <button class="tb mini" id="mesureRaz" title="Effacer la mesure en cours (Échap)">✕</button>`;
     $("ctr").appendChild(p);
     this.panneauMesure = p;
@@ -184,29 +183,19 @@ export class Interface {
       if(b) this.mesure.definirMode(b.dataset.mode);
       this.majPanneauMesure();
     };
-    p.querySelector("#mesureDelta").onclick = () => {
-      this.mesure.afficherDeltas = !this.mesure.afficherDeltas;
-      prefs.mesureDelta = this.mesure.afficherDeltas;
-      prefsModifiees("mesureDelta");
+    p.querySelector("#mesureDelta").onclick = (e) => {
+      const b = e.target.closest("button[data-delta]");
+      if(!b) return;
+      this.mesure.definirModeDelta(b.dataset.delta);
+      prefsModifiees("mesureDeltaMode");
       this.majPanneauMesure();
-      this.mesure.rafraichir();
     };
-    p.querySelector("#mesureRef").onclick = (e) => {
-      const b = e.target.closest("button[data-ref]");
-      if(b){
-        this.mesure.definirReferentiel(b.dataset.ref);
-        prefs.mesureReferentiel = b.dataset.ref;
-        prefsModifiees("mesureReferentiel");
-        this.majPanneauMesure();
-      }
-    };
-    p.querySelector("#mesureChoixPiece").onclick = (e) => {
-      const b = e.target.closest("button[data-piece]");
-      if(b){
-        const idx = parseInt(b.dataset.piece, 10);
-        this.mesure.definirChoixPieceRef(idx);
-        this.majPanneauMesure();
-      }
+    const precision = p.querySelector("#mesurePrecision");
+    precision.value = String(prefs.mesurePrecision);
+    precision.onchange = () => {
+      prefs.mesurePrecision = parseInt(precision.value, 10);
+      prefsModifiees("mesurePrecision");
+      this.mesure.remesurer();
     };
     p.querySelector("#mesureRaz").onclick = () => this.mesure.annuler();
   }
@@ -216,34 +205,15 @@ export class Interface {
     for(const b of this.panneauMesure.querySelectorAll("button[data-mode]")){
       b.classList.toggle("on", b.dataset.mode === this.mesure.mode);
     }
-    const bDelta = this.panneauMesure.querySelector("#mesureDelta");
-    if(bDelta) bDelta.classList.toggle("on", !!this.mesure.afficherDeltas);
-
-    for(const b of this.panneauMesure.querySelectorAll("button[data-ref]")){
-      b.classList.toggle("on", b.dataset.ref === this.mesure.referentiel);
-    }
-
-    const blocChoix = this.panneauMesure.querySelector("#mesureChoixPiece");
-    if(blocChoix){
-      const { mA, mB, deuxPiecesDistinctes } = this.mesure.piecesMesurees();
-      const visible = this.mesure.referentiel === "piece" && deuxPiecesDistinctes;
-      blocChoix.style.display = visible ? "inline-flex" : "none";
-      if(visible){
-        const b1 = blocChoix.querySelector("button[data-piece='1']");
-        const b2 = blocChoix.querySelector("button[data-piece='2']");
-        const n1 = mA?.name ? (mA.name.length > 10 ? mA.name.slice(0, 9) + "…" : mA.name) : "1";
-        const n2 = mB?.name ? (mB.name.length > 10 ? mB.name.slice(0, 9) + "…" : mB.name) : "2";
-        if(b1){
-          b1.textContent = `P1 : ${n1}`;
-          b1.title = `Référentiel : Pièce 1 (${mA?.name || "Pièce 1"})`;
-          b1.classList.toggle("on", this.mesure.choixPieceRef === 1);
-        }
-        if(b2){
-          b2.textContent = `P2 : ${n2}`;
-          b2.title = `Référentiel : Pièce 2 (${mB?.name || "Pièce 2"}) — Référence par défaut (style Fusion 360)`;
-          b2.classList.toggle("on", this.mesure.choixPieceRef === 2);
-        }
-      }
+    /* Les boutons 1 et 2 nomment la pièce qui leur sert de repère, dès
+       qu'elle est connue. */
+    const { mA, mB } = this.mesure.piecesMesurees();
+    const pieces = { sel1:mA, sel2:mB || mA };
+    for(const b of this.panneauMesure.querySelectorAll("button[data-delta]")){
+      const cle = b.dataset.delta;
+      b.classList.toggle("on", cle === this.mesure.modeDelta);
+      const piece = pieces[cle];
+      b.title = MODES_DELTA[cle].aide + (piece?.name ? `\nPièce : « ${piece.name} »` : "");
     }
   }
 

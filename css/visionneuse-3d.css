@@ -188,6 +188,42 @@ main{flex:1;display:flex;min-height:0}
 #panneauMesure{right:10px}
 #panneauMesure kbd{font-family:var(--mono);font-size:10px;color:var(--txt-dim);
   border:1px solid var(--border2);border-radius:3px;padding:0 4px}
+#panneauMesure label.etiq{display:flex;align-items:center;gap:5px}
+#panneauMesure select{background:var(--bg);border:1px solid var(--border2);color:var(--txt);
+  border-radius:4px;padding:2px 4px;font-family:var(--mono);font-size:12px;cursor:pointer}
+
+/* Fenêtre des résultats de mesure (façon panneau MEASURE de Fusion 360),
+   au-dessus de la barre de mesure ; déplaçable par sa barre de titre. */
+.fenetre-mesure{position:absolute;right:10px;bottom:84px;width:280px;max-height:calc(100% - 260px);
+  min-height:0;display:flex;flex-direction:column;z-index:6;background:rgba(23,24,27,.96);
+  border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.45);font-size:12.5px}
+.fenetre-mesure[hidden]{display:none}
+.fm-tete{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px 6px 12px;
+  border-bottom:1px solid var(--border2);cursor:move;user-select:none;touch-action:none;
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--txt-dim)}
+.fm-tete span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fm-plier{background:none;border:1px solid var(--border2);color:var(--txt);border-radius:3px;
+  width:20px;height:20px;line-height:16px;padding:0;cursor:pointer;font-size:13px;flex:none}
+.fenetre-mesure.repliee .fm-corps{display:none}
+.fenetre-mesure.repliee .fm-tete{border-bottom:none}
+.fm-corps{overflow:auto;padding:4px 0 6px}
+.fm-section{padding:2px 0}
+.fm-section + .fm-section{border-top:1px solid var(--border2)}
+.fm-section-titre{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;
+  color:var(--txt);font:inherit;font-weight:700;text-align:left;padding:6px 12px;cursor:pointer}
+.fm-section-titre::before{content:"▾";font-size:10px;color:var(--txt-dim);width:10px}
+.fm-section.repliee .fm-section-titre::before{content:"▸"}
+.fm-section.repliee > :not(.fm-section-titre){display:none}
+.fm-sous-titre{padding:0 12px 4px 28px;color:var(--txt-dim);font-style:italic}
+.fm-ligne{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:2px 12px 2px 28px;align-items:baseline}
+.fm-cle{color:var(--txt-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fm-valeur{font-family:var(--mono);color:var(--txt);text-align:right;overflow-wrap:anywhere}
+.fm-note{grid-template-columns:1fr}
+.fm-note .fm-valeur{font-family:var(--ui);color:var(--txt-dim);text-align:left}
+.fm-dx .fm-cle,.fm-dy .fm-cle,.fm-dz .fm-cle{font-weight:700}
+.fm-dx .fm-cle{color:#ef5350}
+.fm-dy .fm-cle{color:#43a047}
+.fm-dz .fm-cle{color:#42a5f5}
 
 /* ---------- écran d'accueil ---------- */
 #accueil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -271,6 +307,13 @@ table.raccourcis td:first-child{width:140px;white-space:nowrap}
 .mesure-calque-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:8;overflow:visible}
 .mesure-calque-svg line{stroke:#111;stroke-width:1.2;stroke-linecap:round;filter:drop-shadow(0 0 1px rgba(255,255,255,.75))}
 .mesure-calque-svg circle{fill:#111;stroke:#fff;stroke-width:1}
+/* Accroche du mode point : les points proposés, et ce sur quoi le clic tombera. */
+.calque-accroche rect{fill:rgba(255,255,255,.9);stroke:#111;stroke-width:1}
+.info-accroche{position:absolute;z-index:9;pointer-events:none;white-space:nowrap;
+  padding:2px 6px;border-radius:3px;font-size:11.5px;font-weight:600;
+  background:rgba(15,16,18,.9);color:#8af0ff;border:1px solid rgba(138,240,255,.6)}
+.info-accroche[hidden]{display:none}
+.info-accroche[data-type="surface"],.info-accroche[data-type="libre"]{color:#ddd;border-color:rgba(255,255,255,.35)}
 
 .cote-cad{position:absolute;transform:translate(-50%,-50%);display:inline-flex;align-items:stretch;
   font-family:var(--mono);font-size:12px;white-space:nowrap;pointer-events:auto;cursor:grab;
@@ -414,7 +457,8 @@ table.raccourcis td:first-child{width:140px;white-space:nowrap}
 }
 
 [data-theme="clair"] #panneauCoupe,
-[data-theme="clair"] #panneauMesure{
+[data-theme="clair"] #panneauMesure,
+[data-theme="clair"] .fenetre-mesure{
   background:rgba(255,255,255,.96);
   box-shadow:0 4px 18px rgba(0,0,0,.12);
   border-color:var(--border2);

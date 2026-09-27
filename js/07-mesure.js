@@ -21,38 +21,175 @@
      donnent le passage bord à bord ainsi que l'entraxe, un cylindre et un plan
      donnent le jeu matière et la hauteur d'axe.
 
+   La décomposition ΔXYZ suit Fusion 360 : quatre réglages (aucune, repère de
+   la pièce de la sélection 1, de la sélection 2, repère global). Les écarts
+   sont signés, de la sélection 1 vers la sélection 2, et l'escalier coloré
+   part du point de référence : depuis la sélection 2, il se déroule à
+   rebours, X d'abord en partant d'elle.
+
    Le travail de reconnaissance est dans 06-topologie.js ; ce fichier-ci ne
    fait que désigner, surligner, et poser la cote à l'écran.
 
    L'étiquette est un élément HTML posé au-dessus du canevas plutôt qu'un objet
    3D : le texte reste net à toute échelle et suit la feuille de style du reste
    de l'interface.
+
+   Le détail chiffré va dans une fenêtre à part, comme le panneau MEASURE de
+   Fusion 360 : les résultats, puis ce qu'on sait de chaque sélection. La
+   barre d'état ne garde que la consigne du moment.
    ============================================================================= */
 "use strict";
 
 import * as THREE from "three";
 import { prefs } from "./00-config.js";
-import { analyser, areteSous, faceSous, geometrieArete, geometrieFace, contourFace,
-         mesurerAretes, mesurerFaces, mesurerEntites, mesurerEntiteSeule, resumer, cote,
-         PLAFOND_TRIANGLES, nombre, repereDePiece } from "./06-topologie.js";
-
-export function formaterCoteCAD(v){
-  if(Math.abs(v) < 1e-6) return "0mm";
-  const r = Math.round(v * 1000) / 1000;
-  return `${r}mm`;
-}
+import { analyser, areteSous, faceSous, tailleParPixel, geometrieArete, geometrieFace, contourFace,
+         mesurerAretes, mesurerFaces, mesurerEntites, mesurerEntiteSeule, resumer, cote, mm, degres,
+         PLAFOND_TRIANGLES, nombre, repereDePiece, pointsAccroche, numeroArete,
+         centreDeFace, pointSurArete } from "./06-topologie.js";
 
 const SEUIL_ACCROCHE = 14;      // pixels
+const PLAFOND_ANALYSE_SURVOL = 100_000; // triangles : au-delà, l'analyse attend le clic
+
+/** Ce que l'accroche a trouvé, tel qu'on le nomme à l'utilisateur. */
+const NOMS_ACCROCHE = {
+  sommet:"Sommet", milieu:"Milieu d'arête", centreCercle:"Centre du cercle", centreArc:"Centre de l'arc",
+  centreFace:"Centre de face", arete:"Sur l'arête", sommetMaillage:"Sommet du maillage",
+  surface:"Sur la surface", libre:"Point libre (Maj)",
+};
 const SEUIL_ARETE = 16;         // pixels
 const JAUNE = 0xf2c744;
 const CYAN = 0x8af0ff;
 
 export const MODES = {
   auto:  { nom:"Auto",   aide:"Mesure automatique : approche d'un bord → arête, surface → face (distance ou angle)." },
-  point: { nom:"Point",  aide:"Mesure point à point : cliquez le premier point (accrochage sur les sommets)." },
+  point: { nom:"Point",  aide:"Mesure point à point : cliquez le premier point (accroche sommets, milieux, centres · Maj : point libre)." },
   arete: { nom:"Arête",  aide:"Mesure d'arête à arête : approchez le curseur d'une arête, puis cliquez." },
   face:  { nom:"Face",   aide:"Mesure de face à face : cliquez une face de la pièce." },
 };
+
+/** Les réglages ΔXYZ, dans l'ordre des boutons de Fusion 360. */
+export const MODES_DELTA = {
+  off:    { nom:"⊘",      aide:"Pas de décomposition : la distance seule." },
+  sel1:   { nom:"1",      aide:"ΔXYZ dans le repère de la pièce de la sélection 1 — l'escalier part du point 1." },
+  sel2:   { nom:"2",      aide:"ΔXYZ dans le repère de la pièce de la sélection 2 — l'escalier part du point 2." },
+  global: { nom:"Global", aide:"ΔXYZ dans le repère global du projet." },
+};
+
+/**
+ * La fenêtre des valeurs. Posée en bas à droite au-dessus de la barre de
+ * mesure, déplaçable par sa barre de titre, chaque section repliable. Tout le
+ * texte passe par textContent : les noms de pièces viennent des fichiers.
+ */
+class FenetreResultats {
+  constructor(conteneur){
+    this.conteneur = conteneur;
+    this.replies = new Set();         // titres des sections repliées
+
+    const f = this.el = document.createElement("div");
+    f.className = "fenetre-mesure";
+    f.hidden = true;
+    const tete = document.createElement("div");
+    tete.className = "fm-tete";
+    tete.title = "Glisser pour déplacer · double-clic pour remettre en place";
+    this.titre = document.createElement("span");
+    tete.appendChild(this.titre);
+    const plier = document.createElement("button");
+    plier.type = "button";
+    plier.className = "fm-plier";
+    plier.textContent = "−";
+    plier.title = "Replier / déplier la fenêtre";
+    plier.onclick = () => {
+      f.classList.toggle("repliee");
+      plier.textContent = f.classList.contains("repliee") ? "+" : "−";
+    };
+    tete.appendChild(plier);
+    this.corps = document.createElement("div");
+    this.corps.className = "fm-corps";
+    f.append(tete, this.corps);
+
+    /* La vue ne doit pas tourner ni zoomer quand on agit dans la fenêtre. */
+    for(const t of ["pointerdown", "wheel", "dblclick", "contextmenu"]){
+      f.addEventListener(t, (ev) => ev.stopPropagation());
+    }
+    this.brancherDeplacement(tete, plier);
+    conteneur.appendChild(f);
+  }
+
+  brancherDeplacement(tete, plier){
+    let depart = null;
+    tete.addEventListener("pointerdown", (ev) => {
+      if(ev.target === plier) return;
+      const r = this.el.getBoundingClientRect(), c = this.conteneur.getBoundingClientRect();
+      depart = { x:ev.clientX, y:ev.clientY, l:r.left - c.left, t:r.top - c.top };
+      tete.setPointerCapture(ev.pointerId);
+    });
+    tete.addEventListener("pointermove", (ev) => {
+      if(!depart) return;
+      const c = this.conteneur.getBoundingClientRect();
+      const l = Math.max(0, Math.min(c.width - this.el.offsetWidth, depart.l + ev.clientX - depart.x));
+      const t = Math.max(0, Math.min(c.height - 30, depart.t + ev.clientY - depart.y));
+      Object.assign(this.el.style, { left:`${l}px`, top:`${t}px`, right:"auto", bottom:"auto" });
+    });
+    const fin = () => { depart = null; };
+    tete.addEventListener("pointerup", fin);
+    tete.addEventListener("pointercancel", fin);
+    tete.addEventListener("dblclick", () => {
+      Object.assign(this.el.style, { left:"", top:"", right:"", bottom:"" });
+    });
+  }
+
+  masquer(){ this.el.hidden = true; }
+
+  /**
+   * `donnees` : { titre, sections:[{ titre, sousTitre?, lignes:[[libellé, valeur, classe?]] }] }.
+   * Une ligne sans libellé est une remarque sur toute la largeur.
+   */
+  afficher(donnees){
+    this.titre.textContent = donnees.titre;
+    this.corps.replaceChildren(...donnees.sections.map(sec => {
+      const bloc = document.createElement("section");
+      bloc.className = "fm-section" + (this.replies.has(sec.titre) ? " repliee" : "");
+      const h = document.createElement("button");
+      h.type = "button";
+      h.className = "fm-section-titre";
+      h.textContent = sec.titre;
+      h.onclick = () => {
+        bloc.classList.toggle("repliee");
+        if(bloc.classList.contains("repliee")) this.replies.add(sec.titre);
+        else this.replies.delete(sec.titre);
+      };
+      bloc.appendChild(h);
+      if(sec.sousTitre){
+        const st = document.createElement("div");
+        st.className = "fm-sous-titre";
+        st.textContent = sec.sousTitre;
+        bloc.appendChild(st);
+      }
+      for(const [cle, valeur, classe] of sec.lignes){
+        const l = document.createElement("div");
+        l.className = "fm-ligne" + (cle ? "" : " fm-note") + (classe ? " " + classe : "");
+        if(cle){
+          const k = document.createElement("span");
+          k.className = "fm-cle";
+          k.textContent = cle;
+          l.appendChild(k);
+        }
+        const v = document.createElement("span");
+        v.className = "fm-valeur";
+        v.textContent = valeur;
+        l.appendChild(v);
+        bloc.appendChild(l);
+      }
+      return bloc;
+    }));
+    this.el.hidden = false;
+  }
+}
+
+const REPERE_GLOBAL = Object.freeze({
+  mode:"global", nom:"Global", depuis:1,
+  uX:new THREE.Vector3(1, 0, 0), uY:new THREE.Vector3(0, 1, 0), uZ:new THREE.Vector3(0, 0, 1),
+});
 
 export class Mesure {
   constructor(vue, navigation, elements){
@@ -61,15 +198,15 @@ export class Mesure {
     this.el = elements;          // { conteneur, etat }
     this.actif = false;
     this.mode = "auto";
-    this.referentiel = prefs.mesureReferentiel || "projet"; // "projet" | "piece"
-    this.choixPieceRef = 2;      // 2 par défaut (Pièce 2 - style Fusion 360) quand 2 pièces distinctes sont mesurées
-    this.pieceSelectionnee = null; // pièce sélectionnée dans l'arbre
+    this.modeDelta = MODES_DELTA[prefs.mesureDeltaMode] ? prefs.mesureDeltaMode : "global";
     this.points = [];            // mode point
     this.pointsMaillages = [];   // maillages correspondant aux points
+    this.pointsTypes = [];       // ce sur quoi chaque point s'est accroché
+    this.maillageSurvole = null; // dernière pièce survolée en mode point
+    this.accrocheMontree = [];   // points d'accroche dessinés autour du curseur
     this.entites = [];           // modes auto, arête et face
     this.etiquettes = [];
     this.etiquettesDelta = [];
-    this.afficherDeltas = prefs.mesureDelta !== false;
     this.donneesDelta = null;
     this.raison = null;          // pourquoi le dernier survol n'a rien désigné
     this.surMesureChange = null; // notification interface pour màj des boutons P1/P2
@@ -140,6 +277,19 @@ export class Mesure {
     this.survole = null;
     this.cleSurvol = null;
 
+    this.fenetre = new FenetreResultats(this.el.conteneur);
+
+    /* L'accroche se voit : les points proposés par l'arête ou la face sous le
+       curseur, et une étiquette qui dit sur quoi le clic va tomber. */
+    this.calqueAccroche = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    this.calqueAccroche.setAttribute("class", "mesure-calque-svg calque-accroche");
+    this.el.conteneur.appendChild(this.calqueAccroche);
+    this.infoAccroche = document.createElement("div");
+    this.infoAccroche.className = "info-accroche";
+    this.infoAccroche.hidden = true;
+    this.el.conteneur.appendChild(this.infoAccroche);
+    vue.apresRendu.add(() => this.dessinerAccroche());
+
     vue.apresRendu.add(() => this.replacerEtiquettes());
   }
 
@@ -173,6 +323,7 @@ export class Mesure {
   definirMode(mode){
     if(!MODES[mode] || mode === this.mode) return this.mode;
     this.mode = mode;
+    this.masquerAccroche();
     /* Une mesure entamée ne survit pas au changement de mode : deux arêtes ne
        se comparent pas à une face, et garder la première prise ne ferait que
        tromper sur ce qui va être mesuré. */
@@ -205,8 +356,9 @@ export class Mesure {
   annuler(){
     this.points = [];
     this.pointsMaillages = [];
+    this.pointsTypes = [];
     this.entites = [];
-    this.choixPieceRef = 2; // réinitialise à 2 par défaut (Pièce 2 - Fusion 360)
+    this.masquerAccroche();
     this.ligne.visible = false;
     this.annulerDelta();
     for(const r of this.reperes) r.visible = false;
@@ -215,6 +367,7 @@ export class Mesure {
     this.etiquettes = [];
     this.viderSurlignages();
     this.dernierResultat = null;
+    this.fenetre.masquer();
     this.annoncer(this.actif ? MODES[this.mode].aide : null);
     this.surMesureChange?.();
     this.vue.invalider();
@@ -236,21 +389,13 @@ export class Mesure {
     this.donneesDelta = null;
   }
 
-  definirReferentiel(ref){
-    if(ref !== "projet" && ref !== "piece") return this.referentiel;
-    this.referentiel = ref;
-    prefs.mesureReferentiel = ref;
+  definirModeDelta(mode){
+    if(!MODES_DELTA[mode]) return this.modeDelta;
+    this.modeDelta = mode;
+    prefs.mesureDeltaMode = mode;
     this.rafraichir();
     this.surMesureChange?.();
-    return this.referentiel;
-  }
-
-  majPieceSelectionnee(piece){
-    this.pieceSelectionnee = (piece && piece.isMesh) ? piece : null;
-    if(this.actif && this.referentiel === "piece"){
-      this.rafraichir();
-      this.surMesureChange?.();
-    }
+    return mode;
   }
 
   /** Renvoie les maillages des 2 éléments mesurés et indique s'ils sont distincts. */
@@ -266,118 +411,75 @@ export class Mesure {
     return { mA, mB, deuxPiecesDistinctes: !!(mA && mB && mA !== mB) };
   }
 
-  /** Permet de basculer entre Pièce 1 et Pièce 2 en référence (Pièce 2 par défaut) */
-  definirChoixPieceRef(idx){
-    if(idx !== 1 && idx !== 2) return;
-    this.choixPieceRef = idx;
-    this.rafraichir();
+  /**
+   * Le repère des ΔXYZ et le point d'où part l'escalier (`depuis` : 1 ou 2).
+   * En « sélection 2 » avec un seul élément retenu, c'est sa pièce qui sert.
+   */
+  obtenirRepereActif(){
+    if(this.modeDelta !== "sel1" && this.modeDelta !== "sel2") return REPERE_GLOBAL;
+    const depuis = this.modeDelta === "sel1" ? 1 : 2;
+    const { mA, mB } = this.piecesMesurees();
+    const cible = depuis === 1 ? mA : (mB || mA);
+    const rep = cible && repereDePiece(cible);
+    if(!rep) return { ...REPERE_GLOBAL, depuis };
+    return { mode:"piece", nom:rep.nom || "Pièce", uX:rep.uX, uY:rep.uY, uZ:rep.uZ, depuis };
+  }
+
+  /** Les écarts signés de p1 vers p2 dans le repère donné. */
+  ecarts(p1, p2, rep = this.obtenirRepereActif()){
+    const v = new THREE.Vector3().subVectors(p2, p1);
+    return { x:v.dot(rep.uX), y:v.dot(rep.uY), z:v.dot(rep.uZ) };
+  }
+
+  /** Cote et annonce des deux points retenus en mode point. */
+  poserPoints(){
+    const [a, b] = this.points;
+    const d = a.distanceTo(b);
+    if(this.modeDelta !== "off" && d > 1e-4){
+      this.afficherMesureDelta(a, b, mm(d));
+    }else{
+      this.annulerDelta();
+      this.tracer(a, b, false);
+      for(let i = 0; i < 2; i++){
+        const rep = this.reperes[i];
+        rep.position.copy(i ? b : a);
+        rep.scale.setScalar(this.tailleRepere());
+        rep.visible = true;
+      }
+      this.poserEtiquette(a.clone().lerp(b, 0.5), mm(d));
+    }
+    this.annoncer(null);
+    this.majFenetre();
     this.surMesureChange?.();
   }
 
-  /** Détermine le référentiel orthonormé (projet ou pièce) à appliquer pour la mesure. */
-  obtenirRepereActif(p1 = null, p2 = null, r = null){
-    if(this.referentiel !== "piece"){
-      return {
-        mode: "projet",
-        nom: "Projet",
-        uX: new THREE.Vector3(1, 0, 0),
-        uY: new THREE.Vector3(0, 1, 0),
-        uZ: new THREE.Vector3(0, 0, 1),
-      };
-    }
-
-    let cible = null;
-    const { mA, mB, deuxPiecesDistinctes } = this.piecesMesurees();
-
-    // 1. Pièce sélectionnée dans l'arbre si l'utilisateur l'a explicitement choisie
-    if(this.pieceSelectionnee && this.pieceSelectionnee.isMesh){
-      cible = this.pieceSelectionnee;
-    }
-
-    // 2. Si non sélectionnée dans l'arbre :
-    if(!cible){
-      if(deuxPiecesDistinctes){
-        // Deux pièces distinctes mesurées : Pièce 2 par défaut (style Fusion 360) ou Pièce 1 si choisi
-        cible = (this.choixPieceRef === 1) ? mA : mB;
-      }else if(mB){
-        cible = mB;
-      }else if(mA){
-        cible = mA;
-      }
-    }
-
-    if(cible){
-      const rep = repereDePiece(cible);
-      if(rep){
-        const indexPiece = deuxPiecesDistinctes ? (cible === mA ? 1 : 2) : null;
-        return {
-          mode: "piece",
-          nom: rep.nom || "Pièce",
-          uX: rep.uX,
-          uY: rep.uY,
-          uZ: rep.uZ,
-          centre: rep.centre,
-          maillage: cible,
-          deuxPiecesDistinctes,
-          indexPiece,
-          piece1: mA,
-          piece2: mB,
-        };
-      }
-    }
-
-    // Repli si aucune pièce n'est identifiable
-    return {
-      mode: "projet",
-      nom: "Projet",
-      uX: new THREE.Vector3(1, 0, 0),
-      uY: new THREE.Vector3(0, 1, 0),
-      uZ: new THREE.Vector3(0, 0, 1),
-    };
-  }
-
-  /** Rafraîchit le rendu de la mesure courante (ex: après bascule du mode ΔXYZ ou du référentiel) */
+  /** Rafraîchit le rendu de la mesure courante (ex: après changement du réglage ΔXYZ). */
   rafraichir(){
     if(!this.actif) return;
     if(this.points.length === 2){
-      const [a, b] = this.points;
-      const d = a.distanceTo(b);
-      if(this.afficherDeltas && d > 1e-4){
-        this.afficherMesureDelta(a, b, `${cote(d)} mm`);
-      }else{
-        this.annulerDelta();
-        this.tracer(a, b, false);
-        for(let i = 0; i < 2; i++){
-          const rep = this.reperes[i];
-          rep.position.copy(i ? b : a);
-          rep.scale.setScalar(this.tailleRepere());
-          rep.visible = true;
-        }
-        this.poserEtiquette(a.clone().lerp(b, 0.5), `${cote(d)} mm`);
-      }
-      const repActif = this.obtenirRepereActif(a, b);
-      const vecD = new THREE.Vector3().subVectors(b, a);
-      const dX = Math.abs(vecD.dot(repActif.uX));
-      const dY = Math.abs(vecD.dot(repActif.uY));
-      const dZ = Math.abs(vecD.dot(repActif.uZ));
-      let infoRep = "";
-      if(repActif.mode === "piece"){
-        if(repActif.deuxPiecesDistinctes){
-          const tagFusion = repActif.indexPiece === 2 ? " (défaut Fusion 360)" : "";
-          infoRep = `  ·  [Réf : Pièce ${repActif.indexPiece} « ${repActif.nom} »${tagFusion}]`;
-        }else{
-          infoRep = `  ·  [Repère : Pièce « ${repActif.nom} »]`;
-        }
-      }
-      this.annoncer(`Distance ${cote(d)} mm  ·  ΔX ${cote(dX)}  ` +
-                    `ΔY ${cote(dY)}  ΔZ ${cote(dZ)} mm${infoRep}`);
-      this.surMesureChange?.();
+      this.poserPoints();
       this.vue.invalider();
     }else if(this.dernierResultat){
       this.poserResultat(this.dernierResultat);
-      this.surMesureChange?.();
       this.vue.invalider();
     }
+  }
+
+  /**
+   * Refait la mesure depuis les éléments retenus : les textes des résultats
+   * sont figés au calcul, un changement de précision doit donc repasser par là.
+   */
+  remesurer(){
+    if(!this.actif) return;
+    if(this.entites.length === 2){
+      this.poserResultat(mesurerEntites(this.entites[0], this.entites[1]));
+    }else if(this.entites.length === 1){
+      const r = mesurerEntiteSeule(this.entites[0]);
+      if(r) this.poserResultat(r);
+    }else if(this.points.length === 2){
+      this.poserPoints();
+    }
+    this.vue.invalider();
   }
 
   annoncer(texte){
@@ -512,28 +614,140 @@ export class Mesure {
      ========================================================================== */
 
   /**
-   * Point retenu pour un évènement : le sommet le plus proche du triangle
-   * touché s'il est à portée, sinon le point d'impact lui-même.
+   * Le point retenu pour un évènement, et ce sur quoi il s'est accroché :
+   *
+   *  1. un point remarquable à moins de SEUIL_ACCROCHE pixels et visible —
+   *     sommet, milieu d'arête, centre de cercle ou d'arc, centre de la face
+   *     plane survolée. Le plus proche du curseur l'emporte. Les centres
+   *     restent accrochables le curseur dans le trou, là où le rayon ne
+   *     touche plus la pièce : on garde la dernière pièce survolée ;
+   *  2. sinon, le point de l'arête la plus proche, si elle est à portée ;
+   *  3. sinon, le point d'impact sur la surface.
+   *
+   * Maj enfoncée, pas d'accroche : le point est posé où le rayon touche.
+   * Sans topologie (pièce trop lourde), on retombe sur l'ancien comportement,
+   * le sommet du triangle touché.
+   *
+   * `montrer` reçoit les points d'accroche à dessiner autour du curseur.
    */
-  pointVise(ev){
+  pointVise(ev, { analyse = true } = {}){
     const touches = this.vue.lancerRayon(ev);
-    if(!touches.length) return null;
-    const t = touches[0];
-    const impact = t.point.clone();
-    if(!t.face) return { point:impact, accroche:false };
+    const ray = this.vue._rc.ray.clone();
+    const t = touches[0] || null;
+    if(ev.shiftKey){
+      this.accrocheMontree = [];
+      return t ? { point:t.point.clone(), type:"libre", maillage:t.object } : null;
+    }
 
-    const geo = t.object.geometry;
-    const pos = geo.attributes.position;
+    const m = t?.object || this.maillageSurvole;
+    if(t) this.maillageSurvole = t.object;
+    const nbTri = m?.userData?.triangles || 0;
+    const topoPossible = m && (this.topoPrete(m) || analyse || nbTri <= PLAFOND_ANALYSE_SURVOL);
+    const accroches = topoPossible ? pointsAccroche(m) : null;
+    if(!accroches){
+      this.accrocheMontree = [];
+      return t ? this.sommetDuTriangle(t) : null;
+    }
+
+    const rect = this.vue.canvas.getBoundingClientRect();
+    const cx = ev.clientX - rect.left, cy = ev.clientY - rect.top;
+    const arete = t ? areteSous(this.vue, t, SEUIL_ARETE) : null;
+    const face = t ? faceSous(this.vue, t) : null;
+    const centreFace = face?.type === "plan" ? centreDeFace(face) : null;
+
+    /* Ce qu'on montre : les points de l'arête sous le curseur, sinon ceux des
+       arêtes de la face survolée, et le centre de cette face. */
+    const na = numeroArete(arete);
+    this.accrocheMontree = accroches.filter(a => na >= 0 ? a.aretes.includes(na) : false).map(a => a.p);
+    if(centreFace) this.accrocheMontree.push(centreFace);
+
+    // 1. Les points remarquables, du plus proche au plus lointain à l'écran
+    const candidats = [];
+    const pousser = (p, type) => {
+      const e = this.vue.versEcran(p);
+      if(e.z >= 1) return;
+      const d = Math.hypot(e.x - cx, e.y - cy);
+      if(d <= SEUIL_ACCROCHE) candidats.push({ p, type, d, e });
+    };
+    for(const a of accroches) pousser(a.p, a.type);
+    if(centreFace) pousser(centreFace, "centreFace");
+    candidats.sort((x, y) => x.d - y.d);
+    for(const c of candidats.slice(0, 6)){
+      if(this.estVisible(c.p, c.e, rect)) return { point:c.p.clone(), type:c.type, maillage:m };
+    }
+
+    // 2. Sur l'arête
+    if(arete) return { point:pointSurArete(arete, ray), type:"arete", maillage:m };
+
+    // 3. Sur la surface
+    return t ? { point:t.point.clone(), type:"surface", maillage:t.object } : null;
+  }
+
+  /**
+   * Un point est visible si rien ne se trouve entre l'œil et lui : un sommet
+   * au dos de la pièce se projette peut-être sous le curseur, il ne doit pas
+   * pour autant l'attraper. Le centre d'un trou traversant, lui, ne rencontre
+   * rien ou le fond : il reste visible.
+   */
+  estVisible(p, ecran, rect){
+    const touches = this.vue.lancerRayon({ clientX:rect.left + ecran.x, clientY:rect.top + ecran.y });
+    if(!touches.length) return true;
+    const dist = this.vue._rc.ray.origin.distanceTo(p);
+    const marge = Math.max(tailleParPixel(this.vue, p) * 2, (this.vue.rayonModele || 1) * 1e-5);
+    return touches[0].distance >= dist - marge;
+  }
+
+  /** L'accroche d'avant la topologie : le sommet du triangle touché, s'il est à portée. */
+  sommetDuTriangle(t){
+    const impact = t.point.clone();
+    if(!t.face) return { point:impact, type:"surface", maillage:t.object };
+    const pos = t.object.geometry.attributes.position;
     const ecran = this.vue.versEcran(impact);
     let meilleur = null, distMin = SEUIL_ACCROCHE;
-
     for(const i of [t.face.a, t.face.b, t.face.c]){
       const sommet = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(t.object.matrixWorld);
       const s = this.vue.versEcran(sommet);
       const d = Math.hypot(s.x - ecran.x, s.y - ecran.y);
       if(d < distMin){ distMin = d; meilleur = sommet; }
     }
-    return meilleur ? { point:meilleur, accroche:true, maillage:t.object } : { point:impact, accroche:false, maillage:t.object };
+    return meilleur ? { point:meilleur, type:"sommetMaillage", maillage:t.object }
+                    : { point:impact, type:"surface", maillage:t.object };
+  }
+
+  /** Les points d'accroche proposés et l'étiquette du curseur, redessinés à chaque rendu. */
+  dessinerAccroche(){
+    if(!this.actif || this.mode !== "point" || !this.accrocheMontree.length){
+      if(this.calqueAccroche.childElementCount) this.calqueAccroche.replaceChildren();
+    }else{
+      const ns = "http://www.w3.org/2000/svg";
+      this.calqueAccroche.replaceChildren(...this.accrocheMontree.map(p => {
+        const e = this.vue.versEcran(p);
+        const r = document.createElementNS(ns, "rect");
+        r.setAttribute("x", (e.x - 3.5).toFixed(1));
+        r.setAttribute("y", (e.y - 3.5).toFixed(1));
+        r.setAttribute("width", "7");
+        r.setAttribute("height", "7");
+        return r;
+      }));
+    }
+    if(this.apercu.visible && this.typeApercu){
+      const e = this.vue.versEcran(this.apercu.position);
+      this.infoAccroche.textContent = NOMS_ACCROCHE[this.typeApercu] || "";
+      this.infoAccroche.style.left = `${e.x + 14}px`;
+      this.infoAccroche.style.top = `${e.y + 14}px`;
+      this.infoAccroche.dataset.type = this.typeApercu;
+      this.infoAccroche.hidden = false;
+    }else{
+      this.infoAccroche.hidden = true;
+    }
+  }
+
+  masquerAccroche(){
+    this.accrocheMontree = [];
+    this.typeApercu = null;
+    if(this.apercu) this.apercu.visible = false;
+    if(this.calqueAccroche) this.calqueAccroche.replaceChildren();
+    if(this.infoAccroche) this.infoAccroche.hidden = true;
   }
 
   /* ==========================================================================
@@ -560,11 +774,7 @@ export class Mesure {
       this.survole = this.fabriquerSurlignage(e, CYAN, false);
       this.annoncer(this.messageEnCours(resumer(e)));
     }else if(!e){
-      if(this.entites.length === 1 && this.dernierResultat?.titre){
-        this.annoncer(this.dernierResultat.titre);
-      }else{
-        this.annoncer(this.messageEnCours(this.raison));
-      }
+      this.annoncer(this.messageEnCours(this.raison));
     }
     this.vue.invalider();
   }
@@ -580,12 +790,19 @@ export class Mesure {
   }
 
   survolerPoint(ev){
-    const vise = this.pointVise(ev);
+    const vise = this.pointVise(ev, { analyse:false });
     const r = this.apercu;
-    if(!vise){ if(r.visible){ r.visible = false; this.vue.invalider(); } return; }
+    if(!vise){
+      this.typeApercu = null;
+      if(r.visible || this.accrocheMontree.length){ r.visible = false; this.vue.invalider(); }
+      return;
+    }
+    const accroche = !["surface", "libre"].includes(vise.type);
     r.position.copy(vise.point);
-    r.scale.setScalar(this.tailleRepere() * (vise.accroche ? 1.4 : 0.9));
+    r.scale.setScalar(this.tailleRepere() * (accroche ? 1.4 : 0.9));
+    r.material.color.setHex(accroche ? CYAN : 0xffffff);
     r.visible = true;
+    this.typeApercu = vise.type;
     if(this.points.length === 1) this.tracer(this.points[0], vise.point, true);
     this.vue.invalider();
   }
@@ -605,6 +822,7 @@ export class Mesure {
     if(this.points.length >= 2) this.annuler();
     this.points.push(vise.point.clone());
     this.pointsMaillages.push(vise.maillage || null);
+    this.pointsTypes.push(vise.type);
     const r = this.reperes[this.points.length - 1];
     r.position.copy(vise.point);
     r.scale.setScalar(this.tailleRepere());
@@ -612,40 +830,9 @@ export class Mesure {
 
     if(this.points.length === 1){
       this.annoncer("Second point…");
+      this.majFenetre();
     }else{
-      const [a, b] = this.points;
-      const d = a.distanceTo(b);
-      const repActif = this.obtenirRepereActif(a, b);
-      const vecD = new THREE.Vector3().subVectors(b, a);
-      const dX = Math.abs(vecD.dot(repActif.uX));
-      const dY = Math.abs(vecD.dot(repActif.uY));
-      const dZ = Math.abs(vecD.dot(repActif.uZ));
-
-      if(this.afficherDeltas && d > 1e-4){
-        this.afficherMesureDelta(a, b, `${cote(d)} mm`);
-      }else{
-        this.annulerDelta();
-        this.tracer(a, b, false);
-        for(let i = 0; i < 2; i++){
-          const rep = this.reperes[i];
-          rep.position.copy(i ? b : a);
-          rep.scale.setScalar(this.tailleRepere());
-          rep.visible = true;
-        }
-        this.poserEtiquette(a.clone().lerp(b, 0.5), `${cote(d)} mm`);
-      }
-      let infoRep = "";
-      if(repActif.mode === "piece"){
-        if(repActif.deuxPiecesDistinctes){
-          const tagFusion = repActif.indexPiece === 2 ? " (défaut Fusion 360)" : "";
-          infoRep = `  ·  [Réf : Pièce ${repActif.indexPiece} « ${repActif.nom} »${tagFusion}]`;
-        }else{
-          infoRep = `  ·  [Repère : Pièce « ${repActif.nom} »]`;
-        }
-      }
-      this.annoncer(`Distance ${cote(d)} mm  ·  ΔX ${cote(dX)}  ` +
-                    `ΔY ${cote(dY)}  ΔZ ${cote(dZ)} mm${infoRep}`);
-      this.surMesureChange?.();
+      this.poserPoints();
     }
     this.vue.invalider();
     return true;
@@ -674,6 +861,7 @@ export class Mesure {
         this.poserResultat(r);
       }else{
         this.annoncer(this.messageEnCours(null));
+        this.majFenetre();
       }
     }else{
       const r = mesurerEntites(this.entites[0], this.entites[1]);
@@ -693,25 +881,103 @@ export class Mesure {
   poserResultat(r){
     this.dernierResultat = r;
     const ecart = (r.p1 && r.p2) ? r.p1.distanceTo(r.p2) : 0;
-    const repActif = this.obtenirRepereActif(r.p1, r.p2, r);
-    if(this.afficherDeltas && ecart > 1e-4){
+    if(this.modeDelta !== "off" && ecart > 1e-4){
       this.afficherMesureDelta(r.p1, r.p2, r.etiquette, r);
     }else{
       this.annulerDelta();
       this.actualiserRenduMesure(r);
       this.poserEtiquette(r.ancre || r.p1.clone().lerp(r.p2, 0.5), r.etiquette, r);
     }
-    let infoRep = "";
-    if(repActif.mode === "piece"){
-      if(repActif.deuxPiecesDistinctes){
-        const tagFusion = repActif.indexPiece === 2 ? " (défaut Fusion 360)" : "";
-        infoRep = `  ·  [Réf : Pièce ${repActif.indexPiece} « ${repActif.nom} »${tagFusion}]`;
+    this.annoncer(this.entites.length === 1 ? this.messageEnCours(null) : null);
+    this.majFenetre();
+    this.surMesureChange?.();
+  }
+
+  /* ==========================================================================
+     Fenêtre des résultats
+     ========================================================================== */
+  majFenetre(){
+    if(!this.actif || (!this.points.length && !this.entites.length)) return this.fenetre.masquer();
+    const sections = [];
+    let titre = MODES[this.mode].nom;
+    let p1 = null, p2 = null, lignes = null;
+
+    if(this.points.length === 2){
+      [p1, p2] = this.points;
+      titre = "Point à point";
+      lignes = [["Distance", mm(p1.distanceTo(p2))]];
+    }else if(this.dernierResultat && this.entites.length === 2){
+      const r = this.dernierResultat;
+      titre = r.fiche?.nature || titre;
+      lignes = [...(r.fiche?.lignes || [])];
+      if(r.extensible){
+        const pos = { min:"Min", max:"Max", libre:"Libre (glissée)" }[r.positionActuelle];
+        if(pos) lignes.push(["Position", pos]);
+      }
+      p1 = r.p1; p2 = r.p2;
+    }
+
+    if(lignes){
+      if(p1 && p2 && this.modeDelta !== "off" && p1.distanceTo(p2) > 1e-9){
+        const rep = this.obtenirRepereActif();
+        const e = this.ecarts(p1, p2, rep);
+        lignes.push(["ΔX", mm(e.x), "fm-dx"], ["ΔY", mm(e.y), "fm-dy"], ["ΔZ", mm(e.z), "fm-dz"],
+                    ["Repère", rep.mode === "piece" ? `Sél. ${rep.depuis} « ${rep.nom} »` : "Global"]);
+      }
+      if(lignes.length) sections.push({ titre:"Résultats", lignes });
+    }
+
+    const selections = this.points.length
+      ? this.points.map((p, i) => this.decrirePoint(p, this.pointsMaillages[i], this.pointsTypes[i]))
+      : this.entites.map(e => this.decrireEntite(e));
+    selections.forEach((d, i) => sections.push({ titre:`Sélection ${i + 1}`, ...d }));
+    /* Un seul élément retenu : ses propriétés sont le résultat, comme dans Fusion. */
+    if(!lignes && selections.length === 1) titre = selections[0].sousTitre;
+    this.fenetre.afficher({ titre, sections });
+  }
+
+  decrirePoint(p, maillage, type){
+    return {
+      sousTitre:NOMS_ACCROCHE[type] || "Point",
+      lignes:[["Position X", mm(p.x)], ["Position Y", mm(p.y)], ["Position Z", mm(p.z)],
+              ...(maillage?.name ? [["Pièce", maillage.name]] : [])],
+    };
+  }
+
+  decrireEntite(e){
+    const l = [];
+    const centre = (c, nom = "Centre") => l.push([`${nom} X`, mm(c.x)], [`${nom} Y`, mm(c.y)], [`${nom} Z`, mm(c.z)]);
+    const dir = (v) => `${cote(v.x)} ; ${cote(v.y)} ; ${cote(v.z)}`;
+    let sousTitre;
+    if(e.genre === "arete"){
+      if(e.type === "droite"){
+        sousTitre = "Arête droite";
+        l.push(["Longueur", mm(e.longueur)], ["Direction", dir(e.dir)]);
+      }else if(e.type === "cercle"){
+        sousTitre = e.ferme ? "Cercle" : "Arc de cercle";
+        l.push(["Longueur", mm(e.longueur)], ["Rayon", mm(e.rayon)], ["Diamètre", mm(2 * e.rayon)]);
+        if(!e.ferme) l.push(["Angle", degres(e.balaye)]);
+        centre(e.centre);
       }else{
-        infoRep = `  ·  [Repère : Pièce « ${repActif.nom} »]`;
+        sousTitre = "Arête";
+        l.push(["Longueur", mm(e.longueur)]);
+      }
+    }else{
+      if(e.type === "plan"){
+        sousTitre = "Face plane";
+        l.push(["Aire", `${cote(e.aire)} mm²`], ["Normale", dir(e.normale)]);
+      }else if(e.type === "cylindre"){
+        sousTitre = e.ferme === false ? "Face cylindrique (congé)" : "Face cylindrique";
+        l.push(["Rayon", mm(e.rayon)], ["Diamètre", mm(2 * e.rayon)], ["Hauteur", mm(e.hauteur)],
+               ["Axe", dir(e.axe)]);
+        centre(e.centre);
+      }else{
+        sousTitre = "Face";
+        l.push(["Aire", `${cote(e.aire)} mm²`]);
       }
     }
-    this.annoncer(`${r.titre}${infoRep}`);
-    this.surMesureChange?.();
+    if(e.maillage?.name) l.push(["Pièce", e.maillage.name]);
+    return { sousTitre, lignes:l };
   }
 
   tracerSegment(ligne, a, b){
@@ -732,82 +998,59 @@ export class Mesure {
     this.etiquettesDelta = [];
 
     this.ligne.visible = false;
-    for(const rep of this.reperes) rep.visible = false;
+    for(const m of this.reperes) m.visible = false;
 
-    const repActif = this.obtenirRepereActif(p1, p2, r);
-    const vecD = new THREE.Vector3().subVectors(p2, p1);
-    const valX = vecD.dot(repActif.uX);
-    const valY = vecD.dot(repActif.uY);
-    const valZ = vecD.dot(repActif.uZ);
-
-    const dX = Math.abs(valX);
-    const dY = Math.abs(valY);
-    const dZ = Math.abs(valZ);
+    const rep = this.obtenirRepereActif();
+    const e = this.ecarts(p1, p2, rep);
     const dist = p1.distanceTo(p2);
+    const presents = [Math.abs(e.x) > 1e-4, Math.abs(e.y) > 1e-4, Math.abs(e.z) > 1e-4];
+    const [aX, aY, aZ] = presents;
 
-    // Escalier orthogonal orienté selon les axes du repère actif :
-    const ptA = p1.clone();
-    const ptB = ptA.clone().addScaledVector(repActif.uX, valX);
-    const ptC = ptB.clone().addScaledVector(repActif.uY, valY);
-    const ptD = ptC.clone().addScaledVector(repActif.uZ, valZ);
+    /* L'escalier X → Y → Z part du point de référence : de P1 vers P2 en
+       repère global ou sélection 1, de P2 vers P1 en sélection 2, comme dans
+       Fusion 360. Les valeurs, elles, restent comptées de P1 vers P2. */
+    const depuisP2 = rep.depuis === 2;
+    const sens = depuisP2 ? -1 : 1;
+    const coins = [depuisP2 ? p2.clone() : p1.clone()];
+    [[rep.uX, e.x], [rep.uY, e.y], [rep.uZ, e.z]].forEach(([u, v], i) => {
+      coins.push(coins[i].clone().addScaledVector(u, sens * v));
+    });
 
     // 1. Tracer les segments 3D
-    this.tracerSegment(this.ligneDist, ptA, ptD);
+    this.tracerSegment(this.ligneDist, p1, p2);
+    [this.ligneX, this.ligneY, this.ligneZ].forEach((ligne, i) => {
+      if(presents[i]) this.tracerSegment(ligne, coins[i], coins[i + 1]);
+      else ligne.visible = false;
+    });
 
-    const aX = dX > 1e-4;
-    const aY = dY > 1e-4;
-    const aZ = dZ > 1e-4;
-
-    if(aX) this.tracerSegment(this.ligneX, ptA, ptB);
-    else this.ligneX.visible = false;
-
-    if(aY) this.tracerSegment(this.ligneY, ptB, ptC);
-    else this.ligneY.visible = false;
-
-    if(aZ) this.tracerSegment(this.ligneZ, ptC, ptD);
-    else this.ligneZ.visible = false;
-
-    // 2. Repères aux sommets
+    // 2. Repères : P1 en rouge, les deux coins de l'escalier, P2 en bleu
     const taille = this.tailleRepere();
-    this.reperesDelta[0].position.copy(ptA);
-    this.reperesDelta[0].scale.setScalar(taille);
-    this.reperesDelta[0].visible = true;
-
-    this.reperesDelta[1].position.copy(ptB);
-    this.reperesDelta[1].scale.setScalar(taille * 0.85);
-    this.reperesDelta[1].visible = aX && (aY || aZ);
-
-    this.reperesDelta[2].position.copy(ptC);
-    this.reperesDelta[2].scale.setScalar(taille * 0.85);
-    this.reperesDelta[2].visible = aY && aZ;
-
-    this.reperesDelta[3].position.copy(ptD);
-    this.reperesDelta[3].scale.setScalar(taille);
-    this.reperesDelta[3].visible = true;
+    const places = [
+      [p1, taille, true],
+      [coins[1], taille * 0.85, aX && (aY || aZ)],
+      [coins[2], taille * 0.85, aY && aZ],
+      [p2, taille, true],
+    ];
+    places.forEach(([pos, t, vis], i) => {
+      const m = this.reperesDelta[i];
+      m.position.copy(pos);
+      m.scale.setScalar(t);
+      m.visible = vis;
+    });
 
     // 3. Définition des composantes
-    let valDist = formaterCoteCAD(dist);
-    if(distTexte && !r?.extensible){
-      valDist = distTexte.replace(/\s*mm$/, "mm");
-    }
-
-    let badgeDist = "Dist:";
-    let titreDist = "Référentiel projet (global)";
-    if(repActif.mode === "piece"){
-      if(repActif.deuxPiecesDistinctes){
-        badgeDist = `Dist (P${repActif.indexPiece}):`;
-        titreDist = `Référentiel : Pièce ${repActif.indexPiece} « ${repActif.nom} »${repActif.indexPiece === 2 ? " (défaut Fusion 360)" : ""} — basculer P1/P2 dans la barre`;
-      }else{
-        badgeDist = "Dist (P):";
-        titreDist = `Référentiel pièce : ${repActif.nom}`;
-      }
-    }
+    const valDist = (distTexte && !r?.extensible) ? distTexte : mm(dist);
+    const badgeDist = rep.mode === "piece" ? `Dist (sél. ${rep.depuis}):` : "Dist:";
+    const titreDist = rep.mode === "piece"
+      ? `Repère de la pièce de la sélection ${rep.depuis} : « ${rep.nom} »`
+      : "Repère global du projet";
+    const milieu = (i) => coins[i].clone().lerp(coins[i + 1], 0.5);
 
     const composantes = [
-      { cle:"dist", badge:badgeDist, valeur:valDist, ancre:ptA.clone().lerp(ptD, 0.5), defautOffset:{ x:50, y:25 }, visible:true, titre:titreDist },
-      { cle:"dx", badge:"dX:", valeur:formaterCoteCAD(dX), ancre:ptA.clone().lerp(ptB, 0.5), defautOffset:{ x:-20, y:-45 }, visible:aX },
-      { cle:"dy", badge:"dY:", valeur:formaterCoteCAD(dY), ancre:ptB.clone().lerp(ptC, 0.5), defautOffset:{ x:-95, y:-15 }, visible:aY },
-      { cle:"dz", badge:"dZ:", valeur:formaterCoteCAD(dZ), ancre:ptC.clone().lerp(ptD, 0.5), defautOffset:{ x:-95, y:25 }, visible:aZ },
+      { cle:"dist", badge:badgeDist, valeur:valDist, ancre:p1.clone().lerp(p2, 0.5), defautOffset:{ x:50, y:25 }, visible:true, titre:titreDist },
+      { cle:"dx", badge:"dX:", valeur:mm(e.x), ancre:milieu(0), defautOffset:{ x:-20, y:-45 }, visible:aX },
+      { cle:"dy", badge:"dY:", valeur:mm(e.y), ancre:milieu(1), defautOffset:{ x:-95, y:-15 }, visible:aY },
+      { cle:"dz", badge:"dZ:", valeur:mm(e.z), ancre:milieu(2), defautOffset:{ x:-95, y:25 }, visible:aZ },
     ];
 
     for(const c of composantes){
@@ -943,26 +1186,15 @@ export class Mesure {
   appliquerPositionCote(r, mode){
     const source = mode === "min" ? r.min : r.max;
     if(!source) return;
-    r.p1.copy(source.p1);
-    r.p2.copy(source.p2);
+    /* Des copies, jamais les vecteurs de `source` : r.p1 et r.min.p1 sont
+       souvent le même objet au sortir du calcul, et le glissement écrit dans
+       r.p1 — la position Min finissait par pointer sur la dernière cote vue. */
+    r.p1 = source.p1.clone();
+    r.p2 = source.p2.clone();
     r.etiquette = source.etiquette;
-    r.titre = source.titre;
+    r.fiche = source.fiche;
     r.positionActuelle = mode;
-
-    this.actualiserRenduMesure(r);
-    const ancre = r.p1.clone().lerp(r.p2, 0.5);
-    const et = this.etiquettes[0];
-    if(et){
-      et.__ancre = ancre;
-      if(et._spTexte) et._spTexte.textContent = r.etiquette;
-      else et.textContent = r.etiquette;
-      const bMin = et.querySelector(".cote-min");
-      const bMax = et.querySelector(".cote-max");
-      if(bMin) bMin.classList.toggle("actif", mode === "min");
-      if(bMax) bMax.classList.toggle("actif", mode === "max");
-    }
-    this.replacerEtiquettes();
-    this.annoncer(r.titre);
+    this.poserResultat(r);
     this.vue.invalider();
   }
 
@@ -979,10 +1211,10 @@ export class Mesure {
 
       const g = r.glisser(ray);
       if(g){
-        r.p1.copy(g.p1);
-        r.p2.copy(g.p2);
+        r.p1 = g.p1.clone();
+        r.p2 = g.p2.clone();
         r.etiquette = g.etiquette;
-        r.titre = g.titre;
+        r.fiche = g.fiche;
         r.positionActuelle = "libre";
 
         this.actualiserRenduMesure(r);
@@ -994,7 +1226,7 @@ export class Mesure {
         if(bMin) bMin.classList.remove("actif");
         if(bMax) bMax.classList.remove("actif");
         this.replacerEtiquettes();
-        this.annoncer(r.titre);
+        this.majFenetre();
         this.vue.invalider();
       }
     };

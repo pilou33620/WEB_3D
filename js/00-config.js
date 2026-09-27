@@ -155,8 +155,8 @@ export const PREFS_DEFAUT = {
   aretesSurGrosModeles:false,
 
   /* mesure */
-  mesureDelta:true,        // décomposition orthogonale ΔX, ΔY, ΔZ style CAO
-  mesureReferentiel:"projet", // "projet" (repère global) ou "piece" (repère local de la pièce)
+  mesureDeltaMode:"global",// ΔXYZ façon Fusion 360 : off | sel1 | sel2 | global
+  mesurePrecision:3,       // décimales des cotes (0 à 5)
 };
 
 const CLE = "web3d.prefs";

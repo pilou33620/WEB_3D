@@ -118,6 +118,46 @@ un plan, un cylindre — et donne la cote qu'un mécanicien attend de ce couple-
 Ce qui est désigné est surligné : la nappe teintée et, surtout, le trait de son
 contour — une teinte seule se confond avec la couleur de la pièce.
 
+La cote reste posée sur la pièce ; le détail chiffré s'ouvre dans une
+**fenêtre de résultats**, à la manière du panneau *Measure* de Fusion 360 :
+
+- **Résultats** : les valeurs de la mesure (distance, écartement, entraxe,
+  angle, jeu…), la position Min / Max / glissée, puis ΔX, ΔY, ΔZ.
+- **Sélection 1**, **Sélection 2** : ce que l'on a désigné et ses propriétés —
+  position X/Y/Z d'un point, longueur d'une arête, rayon, diamètre et centre
+  d'un cercle, aire et normale d'une face plane, axe et hauteur d'un cylindre.
+
+La fenêtre se déplace par sa barre de titre (double-clic pour la remettre en
+place) et chaque section se replie. La barre d'état ne garde que la consigne.
+
+**Accroche du mode Point.** Le point tombe, par ordre de préférence, sur ce qui
+est à moins de 14 pixels du curseur : un sommet de la pièce, le milieu d'une
+arête, le centre d'un cercle ou d'un arc (même le curseur dans le trou), le
+centre d'une face plane ; sinon sur l'arête la plus proche, sinon sur la
+surface. Seuls les points visibles comptent : un coin au dos de la pièce
+n'attrape pas le curseur. Les points proposés s'affichent en petits carrés, et
+une étiquette dit sur quoi le clic tombera. <kbd>Maj</kbd> enfoncée : point
+libre, sans accroche.
+
+**Décomposition ΔXYZ** — quatre réglages, comme dans Fusion 360 :
+
+| Réglage | Repère | L'escalier coloré part de |
+| :--- | :--- | :--- |
+| ⊘ | — (distance seule) | — |
+| **1** | celui de la pièce de la sélection 1 | la sélection 1 |
+| **2** | celui de la pièce de la sélection 2 | la sélection 2, et se déroule à rebours |
+| **Global** *(défaut)* | celui du projet | la sélection 1 |
+
+Les écarts sont **signés**, comptés de la sélection 1 vers la sélection 2.
+OpenCascade livre la géométrie déjà placée dans l'assemblage : la rotation d'une
+instance n'est pas conservée. Le repère d'une pièce est donc retrouvé par ses
+**faces planes** — la normale de la plus grande direction plane, puis celle de
+la plus grande qui lui est perpendiculaire — et une pièce posée droite retombe
+exactement sur les axes du projet.
+
+**Précision** : de 0 à 5 décimales. Les zéros de queue tombent jusqu'à deux
+décimales (`2,00`, `63,64`, mais `58,693`) ; les angles gardent deux décimales.
+
 D'où viennent les faces :
 
 - **STEP, IGES, BREP** : d'OpenCascade, qui donne pour chaque face du modèle
@@ -217,15 +257,15 @@ WEB_3D/
 
 | Fichier | Lignes | Rôle |
 | :--- | ---: | :--- |
-| `js/00-config.js` | 255 | préférences et **table des gestes de souris** : c'est elle que lit la navigation |
+| `js/00-config.js` | 260 | préférences et **table des gestes de souris** : c'est elle que lit la navigation |
 | `js/01-scene.js` | 523 | scène, deux caméras pour un même cadrage, éclairage, sol, modes d'affichage, plan de coupe |
 | `js/02-import.js` | 486 | fichier → maillages : les six formats, hiérarchie, couleurs (y compris par face B-Rep), unités, arêtes vives |
 | `js/03-navigation.js` | 455 | orbite (libre / contrainte), panoramique, zoom, tactile, inertie, animations de vue |
 | `js/04-cube-vue.js` | 307 | cube de vues : 26 zones cliquables, triade, rendu dans son propre canevas |
 | `js/05-arbre.js` | 386 | arbre d'assemblage, sélection, isolement, fiche de propriétés, volume et surface |
-| `js/06-topologie.js` | 973 | **arêtes et faces sous les triangles** : soudure, régions, chaînes, reconnaissance des formes, formules de cotation |
-| `js/07-mesure.js` | 471 | les trois modes de mesure : point, arête, face — désignation, surlignage, étiquettes |
-| `js/08-interface.js` | 634 | barre d'outils, ouverture, dialogues de réglages, clavier |
+| `js/06-topologie.js` | 1900 | **arêtes et faces sous les triangles** : soudure, régions, chaînes, reconnaissance des formes, formules de cotation, repère propre d'une pièce, points d'accroche |
+| `js/07-mesure.js` | 1376 | les modes de mesure (auto, point, arête, face) — accroche, désignation, surlignage, étiquettes, ΔXYZ, fenêtre de résultats |
+| `js/08-interface.js` | 989 | barre d'outils, ouverture, dialogues de réglages, clavier |
 | `js/09-demarrage.js` | 98 | assemblage des modules et branchements |
 | `js/travailleur-occt.js` | 88 | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 
