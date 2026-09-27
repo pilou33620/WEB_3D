@@ -1200,6 +1200,25 @@ const coordonnees = (p) => `${cote(p.x)} ; ${cote(p.y)} ; ${cote(p.z)}`;
 const longueurs = (A, B) => ["Longueurs", `${cote(A.longueur)} / ${cote(B.longueur)} mm`];
 
 /**
+ * L'arc coté d'un angle : centré en I, de la direction uA à la direction uB
+ * (unitaires), au rayon donné. `null` si les deux directions se confondent.
+ */
+function arcEntre(I, uA, uB, rayon){
+  const angle = Math.acos(Math.min(1, Math.max(-1, uA.dot(uB))));
+  const w = new THREE.Vector3().subVectors(uB, uA.clone().multiplyScalar(uA.dot(uB)));
+  if(angle < 1e-4 || w.lengthSq() < 1e-20) return null;
+  w.normalize();
+  const arc = [];
+  const n = Math.max(8, Math.ceil(angle / (Math.PI / 48)));
+  for(let i = 0; i <= n; i++){
+    const t = angle * i / n;
+    arc.push(I.clone().addScaledVector(uA, rayon * Math.cos(t)).addScaledVector(w, rayon * Math.sin(t)));
+  }
+  const bissectrice = uA.clone().multiplyScalar(Math.cos(angle / 2)).addScaledVector(w, Math.sin(angle / 2));
+  return { arc, angle, ancre:I.clone().addScaledVector(bissectrice, rayon), etiquette:degres(angle) };
+}
+
+/**
  * Le tracé de construction d'un angle entre deux arêtes droites non
  * parallèles, comme Fusion 360 le dessine : chaque arête prolongée en trait
  * fin jusqu'au croisement de leurs droites, et un arc coté entre les deux.
@@ -1232,9 +1251,6 @@ function constructionAngle(A, B){
   let retourne = false;
   if(!uB){ uB = B.dir.clone(); if(uB.dot(uA) < 0) uB.negate(); }
   else if(uB.dot(uA) < 0){ uB.negate(); retourne = true; }
-  const angle = Math.acos(Math.min(1, Math.max(-1, uA.dot(uB))));
-  if(angle < 1e-4) return null;
-
   /* Les traits fins : de chaque arête jusqu'au croisement, quand il est dehors. */
   const prolongements = [];
   const versCroisement = (E, pied) => {
@@ -1252,20 +1268,99 @@ function constructionAngle(A, B){
   if(retourne) prolongements.push([r.c2.clone(), r.c2.clone().addScaledVector(uB, rayonArc * 1.15)]);
   if(r.d > tol) prolongements.push([r.c1.clone(), r.c2.clone()]);   // arêtes gauches : la perpendiculaire commune
 
-  const w = new THREE.Vector3().subVectors(uB, uA.clone().multiplyScalar(uA.dot(uB))).normalize();
-  const arc = [];
-  const n = Math.max(8, Math.ceil(angle / (Math.PI / 48)));
-  for(let i = 0; i <= n; i++){
-    const t = angle * i / n;
-    arc.push(I.clone().addScaledVector(uA, rayonArc * Math.cos(t)).addScaledVector(w, rayonArc * Math.sin(t)));
-  }
-  const bissectrice = uA.clone().multiplyScalar(Math.cos(angle / 2)).addScaledVector(w, Math.sin(angle / 2));
-  return {
-    prolongements, arc, angle,
-    ancre:I.clone().addScaledVector(bissectrice, rayonArc),
-    etiquette:degres(angle),
-    ecartDroites:r.d > tol ? r.d : 0,     // non nul : arêtes gauches
+  const a = arcEntre(I, uA, uB, rayonArc);
+  if(!a) return null;
+  return { prolongements, ...a, ecartDroites:r.d > tol ? r.d : 0 };   // non nul : arêtes gauches
+}
+
+/**
+ * Le même tracé entre deux faces planes sécantes : l'arc se pose sur leur
+ * droite d'intersection, dans le plan qui lui est perpendiculaire, et s'ouvre
+ * vers chacune des faces. Une face qui n'atteint pas l'intersection y est
+ * prolongée en tirets ; un bout de la droite d'intersection est tracé aussi,
+ * pour qu'on voie sur quoi l'arc s'appuie.
+ */
+function constructionPlans(A, B){
+  const L = new THREE.Vector3().crossVectors(A.normale, B.normale);
+  if(L.lengthSq() < 1e-12) return null;
+  L.normalize();
+  /* Le point de l'intersection le plus proche du milieu des deux faces. */
+  const m = A.centre.clone().lerp(B.centre, 0.5);
+  const sol = resoudre3([[A.normale.x, A.normale.y, A.normale.z],
+                         [B.normale.x, B.normale.y, B.normale.z],
+                         [L.x, L.y, L.z]],
+                        [A.normale.dot(A.centre), B.normale.dot(B.centre), L.dot(m)]);
+  if(!sol) return null;
+  const I = new THREE.Vector3(...sol);
+  const tol = Math.max(A.tol || 0, B.tol || 0, 1e-9);
+
+  /* Pour chaque face : la direction qui part de I vers elle, dans son plan et
+     perpendiculairement à l'intersection, et jusqu'où elle s'étend. */
+  const cote = (F) => {
+    const u = new THREE.Vector3().subVectors(F.centre, I);
+    u.addScaledVector(L, -u.dot(L));
+    if(u.lengthSq() < 1e-20) u.crossVectors(L, F.normale);
+    u.normalize();
+    let tmin = Infinity, tmax = -Infinity;
+    for(const v of sommetsDeFace(F, 400)){
+      const t = new THREE.Vector3().subVectors(v, I).dot(u);
+      tmin = Math.min(tmin, t); tmax = Math.max(tmax, t);
+    }
+    return { u, tmin, tmax };
   };
+  const a = cote(A), b = cote(B);
+  const rayon = 0.6 * Math.max(1e-9, Math.min(a.tmax, b.tmax));
+  const prolongements = [[I.clone().addScaledVector(L, -rayon * 0.5), I.clone().addScaledVector(L, rayon * 0.5)]];
+  for(const f of [a, b]){
+    if(f.tmin > tol) prolongements.push([I.clone().addScaledVector(f.u, f.tmin), I.clone()]);
+  }
+  /* L'angle affiché est l'aigu : si les faces s'ouvrent en obtus, l'arc
+     s'appuie sur le prolongement de la seconde au-delà de l'intersection. */
+  let uB = b.u;
+  if(a.u.dot(uB) < 0){
+    uB = uB.clone().negate();
+    prolongements.push([I.clone(), I.clone().addScaledVector(uB, rayon * 1.15)]);
+  }
+  const arc = arcEntre(I, a.u, uB, rayon);
+  return arc ? { prolongements, ...arc } : null;
+}
+
+/**
+ * Entre une arête droite et une face plane : l'arc se pose où la droite de
+ * l'arête perce le plan, entre l'arête et sa projection sur le plan — c'est
+ * la définition de l'angle d'une droite et d'un plan. L'arête est prolongée
+ * jusqu'au plan si elle ne l'atteint pas, et la projection est tracée en
+ * tirets dans le plan.
+ */
+function constructionAretePlan(arete, face){
+  const n = face.normale;
+  const den = arete.dir.dot(n);
+  if(Math.abs(den) < 1e-9) return null;
+  const t = new THREE.Vector3().subVectors(face.centre, arete.a).dot(n) / den;
+  const X = arete.a.clone().addScaledVector(arete.dir, t);
+  const tol = Math.max(arete.tol || 0, face.tol || 0, 1e-9);
+
+  /* Positions des bouts de l'arête comptées depuis X. */
+  const ta = -t, tb = arete.longueur - t;
+  const dedans = ta < -tol && tb > tol;
+  const uA = arete.dir.clone().multiplyScalar(dedans ? (tb >= -ta ? 1 : -1) : (ta + tb >= 0 ? 1 : -1));
+  let uB = uA.clone().addScaledVector(n, -uA.dot(n));
+  if(uB.lengthSq() < 1e-12){
+    /* Arête perpendiculaire au plan : toutes les directions du plan se
+       valent, on prend celle qui va vers le centre de la face. */
+    uB = new THREE.Vector3().subVectors(face.centre, X).addScaledVector(n, -new THREE.Vector3().subVectors(face.centre, X).dot(n));
+    if(uB.lengthSq() < 1e-12) uB = repere(n).u;
+  }
+  uB.normalize();
+
+  const rayon = 0.6 * Math.max(Math.abs(ta), Math.abs(tb));
+  const prolongements = [[X.clone(), X.clone().addScaledVector(uB, rayon * 1.15)]];
+  if(!dedans && Math.min(Math.abs(ta), Math.abs(tb)) > tol){
+    const bout = Math.abs(ta) < Math.abs(tb) ? arete.a : arete.b;
+    prolongements.push([bout.clone(), X.clone()]);
+  }
+  const arc = arcEntre(X, uA, uB, rayon);
+  return arc ? { prolongements, ...arc } : null;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1582,13 +1677,18 @@ export function mesurerFaces(A, B){
       };
     }
     const mini = nappeNappe(A, B);
-    const etMin = degres(angle);
+    /* Faces jointives : la cote est déjà l'angle, l'arc se passe d'étiquette.
+       Faces séparées : la cote donne la distance, l'arc donne l'angle. */
+    const construction = constructionPlans(A, B);
+    const jointives = mini.d < Math.max(A.tol, B.tol, 1e-3);
+    if(construction && jointives) construction.etiquette = null;
+    const etMin = construction && !jointives ? mm(mini.d) : degres(angle);
     const ficheMin = fiche("Plans sécants", ["Angle", degres(angle)], ["Plus court chemin (maillage)", mm(mini.d)]);
     const etMax = `${mm(maxi.d)} (Max)`;
     const ficheMax = fiche("Plans sécants", ["Angle", degres(angle)], ["Plus long chemin (maillage)", mm(maxi.d)]);
     return {
       p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
-      extensible:true, positionActuelle:"min",
+      extensible:true, positionActuelle:"min", construction,
       min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
       max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
@@ -1696,10 +1796,12 @@ export function mesurerAreteFace(A, B){
 
     if(t >= 0 && t <= arete.longueur){
       const inter = arete.a.clone().addScaledVector(arete.dir, t);
+      const construction = constructionAretePlan(arete, face);
+      if(construction) construction.etiquette = null;      // la cote dit déjà l'angle
       return {
         p1:inter, p2:inter, etiquette:degres(angle),
         fiche:fiche("Arête coupant le plan", ["Angle", degres(angle)], ["Point d'intersection", coordonnees(inter)]),
-        extensible:false,
+        extensible:false, construction,
       };
     }
 
@@ -1709,13 +1811,14 @@ export function mesurerAreteFace(A, B){
     const ecart = w.dot(face.normale);
     const p2 = p1.clone().addScaledVector(face.normale, -ecart);
     const d = p1.distanceTo(p2);
-    const etMin = `${mm(d)} · ${degres(angle)}`;
+    const construction = constructionAretePlan(arete, face);
+    const etMin = construction ? mm(d) : `${mm(d)} · ${degres(angle)}`;
     const ficheMin = fiche("Arête inclinée sur le plan", ["Distance", mm(d)], ["Angle", degres(angle)]);
     const etMax = `${mm(maxi.d)} (Max)`;
     const ficheMax = fiche("Arête inclinée sur le plan", ["Distance max", mm(maxi.d)], ["Angle", degres(angle)]);
     return {
       p1, p2, etiquette:etMin, fiche:ficheMin,
-      extensible:true, positionActuelle:"min",
+      extensible:true, positionActuelle:"min", construction,
       min:{ p1, p2, d, etiquette:etMin, fiche:ficheMin },
       max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
@@ -1846,9 +1949,209 @@ export function mesurerAreteFace(A, B){
 }
 
 /* ---------------------------------------------------------------------------
+   Pièce ↔ pièce : distance minimale entre deux corps
+   ------------------------------------------------------------------------- */
+
+/**
+ * Les triangles d'une pièce en coordonnées du monde, avec la boîte de chacun.
+ * Gardés sur la pièce tant qu'elle ne bouge pas.
+ */
+function trianglesMonde(maillage){
+  maillage.updateWorldMatrix(true, false);
+  const garde = maillage.userData.trianglesMonde;
+  if(garde && garde.matrice.equals(maillage.matrixWorld)) return garde;
+  const geo = maillage.geometry, pos = geo.attributes.position, index = geo.index;
+  const nb = Math.floor((index ? index.count : pos.count) / 3);
+  const P = new Float32Array(nb * 9), boites = new Float32Array(nb * 6);
+  const v = new THREE.Vector3(), boite = new THREE.Box3();
+  for(let t = 0; t < nb; t++){
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for(let c = 0; c < 3; c++){
+      v.fromBufferAttribute(pos, index ? index.getX(t*3 + c) : t*3 + c).applyMatrix4(maillage.matrixWorld);
+      P[t*9 + c*3] = v.x; P[t*9 + c*3 + 1] = v.y; P[t*9 + c*3 + 2] = v.z;
+      x0 = Math.min(x0, v.x); y0 = Math.min(y0, v.y); z0 = Math.min(z0, v.z);
+      x1 = Math.max(x1, v.x); y1 = Math.max(y1, v.y); z1 = Math.max(z1, v.z);
+      boite.expandByPoint(v);
+    }
+    boites.set([x0, y0, z0, x1, y1, z1], t * 6);
+  }
+  const r = { matrice:maillage.matrixWorld.clone(), P, boites, nb, boite };
+  maillage.userData.trianglesMonde = r;
+  return r;
+}
+
+/** Distance entre deux boîtes données comme [x0,y0,z0,x1,y1,z1] (tableaux ou Box3 aplaties). */
+function ecartBoites(a, i, b, j){
+  const dx = Math.max(0, a[i] - b[j + 3], b[j] - a[i + 3]);
+  const dy = Math.max(0, a[i + 1] - b[j + 4], b[j + 1] - a[i + 4]);
+  const dz = Math.max(0, a[i + 2] - b[j + 5], b[j + 2] - a[i + 5]);
+  return Math.sqrt(dx*dx + dy*dy + dz*dz);
+}
+const aplatir = (b) => [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z];
+
+/**
+ * Plus courte distance entre deux triangles : les neuf couples d'arêtes et les
+ * six couples sommet-face. Si une arête de l'un traverse l'autre, ils se
+ * coupent : distance nulle au point de percée.
+ */
+const _tA = new THREE.Triangle(), _tB = new THREE.Triangle(), _proche = new THREE.Vector3();
+const _ray = new THREE.Ray(), _perce = new THREE.Vector3(), _dir = new THREE.Vector3();
+function triangleTriangle(sA, sB, meilleur){
+  _tA.set(sA[0], sA[1], sA[2]);
+  _tB.set(sB[0], sB[1], sB[2]);
+  for(const [S, T] of [[sA, _tB], [sB, _tA]]){
+    for(let k = 0; k < 3; k++){
+      const p = S[k], q = S[(k + 1) % 3];
+      _dir.subVectors(q, p);
+      const l = _dir.length();
+      if(l < 1e-12) continue;
+      _ray.set(p, _dir.divideScalar(l));
+      if(_ray.intersectTriangle(T.a, T.b, T.c, false, _perce) && _perce.distanceTo(p) <= l){
+        meilleur.d = 0; meilleur.c1 = _perce.clone(); meilleur.c2 = _perce.clone();
+        return true;
+      }
+    }
+  }
+  let mieux = false;
+  for(let i = 0; i < 3; i++) for(let j = 0; j < 3; j++){
+    const r = segmentSegment(sA[i], sA[(i + 1) % 3], sB[j], sB[(j + 1) % 3]);
+    if(r.d < meilleur.d){ meilleur.d = r.d; meilleur.c1 = r.c1; meilleur.c2 = r.c2; mieux = true; }
+  }
+  for(let i = 0; i < 3; i++){
+    _tB.closestPointToPoint(sA[i], _proche);
+    let d = _proche.distanceTo(sA[i]);
+    if(d < meilleur.d){ meilleur.d = d; meilleur.c1 = sA[i].clone(); meilleur.c2 = _proche.clone(); mieux = true; }
+    _tA.closestPointToPoint(sB[i], _proche);
+    d = _proche.distanceTo(sB[i]);
+    if(d < meilleur.d){ meilleur.d = d; meilleur.c1 = _proche.clone(); meilleur.c2 = sB[i].clone(); mieux = true; }
+  }
+  return mieux;
+}
+
+/**
+ * Distance minimale entre deux pièces entières, sur leurs maillages.
+ *
+ * Tout comparer à tout serait quadratique. On procède en resserrant :
+ *  1. une borne haute, par les sommets d'un échantillon des deux pièces ;
+ *  2. ne restent que les triangles à moins de cette borne de l'autre pièce ;
+ *  3. ceux de B vont dans une grille, ceux de A sont pris du plus prometteur
+ *     au moins prometteur, et chacun ne regarde que les cases à portée de la
+ *     meilleure distance du moment. Dès qu'un triangle de A ne peut plus faire
+ *     mieux, les suivants non plus : on s'arrête.
+ * La réponse est exacte pour les triangles ; elle ne dit pas mieux que le
+ * maillage d'affichage ne dit de la surface.
+ */
+export function mesurerPieces(EA, EB){
+  const A = trianglesMonde(EA.maillage), B = trianglesMonde(EB.maillage);
+  if(!A.nb || !B.nb) return null;
+  const sommet = (T, t, c) => new THREE.Vector3(T.P[t*9 + c*3], T.P[t*9 + c*3 + 1], T.P[t*9 + c*3 + 2]);
+  const tri = (T, t) => [sommet(T, t, 0), sommet(T, t, 1), sommet(T, t, 2)];
+
+  // 1. Borne haute par échantillon de sommets
+  const meilleur = { d:Infinity, c1:null, c2:null };
+  const pasA = Math.max(1, Math.ceil(A.nb * 3 / 2500)), pasB = Math.max(1, Math.ceil(B.nb * 3 / 2500));
+  for(let i = 0; i < A.nb * 3; i += pasA){
+    const ax = A.P[i*3], ay = A.P[i*3 + 1], az = A.P[i*3 + 2];
+    for(let j = 0; j < B.nb * 3; j += pasB){
+      const dx = ax - B.P[j*3], dy = ay - B.P[j*3 + 1], dz = az - B.P[j*3 + 2];
+      const d = dx*dx + dy*dy + dz*dz;
+      if(d < meilleur.d){ meilleur.d = d; meilleur.i = i; meilleur.j = j; }
+    }
+  }
+  meilleur.d = Math.sqrt(meilleur.d);
+  meilleur.c1 = new THREE.Vector3(A.P[meilleur.i*3], A.P[meilleur.i*3 + 1], A.P[meilleur.i*3 + 2]);
+  meilleur.c2 = new THREE.Vector3(B.P[meilleur.j*3], B.P[meilleur.j*3 + 1], B.P[meilleur.j*3 + 2]);
+
+  // 2. Les triangles à portée de l'autre pièce
+  const boiteA = aplatir(A.boite), boiteB = aplatir(B.boite);
+  const candA = [], candB = [];
+  for(let t = 0; t < A.nb; t++) if(ecartBoites(A.boites, t*6, boiteB, 0) <= meilleur.d) candA.push(t);
+  for(let t = 0; t < B.nb; t++) if(ecartBoites(B.boites, t*6, boiteA, 0) <= meilleur.d) candB.push(t);
+
+  // 3. Grille sur les candidats de B
+  const zone = new THREE.Box3();
+  for(const t of candB) zone.union(new THREE.Box3(new THREE.Vector3(B.boites[t*6], B.boites[t*6+1], B.boites[t*6+2]),
+                                                 new THREE.Vector3(B.boites[t*6+3], B.boites[t*6+4], B.boites[t*6+5])));
+  const taille = zone.getSize(new THREE.Vector3());
+  /* La case : pas plus fine que les triangles (sinon chacun s'inscrit dans
+     des centaines de cases), ni que la distance cherchée (sinon chaque
+     recherche en balaie des centaines), et au plus 48 par côté. */
+  let triMoyen = 0;
+  for(const t of candB){
+    const b = t * 6;
+    triMoyen += Math.max(B.boites[b+3] - B.boites[b], B.boites[b+4] - B.boites[b+1], B.boites[b+5] - B.boites[b+2]);
+  }
+  triMoyen /= Math.max(1, candB.length);
+  const h = Math.max(Math.max(taille.x, taille.y, taille.z) / 48, triMoyen, meilleur.d * 0.75, 1e-9);
+  const n = [0, 1, 2].map(k => Math.max(1, Math.ceil(taille.getComponent(k) / h) + 1));
+  const caseDe = (x, k) => Math.max(0, Math.min(n[k] - 1, Math.floor((x - zone.min.getComponent(k)) / h)));
+  const grille = new Map();
+  for(const t of candB){
+    const b = t * 6;
+    for(let i = caseDe(B.boites[b], 0); i <= caseDe(B.boites[b+3], 0); i++)
+      for(let j = caseDe(B.boites[b+1], 1); j <= caseDe(B.boites[b+4], 1); j++)
+        for(let k = caseDe(B.boites[b+2], 2); k <= caseDe(B.boites[b+5], 2); k++){
+          const cle = i + n[0] * (j + n[1] * k);
+          let l = grille.get(cle);
+          if(!l){ l = []; grille.set(cle, l); }
+          l.push(t);
+        }
+  }
+
+  // 4. Parcours des candidats de A, du plus proche de la zone au plus lointain
+  const boiteZone = aplatir(zone);
+  const ordre = candA.map(t => ({ t, lb:ecartBoites(A.boites, t*6, boiteZone, 0) })).sort((x, y) => x.lb - y.lb);
+  const vu = new Int32Array(B.nb).fill(-1);
+  let paires = 0;
+  for(const { t, lb } of ordre){
+    if(lb >= meilleur.d || meilleur.d === 0) break;
+    const a = t * 6, m = meilleur.d;
+    const sA = tri(A, t);
+    const essayer = (u) => {
+      if(vu[u] === t) return;
+      vu[u] = t;
+      if(ecartBoites(A.boites, a, B.boites, u*6) >= meilleur.d) return;
+      paires++;
+      triangleTriangle(sA, tri(B, u), meilleur);
+    };
+    const i0 = caseDe(A.boites[a] - m, 0), i1 = caseDe(A.boites[a+3] + m, 0);
+    const j0 = caseDe(A.boites[a+1] - m, 1), j1 = caseDe(A.boites[a+4] + m, 1);
+    const k0 = caseDe(A.boites[a+2] - m, 2), k1 = caseDe(A.boites[a+5] + m, 2);
+    /* Pièces éloignées : la portée couvre plus de cases qu'il n'y a de
+       triangles candidats. Les passer en revue coûte alors moins cher. */
+    if((i1 - i0 + 1) * (j1 - j0 + 1) * (k1 - k0 + 1) > candB.length){
+      for(const u of candB){ essayer(u); if(meilleur.d === 0) break; }
+      continue;
+    }
+    for(let i = i0; i <= i1 && meilleur.d > 0; i++)
+      for(let j = j0; j <= j1 && meilleur.d > 0; j++)
+        for(let k = k0; k <= k1 && meilleur.d > 0; k++){
+          const l = grille.get(i + n[0] * (j + n[1] * k));
+          if(l) for(const u of l){ essayer(u); if(meilleur.d === 0) break; }
+        }
+  }
+  meilleur.paires = paires;
+  return meilleur;
+}
+
+/* ---------------------------------------------------------------------------
    Aiguillage universel de mesure
    ------------------------------------------------------------------------- */
 export function mesurerEntites(A, B){
+  if(A.genre === "piece" || B.genre === "piece"){
+    const r = mesurerPieces(A, B);
+    if(!r) return null;
+    const contact = r.d <= Math.max(A.maillage.userData?.tol || 0, 1e-6);
+    const nomA = A.maillage.name || "Pièce 1", nomB = B.maillage.name || "Pièce 2";
+    return {
+      p1:r.c1, p2:r.c2, etiquette:contact ? "0 mm (contact)" : mm(r.d),
+      fiche:fiche("Pièce et pièce",
+                  ["Distance minimale", contact ? "0 mm — contact ou interpénétration" : mm(r.d)],
+                  ["Entre", `« ${nomA} » et « ${nomB} »`],
+                  ["Calcul", "triangles du maillage d'affichage"]),
+      extensible:false,
+    };
+  }
   if(A.genre === "arete" && B.genre === "arete") return mesurerAretes(A, B);
   if(A.genre === "face" && B.genre === "face") return mesurerFaces(A, B);
   return mesurerAreteFace(A, B);
@@ -1859,6 +2162,7 @@ export function mesurerEntites(A, B){
    ------------------------------------------------------------------------- */
 export function resumer(e){
   if(!e) return "";
+  if(e.genre === "piece") return `Pièce « ${e.maillage?.name || "sans nom"} »`;
   const nom = e.maillage?.name ? `  (${e.maillage.name})` : "";
   if(e.genre === "arete"){
     if(e.type === "droite") return `Arête droite ${mm(e.longueur)}${nom}`;

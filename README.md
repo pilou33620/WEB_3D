@@ -103,7 +103,7 @@ Un modèle peut aussi être ouvert directement par l'URL :
 
 ### Mesurer
 
-<kbd>K</kbd> ouvre l'outil, <kbd>M</kbd> fait tourner les quatre modes (Auto par défaut).
+<kbd>K</kbd> ouvre l'outil, <kbd>M</kbd> fait tourner les cinq modes (Auto par défaut).
 On ne mesure pas des triangles : la visionneuse reconstruit d'abord les arêtes
 et les faces du modèle, puis reconnaît ce qu'elles sont — une droite, un cercle,
 un plan, un cylindre — et donne la cote qu'un mécanicien attend de ce couple-là.
@@ -113,6 +113,7 @@ un plan, un cylindre — et donne la cote qu'un mécanicien attend de ce couple-
 | **Auto** *(défaut)* | un élément seul ou deux entités : approche d'un bord → arête, surface → face | clic unique : cercle complet → **diamètre ⌀**, arc → **rayon R**, arête → longueur. Deux entités : distance, **angle**, entraxe, épaisseur, hauteur d'axe |
 | **Point** | deux points, accrochés aux sommets | distance, ΔX, ΔY, ΔZ |
 | **Arête** | une arête ou deux arêtes | clic unique : cercle complet → **diamètre ⌀**, arc → **rayon R**, droite → longueur. Deux arêtes : perçages → **entraxe** de centre à centre et ⌀/R ; droites parallèles → écartement ; sécantes → angle ; perçage et bord → cote de pose |
+| **Pièce** | une pièce ou deux pièces entières | une pièce : nom, triangles, encombrement, centre. Deux pièces : **distance minimale** entre les corps (0 au contact) |
 | **Face** | une face ou deux faces | clic unique : cylindre → ⌀/R et hauteur, plan → aire. Deux faces : plans parallèles → **épaisseur** ; cylindres → **entraxe**, ⌀/R et jeu ; cylindre et plan → hauteur d'axe et jeu |
 
 Ce qui est désigné est surligné : la nappe teintée et, surtout, le trait de son
@@ -131,7 +132,16 @@ Entre deux arêtes droites non parallèles, la cote donne la plus courte distanc
 entre les arêtes réelles, bouts compris, et l'angle se lit sur un **arc** posé au
 croisement de leurs **prolongements**, tracés en tirets. Si les arêtes ne sont
 pas dans un même plan, l'arc se pose au pied de leur perpendiculaire commune,
-tracée elle aussi, et la fenêtre donne l'écart entre les deux droites.
+tracée elle aussi, et la fenêtre donne l'écart entre les deux droites. Le même
+tracé accompagne deux **plans sécants** (arc sur leur droite d'intersection) et
+une **arête inclinée sur un plan** (arc au point de percée, entre l'arête et sa
+projection sur le plan).
+
+La distance entre **deux pièces entières** se calcule triangle contre triangle —
+arête contre arête comprise, ce qui compte pour deux cylindres croisés — en ne
+regardant que ce qui peut encore battre la meilleure distance trouvée : une
+borne tirée d'un échantillon de sommets, une grille sur les triangles de la
+seconde pièce, et l'arrêt dès qu'aucun triangle ne peut plus faire mieux.
 
 La fenêtre se déplace par sa barre de titre (double-clic pour la remettre en
 place) et chaque section se replie. La barre d'état ne garde que la consigne.
@@ -269,8 +279,8 @@ WEB_3D/
 | `js/03-navigation.js` | 455 | orbite (libre / contrainte), panoramique, zoom, tactile, inertie, animations de vue |
 | `js/04-cube-vue.js` | 307 | cube de vues : 26 zones cliquables, triade, rendu dans son propre canevas |
 | `js/05-arbre.js` | 386 | arbre d'assemblage, sélection, isolement, fiche de propriétés, volume et surface |
-| `js/06-topologie.js` | 1900 | **arêtes et faces sous les triangles** : soudure, régions, chaînes, reconnaissance des formes, formules de cotation, repère propre d'une pièce, points d'accroche |
-| `js/07-mesure.js` | 1376 | les modes de mesure (auto, point, arête, face) — accroche, désignation, surlignage, étiquettes, ΔXYZ, fenêtre de résultats |
+| `js/06-topologie.js` | 2283 | **arêtes et faces sous les triangles** : soudure, régions, chaînes, reconnaissance des formes, formules de cotation, repère propre d'une pièce, points d'accroche, distance entre pièces |
+| `js/07-mesure.js` | 1479 | les modes de mesure (auto, point, arête, face, pièce) — accroche, désignation, surlignage, étiquettes, ΔXYZ, fenêtre de résultats |
 | `js/08-interface.js` | 989 | barre d'outils, ouverture, dialogues de réglages, clavier |
 | `js/09-demarrage.js` | 98 | assemblage des modules et branchements |
 | `js/travailleur-occt.js` | 88 | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |

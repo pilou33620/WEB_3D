@@ -215,9 +215,10 @@ main{flex:1;display:flex;min-height:0}
 .fm-section.repliee .fm-section-titre::before{content:"▸"}
 .fm-section.repliee > :not(.fm-section-titre){display:none}
 .fm-sous-titre{padding:0 12px 4px 28px;color:var(--txt-dim);font-style:italic}
-.fm-ligne{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:2px 12px 2px 28px;align-items:baseline}
-.fm-cle{color:var(--txt-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fm-valeur{font-family:var(--mono);color:var(--txt);text-align:right;overflow-wrap:anywhere}
+/* Le libellé ne rétrécit jamais ; c'est une valeur trop longue qui passe à la ligne. */
+.fm-ligne{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;padding:2px 12px 2px 28px;align-items:baseline}
+.fm-cle{color:var(--txt-dim);white-space:nowrap}
+.fm-valeur{font-family:var(--mono);color:var(--txt);text-align:right;overflow-wrap:anywhere;min-width:0}
 .fm-note{grid-template-columns:1fr}
 .fm-note .fm-valeur{font-family:var(--ui);color:var(--txt-dim);text-align:left}
 .fm-dx .fm-cle,.fm-dy .fm-cle,.fm-dz .fm-cle{font-weight:700}

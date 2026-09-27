@@ -65,6 +65,7 @@ export const MODES = {
   point: { nom:"Point",  aide:"Mesure point à point : cliquez le premier point (accroche sommets, milieux, centres · Maj : point libre)." },
   arete: { nom:"Arête",  aide:"Mesure d'arête à arête : approchez le curseur d'une arête, puis cliquez." },
   face:  { nom:"Face",   aide:"Mesure de face à face : cliquez une face de la pièce." },
+  piece: { nom:"Pièce",  aide:"Mesure entre pièces : cliquez une pièce, puis une autre (distance minimale)." },
 };
 
 /** Les réglages ΔXYZ, dans l'ordre des boutons de Fusion 360. */
@@ -479,10 +480,12 @@ export class Mesure {
   remesurer(){
     if(!this.actif) return;
     if(this.entites.length === 2){
-      this.poserResultat(mesurerEntites(this.entites[0], this.entites[1]));
+      const r = mesurerEntites(this.entites[0], this.entites[1]);
+      if(r) this.poserResultat(r);
     }else if(this.entites.length === 1){
       const r = mesurerEntiteSeule(this.entites[0]);
       if(r) this.poserResultat(r);
+      else this.majFenetre();
     }else if(this.points.length === 2){
       this.poserPoints();
     }
@@ -510,6 +513,31 @@ export class Mesure {
    */
   fabriquerSurlignage(entite, couleur, retenu){
     const coupe = this.vue.plansCoupe.length ? this.vue.plansCoupe : null;
+
+    if(entite.genre === "piece"){
+      const m = entite.maillage;
+      m.updateWorldMatrix(true, false);
+      const g = new THREE.Group();
+      /* Le voile reprend la géométrie de la pièce sans la copier : jeter() ne
+         doit donc pas la libérer (userData.partagee). */
+      const voile = new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial({
+        color:couleur, transparent:true, opacity:retenu ? 0.4 : 0.22, depthWrite:false,
+        side:THREE.DoubleSide, clippingPlanes:coupe,
+        polygonOffset:true, polygonOffsetFactor:-3, polygonOffsetUnits:-3,
+      }));
+      voile.matrixAutoUpdate = false;
+      voile.matrix.copy(m.matrixWorld);
+      voile.userData.partagee = true;
+      voile.renderOrder = 4;
+      const cadre = new THREE.Box3Helper(new THREE.Box3().setFromObject(m), couleur);
+      cadre.material.depthTest = false;
+      cadre.material.transparent = true;
+      cadre.material.opacity = retenu ? 0.9 : 0.6;
+      cadre.renderOrder = 8;
+      g.add(voile, cadre);
+      this.surlignages.add(g);
+      return g;
+    }
 
     if(entite.genre === "arete"){
       const l = new THREE.Line(geometrieArete(entite), new THREE.LineBasicMaterial({
@@ -543,7 +571,10 @@ export class Mesure {
   jeter(objet){
     if(!objet) return;
     this.surlignages.remove(objet);
-    objet.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
+    objet.traverse(o => {
+      if(!o.userData.partagee) o.geometry?.dispose();
+      o.material?.dispose();
+    });
   }
 
   viderSurlignages(){
@@ -579,6 +610,9 @@ export class Mesure {
     const touches = this.vue.lancerRayon(ev);
     if(!touches.length){ this.raison = "Visez une pièce."; return null; }
     const t = touches[0];
+
+    /* Une pièce entière n'a pas besoin de topologie : le maillage suffit. */
+    if(this.mode === "piece") return { genre:"piece", maillage:t.object, cle:t.object.uuid + "/p" };
 
     const nbTri = t.object.userData?.triangles || 0;
     const autoPret = analyse || (this.mode === "auto" && nbTri <= 100_000);
@@ -791,7 +825,7 @@ export class Mesure {
   /** Ce qu'affiche la barre d'état pendant qu'on choisit : la consigne, et ce
       que le curseur propose à l'instant. */
   messageEnCours(complement){
-    const attendu = this.mode === "auto" ? "élément" : (this.mode === "arete" ? "arête" : "face");
+    const attendu = { auto:"élément", arete:"arête", face:"face", piece:"pièce" }[this.mode] || "élément";
     const base = this.entites.length === 1
       ? `Premier ${attendu} : ${resumer(this.entites[0])}  ·  choisissez le second`
       : MODES[this.mode].aide.replace(/\.$/, "");
@@ -874,7 +908,8 @@ export class Mesure {
       }
     }else{
       const r = mesurerEntites(this.entites[0], this.entites[1]);
-      this.poserResultat(r);
+      if(r) this.poserResultat(r);
+      else{ this.annoncer("Mesure impossible entre ces deux éléments."); this.majFenetre(); }
     }
     this.vue.invalider();
     return true;
@@ -954,7 +989,20 @@ export class Mesure {
     };
   }
 
+  decrirePiece(m){
+    const b = new THREE.Box3().setFromObject(m);
+    const t = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
+    return {
+      sousTitre:"Pièce entière",
+      lignes:[["Nom", m.name || "sans nom"],
+              ["Triangles", nombre(m.userData?.triangles || 0)],
+              ["Encombrement X", mm(t.x)], ["Encombrement Y", mm(t.y)], ["Encombrement Z", mm(t.z)],
+              ["Centre X", mm(c.x)], ["Centre Y", mm(c.y)], ["Centre Z", mm(c.z)]],
+    };
+  }
+
   decrireEntite(e){
+    if(e.genre === "piece") return this.decrirePiece(e.maillage);
     const l = [];
     const centre = (c, nom = "Centre") => l.push([`${nom} X`, mm(c.x)], [`${nom} Y`, mm(c.y)], [`${nom} Z`, mm(c.z)]);
     const dir = (v) => `${cote(v.x)} ; ${cote(v.y)} ; ${cote(v.z)}`;
