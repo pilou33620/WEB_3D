@@ -1199,6 +1199,75 @@ function fiche(nature, ...lignes){
 const coordonnees = (p) => `${cote(p.x)} ; ${cote(p.y)} ; ${cote(p.z)}`;
 const longueurs = (A, B) => ["Longueurs", `${cote(A.longueur)} / ${cote(B.longueur)} mm`];
 
+/**
+ * Le tracé de construction d'un angle entre deux arêtes droites non
+ * parallèles, comme Fusion 360 le dessine : chaque arête prolongée en trait
+ * fin jusqu'au croisement de leurs droites, et un arc coté entre les deux.
+ *
+ * Deux arêtes gauches (qui ne sont pas dans un même plan) n'ont pas de
+ * croisement : l'arc se pose alors au pied de la perpendiculaire commune sur
+ * la première droite, la seconde direction y étant ramenée.
+ *
+ * L'arc s'ouvre vers les arêtes elles-mêmes. Quand le croisement tombe au
+ * milieu d'une arête, le sens n'est pas défini : on prend celui qui donne
+ * l'angle aigu, le même que la valeur affichée. S'il faut retourner la
+ * seconde direction pour rester aigu, sa droite est prolongée au-delà du
+ * croisement pour que l'arc s'appuie sur quelque chose.
+ */
+function constructionAngle(A, B){
+  const r = droiteDroite(A.a, A.dir, B.a, B.dir);
+  if(r.parallele) return null;
+  const I = r.c1;
+  const tol = Math.max(A.tol, B.tol, 1e-9);
+
+  /* Sens de I vers l'arête, ou `null` si I est à l'intérieur de l'arête. */
+  const sens = (E, pied) => {
+    const ta = new THREE.Vector3().subVectors(E.a, pied).dot(E.dir);
+    const tb = new THREE.Vector3().subVectors(E.b, pied).dot(E.dir);
+    if(ta < -tol && tb > tol || tb < -tol && ta > tol) return null;
+    return E.dir.clone().multiplyScalar(ta + tb >= 0 ? 1 : -1);
+  };
+  const uA = sens(A, r.c1) || A.dir.clone();
+  let uB = sens(B, r.c2);
+  let retourne = false;
+  if(!uB){ uB = B.dir.clone(); if(uB.dot(uA) < 0) uB.negate(); }
+  else if(uB.dot(uA) < 0){ uB.negate(); retourne = true; }
+  const angle = Math.acos(Math.min(1, Math.max(-1, uA.dot(uB))));
+  if(angle < 1e-4) return null;
+
+  /* Les traits fins : de chaque arête jusqu'au croisement, quand il est dehors. */
+  const prolongements = [];
+  const versCroisement = (E, pied) => {
+    const bout = E.a.distanceTo(pied) < E.b.distanceTo(pied) ? E.a : E.b;
+    const w = new THREE.Vector3().subVectors(pied, E.a).dot(E.dir);
+    if(w < -tol || w > E.longueur + tol) prolongements.push([bout.clone(), pied.clone()]);
+  };
+  versCroisement(A, r.c1);
+  versCroisement(B, r.c2);
+
+  /* Le rayon de l'arc : assez loin du croisement pour se lire, sans
+     dépasser les arêtes. */
+  const loin = (E) => Math.max(E.a.distanceTo(I), E.b.distanceTo(I));
+  const rayonArc = 0.6 * Math.min(loin(A), loin(B));
+  if(retourne) prolongements.push([r.c2.clone(), r.c2.clone().addScaledVector(uB, rayonArc * 1.15)]);
+  if(r.d > tol) prolongements.push([r.c1.clone(), r.c2.clone()]);   // arêtes gauches : la perpendiculaire commune
+
+  const w = new THREE.Vector3().subVectors(uB, uA.clone().multiplyScalar(uA.dot(uB))).normalize();
+  const arc = [];
+  const n = Math.max(8, Math.ceil(angle / (Math.PI / 48)));
+  for(let i = 0; i <= n; i++){
+    const t = angle * i / n;
+    arc.push(I.clone().addScaledVector(uA, rayonArc * Math.cos(t)).addScaledVector(w, rayonArc * Math.sin(t)));
+  }
+  const bissectrice = uA.clone().multiplyScalar(Math.cos(angle / 2)).addScaledVector(w, Math.sin(angle / 2));
+  return {
+    prolongements, arc, angle,
+    ancre:I.clone().addScaledVector(bissectrice, rayonArc),
+    etiquette:degres(angle),
+    ecartDroites:r.d > tol ? r.d : 0,     // non nul : arêtes gauches
+  };
+}
+
 /* ---------------------------------------------------------------------------
    Arête ↔ arête
    ------------------------------------------------------------------------- */
@@ -1237,10 +1306,13 @@ export function mesurerAretes(A, B){
 
     /* 1. Sécantes (se touchent ou presque) : angle et point de contact */
     if(mini.d < Math.max(A.tol, B.tol, 1e-3)){
+      /* L'angle est déjà l'étiquette de la cote : l'arc se dessine sans la sienne. */
+      const construction = constructionAngle(A, B);
+      if(construction) construction.etiquette = null;
       return {
         p1:mini.c1, p2:mini.c2, etiquette:degres(angle),
         fiche:fiche("Arêtes sécantes", ["Angle", degres(angle)], ["Point commun", coordonnees(mini.c1)]),
-        extensible:false,
+        extensible:false, construction,
       };
     }
 
@@ -1283,14 +1355,21 @@ export function mesurerAretes(A, B){
       };
     }
 
-    /* 3. Arêtes gauches / non coplanaires avec un angle : toujours bornées sur les arêtes réelles */
-    const etMin = `${mm(mini.d)} · ${degres(angle)}`;
-    const ficheMin = fiche("Arêtes non parallèles", ["Plus court chemin", mm(mini.d)], ["Angle", degres(angle)]);
-    const etMax = `${mm(maxi.d)} (Max)`;
-    const ficheMax = fiche("Arêtes non parallèles", ["Distance max", mm(maxi.d)], ["Angle", degres(angle)]);
+    /* 3. Arêtes non parallèles qui ne se touchent pas : la distance se prend
+       entre les arêtes réelles, bouts compris ; l'angle se lit sur l'arc posé
+       au croisement de leurs prolongements (ou de leurs perpendiculaires
+       communes, si elles ne sont pas dans un même plan). */
+    const construction = constructionAngle(A, B);
+    const droites = construction?.ecartDroites
+      ? ["Droites", `non coplanaires, écart ${mm(construction.ecartDroites)}`]
+      : ["Droites", "sécantes hors des arêtes"];
+    const etMin = construction ? mm(mini.d) : `${mm(mini.d)} · ${degres(angle)}`;
+    const ficheMin = fiche("Arêtes non parallèles", ["Plus court chemin", mm(mini.d)], ["Angle", degres(angle)], droites);
+    const etMax = construction ? `${mm(maxi.d)} (Max)` : `${mm(maxi.d)} (Max) · ${degres(angle)}`;
+    const ficheMax = fiche("Arêtes non parallèles", ["Distance max", mm(maxi.d)], ["Angle", degres(angle)], droites);
     return {
       p1:mini.c1, p2:mini.c2, etiquette:etMin, fiche:ficheMin,
-      extensible:true, positionActuelle:"min",
+      extensible:true, positionActuelle:"min", construction,
       min:{ p1:mini.c1, p2:mini.c2, d:mini.d, etiquette:etMin, fiche:ficheMin },
       max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,

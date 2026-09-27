@@ -127,6 +127,12 @@ La cote reste posée sur la pièce ; le détail chiffré s'ouvre dans une
   position X/Y/Z d'un point, longueur d'une arête, rayon, diamètre et centre
   d'un cercle, aire et normale d'une face plane, axe et hauteur d'un cylindre.
 
+Entre deux arêtes droites non parallèles, la cote donne la plus courte distance
+entre les arêtes réelles, bouts compris, et l'angle se lit sur un **arc** posé au
+croisement de leurs **prolongements**, tracés en tirets. Si les arêtes ne sont
+pas dans un même plan, l'arc se pose au pied de leur perpendiculaire commune,
+tracée elle aussi, et la fenêtre donne l'écart entre les deux droites.
+
 La fenêtre se déplace par sa barre de titre (double-clic pour la remettre en
 place) et chaque section se replie. La barre d'état ne garde que la consigne.
 

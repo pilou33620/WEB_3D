@@ -254,6 +254,12 @@ export class Mesure {
 
     this.groupe.add(this.ligneDist, this.ligneX, this.ligneY, this.ligneZ);
 
+    /* Tracé de construction d'un angle : prolongements des arêtes et arc. */
+    this.construction = new THREE.Group();
+    this.construction.name = "construction";
+    this.groupe.add(this.construction);
+    this.etiquettesConstruction = [];
+
     this.reperes = [this.repere(), this.repere()];
     /* Sommets de l'escalier delta : P1 (rouge), Coin1 (noir), Coin2 (noir), P2 (bleu) */
     this.reperesDelta = [
@@ -359,6 +365,7 @@ export class Mesure {
     this.pointsTypes = [];
     this.entites = [];
     this.masquerAccroche();
+    this.poserConstruction(null);
     this.ligne.visible = false;
     this.annulerDelta();
     for(const r of this.reperes) r.visible = false;
@@ -882,6 +889,7 @@ export class Mesure {
   /** Trace la cote entre les deux points retenus par la mesure, et l'annonce. */
   poserResultat(r){
     this.dernierResultat = r;
+    this.poserConstruction(r.construction);
     const ecart = (r.p1 && r.p2) ? r.p1.distanceTo(r.p2) : 0;
     if(this.modeDelta !== "off" && ecart > 1e-4){
       this.afficherMesureDelta(r.p1, r.p2, r.etiquette, r);
@@ -980,6 +988,45 @@ export class Mesure {
     }
     if(e.maillage?.name) l.push(["Pièce", e.maillage.name]);
     return { sousTitre, lignes:l };
+  }
+
+  /**
+   * Prolongements en tirets fins, arc dans la couleur des cotes, et l'angle
+   * en étiquette au milieu de l'arc. `null` efface le tracé précédent.
+   */
+  poserConstruction(c){
+    for(const o of [...this.construction.children]){
+      this.construction.remove(o);
+      o.geometry.dispose(); o.material.dispose();
+    }
+    for(const e of this.etiquettesConstruction) e.remove();
+    this.etiquettesConstruction = [];
+    if(!c) return;
+
+    const tiret = (this.vue.rayonModele || 1) * 0.012;
+    for(const [a, b] of c.prolongements){
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]),
+        new THREE.LineDashedMaterial({ color:0xa8b0ba, dashSize:tiret, gapSize:tiret * 0.7,
+                                       depthTest:false, transparent:true, opacity:0.9 }));
+      l.computeLineDistances();
+      l.renderOrder = 6;
+      this.construction.add(l);
+    }
+    const arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.arc),
+      new THREE.LineBasicMaterial({ color:JAUNE, depthTest:false, transparent:true }));
+    arc.renderOrder = 6;
+    this.construction.add(arc);
+
+    if(c.etiquette){
+      const et = document.createElement("div");
+      et.className = "cote cote-angle";
+      et.textContent = c.etiquette;
+      et.title = "Angle entre les arêtes, lu au croisement de leurs prolongements";
+      et.__ancre = c.ancre;
+      this.el.conteneur.appendChild(et);
+      this.etiquettesConstruction.push(et);
+    }
+    this.replacerEtiquettes();
   }
 
   tracerSegment(ligne, a, b){
@@ -1330,6 +1377,12 @@ export class Mesure {
   }
 
   replacerEtiquettes(){
+    for(const et of this.etiquettesConstruction){
+      const p = this.vue.versEcran(et.__ancre);
+      et.style.display = p.z < 1 ? "" : "none";
+      et.style.left = p.x + "px";
+      et.style.top = p.y + "px";
+    }
     if(this.donneesDelta){
       let svgContent = "";
       const s = this.tailleRepere();

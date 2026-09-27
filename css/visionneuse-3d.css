@@ -295,6 +295,8 @@ table.raccourcis td:first-child{width:140px;white-space:nowrap}
 .cote:hover{border-color:#fff;box-shadow:0 0 10px rgba(242,199,68,.4)}
 .cote.glissement{cursor:grabbing;border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 12px rgba(138,240,255,.6)}
 .cote.glissement .cote-btn{border-color:rgba(138,240,255,.5);color:var(--cyan)}
+/* L'angle posé sur son arc : rien à y faire, il ne doit pas gêner les clics. */
+.cote.cote-angle{pointer-events:none;cursor:default;padding:2px 7px}
 .cote-actions{display:inline-flex;align-items:center;gap:3px;margin-left:4px;border-left:1px solid rgba(242,199,68,.3);padding-left:6px}
 .cote-btn{background:rgba(255,255,255,.08);border:1px solid rgba(242,199,68,.4);color:var(--yellow);
   border-radius:3px;padding:2px 6px;font-family:var(--mono);font-size:11px;cursor:pointer;line-height:1.2;transition:all .15s}
