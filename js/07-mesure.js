@@ -671,7 +671,9 @@ export class Mesure {
     };
     for(const a of accroches) pousser(a.p, a.type);
     if(centreFace) pousser(centreFace, "centreFace");
-    candidats.sort((x, y) => x.d - y.d);
+    /* À égalité à l'écran (le haut et le bas d'un trou vus dans l'axe), le
+       plus proche de l'œil passe devant. */
+    candidats.sort((x, y) => Math.abs(x.d - y.d) > 1.5 ? x.d - y.d : x.e.z - y.e.z);
     for(const c of candidats.slice(0, 6)){
       if(this.estVisible(c.p, c.e, rect)) return { point:c.p.clone(), type:c.type, maillage:m };
     }

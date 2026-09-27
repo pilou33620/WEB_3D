@@ -286,7 +286,11 @@ Les textes de licence accompagnent les fichiers dans `vendor/three/` et
 `surface-conique.step` proviennent du jeu d'essai de occt-import-js (MIT) et
 des exemples publics du CAx Interoperability Forum ; `support.3mf`,
 `support-pouces.3mf`, `equerre.obj` + `equerre.mtl` et `tetraedre.stl` ont été
-fabriqués pour ce dépôt, un par voie de lecture.
+fabriqués pour ce dépôt, un par voie de lecture. `essai-mesure.obj` sert à
+éprouver la mesure : une plaque droite percée d'un trou traversant ⌀12 (accroche
+au centre, curseur dans le vide) et une équerre tournée de 30° autour de Z puis
+12° autour de Y, rotation figée dans les sommets comme après un import STEP —
+entre ses coins opposés, les réglages ΔXYZ 1 et 2 doivent donner 40 × 30 × 6.
 
 ## Navigateurs
 
