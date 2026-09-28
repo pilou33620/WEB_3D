@@ -557,6 +557,9 @@ export class CoupeManager {
       normale: this.normale.clone(),
       pointRef: this.pointRef.clone(),
     };
+    /* Abscisse du point saisi sur la flèche : le glissement est relatif à elle,
+       sinon le plan sauterait sous la souris dès qu'on attrape le cône. */
+    this.glissement.sDepart = this.abscisseSurNormale(ev);
 
     const canvas = this.vue.canvas;
     const surMove = (e) => this.bougerGlissement3D(e);
@@ -576,28 +579,30 @@ export class CoupeManager {
     this.vue.canvas.style.cursor = "grabbing";
   }
 
+  /** Abscisse, le long de la normale depuis pointRef, du point de cette droite
+      le plus proche du rayon souris ; null si la vue est presque dans l'axe. */
+  abscisseSurNormale(ev){
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(this.vue.ndc(ev), this.vue.camera());
+    const O = rc.ray.origin;
+    const d = rc.ray.direction;
+    const n = this.glissement.normale;
+    const w0 = O.clone().sub(this.glissement.pointRef);
+
+    const b = d.dot(n);
+    const denom = 1 - b * b;
+    if(denom <= 0.005) return null;
+    // Minimiser |O + t·d − P0 − s·n|² donne s = (n·w0 − b·(d·w0)) / (1 − b²)
+    return (n.dot(w0) - b * d.dot(w0)) / denom;
+  }
+
   bougerGlissement3D(ev){
     if(!this.glissement) return;
 
-    // Calcul analytique de la distance le long de la droite de normale
-    const rc = new THREE.Raycaster();
-    rc.setFromCamera(this.vue.ndc(ev), this.vue.camera());
-    const ray = rc.ray;
-
-    const O = ray.origin;
-    const d = ray.direction;
-    const P0 = this.glissement.pointRef;
-    const n = this.glissement.normale;
-    const w0 = O.clone().sub(P0);
-
-    const b = d.dot(n);
-    const e = n.dot(w0);
-    const denom = 1 - b * b;
-
-    if(denom > 0.005){
-      const dd = d.dot(w0);
-      const s = (b * dd - e) / denom;
-      this.definirOffset(s);
+    const s = this.abscisseSurNormale(ev);
+    const s0 = this.glissement.sDepart;
+    if(s !== null && s0 !== null){
+      this.definirOffset(this.glissement.offsetInitial + (s - s0));
     }else{
       // Vue presque parallèle à la normale : delta écran
       const dy = ev.clientY - this.glissement.startY;
