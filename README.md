@@ -61,6 +61,11 @@ fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
 `localhost`, ni le nom du poste (DNS rebinding). Vérification :
 `python test/banc-serveur.py`.
 
+Les exemples ont leur banc, sous Node et sans navigateur (`node test/banc-exemples.mjs`) :
+les STEP passent par le vrai noyau OpenCascade de `vendor/occt/`, l'OBJ et le STL par les
+lecteurs three.js, et l'équerre tournée d'`essai-mesure.obj` doit retrouver son repère
+propre. Les deux bancs tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`).
+
 ---
 
 ## Ce que la page sait faire
