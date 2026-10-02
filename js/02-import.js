@@ -51,7 +51,7 @@ export const FORMATS = {
    simplement rien à afficher. */
 const ANNEXES = ["mtl", "png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
-export const LISTE_FORMATS = ".stp, .step, .igs, .iges, .brep, .3mf, .obj, .stl";
+export const LISTE_FORMATS = ".stp, .step, .stpz, .igs, .iges, .brep, .3mf, .obj, .stl";
 
 function extension(nomFichier){
   return (nomFichier.split(".").pop() || "").toLowerCase();
@@ -418,8 +418,14 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
       "Un fichier .mtl ou une image accompagne un .obj, elle ne s'affiche pas seule.");
   }
 
-  for(const fichier of modeles){
+  for(let fichier of modeles){
     const format = formatDe(fichier.name);
+    /* .stpz : un STEP compressé en gzip (NX, CATIA). Le navigateur sait le
+       décompresser seul ; la suite le lit comme un .stp ordinaire. */
+    if(extension(fichier.name) === "stpz"){
+      const flux = fichier.stream().pipeThrough(new DecompressionStream("gzip"));
+      fichier = new File([await new Response(flux).blob()], fichier.name.replace(/z$/i, ""));
+    }
     surProgres?.(`Lecture de ${fichier.name}…`);
     let groupe;
 

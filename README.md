@@ -67,7 +67,9 @@ fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
 
 ### Ouvrir
 - **Formats** : `.stp`, `.step`, `.igs`, `.iges`, `.brep` (OpenCascade),
-  `.3mf`, `.obj` et `.stl` (lecteurs three.js).
+  `.3mf`, `.obj` et `.stl` (lecteurs three.js). Un `.stpz` (STEP compressé en
+  gzip, sortie de NX ou CATIA) est décompressé par le navigateur puis lu comme
+  un `.stp`.
 - Glisser-déposer n'importe où dans la fenêtre, ou `Ctrl+O`. Plusieurs fichiers
   déposés ensemble composent un assemblage dans une même scène.
 - Un `.obj` déposé **avec son `.mtl`** (et ses images de texture) garde ses
@@ -92,7 +94,9 @@ fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
 - **Perspective ou orthographique** (<kbd>O</kbd>) sans que le cadrage bouge.
 - Modes d'affichage : arêtes vives (<kbd>A</kbd>), filaire (<kbd>W</kbd>),
   rayons X (<kbd>X</kbd>), grille (<kbd>G</kbd>), ombres portées.
-- **Plan de coupe** (<kbd>C</kbd>) le long de X, Y ou Z, à position réglable.
+- **Plan de coupe** (<kbd>C</kbd>) le long de X, Y ou Z, ou d'une face désignée sur le
+  modèle : décalage au millimètre (curseur, saisie ou manipulateur à la souris),
+  côté gardé inversable, vue alignée sur le plan.
 
 ### Inspecter
 - **Arbre d'assemblage** tel qu'il vient du fichier : noms de sous-ensembles et
@@ -204,6 +208,9 @@ d'affichage, et le texte le dit.
 - **PNG** de la vue courante.
 - **glTF binaire** (`.glb`) de la scène triangulée, pour une visionneuse tierce
   ou un moteur temps réel. Les arêtes d'affichage ne sont pas exportées.
+- **STEP** (`.stp`) d'une pièce ou d'une sélection d'un assemblage STEP, extraite du
+  fichier d'origine : la géométrie exacte (B-Rep) est reprise telle quelle, sans
+  passer par les triangles.
 
 ---
 
@@ -269,7 +276,7 @@ WEB_3D/
 ├── web_3D.py                     serveur statique (bibliothèque standard)
 ├── css/
 │   └── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
-├── js/                           11 modules ES, chargés par 09-demarrage.js
+├── js/                           modules ES, chargés par 09-demarrage.js
 ├── exemples/                     fichiers d'essai, un par voie de lecture
 └── vendor/                       bibliothèques, servies en local
     ├── three/                    three.js r186 + modules d'exemples (lecteurs
@@ -277,19 +284,21 @@ WEB_3D/
     └── occt/                     occt-import-js 0.0.23 (+ occt-import-js.wasm)
 ```
 
-| Fichier | Lignes | Rôle |
-| :--- | ---: | :--- |
-| `js/00-config.js` | 260 | préférences et **table des gestes de souris** : c'est elle que lit la navigation |
-| `js/01-scene.js` | 523 | scène, deux caméras pour un même cadrage, éclairage, sol, modes d'affichage, plan de coupe |
-| `js/02-import.js` | 486 | fichier → maillages : les six formats, hiérarchie, couleurs (y compris par face B-Rep), unités, arêtes vives |
-| `js/03-navigation.js` | 455 | orbite (libre / contrainte), panoramique, zoom, tactile, inertie, animations de vue |
-| `js/04-cube-vue.js` | 307 | cube de vues : 26 zones cliquables, triade, rendu dans son propre canevas |
-| `js/05-arbre.js` | 386 | arbre d'assemblage, sélection, isolement, fiche de propriétés, volume et surface |
-| `js/06-topologie.js` | 2283 | **arêtes et faces sous les triangles** : soudure, régions, chaînes, reconnaissance des formes, formules de cotation, repère propre d'une pièce, points d'accroche, distance entre pièces |
-| `js/07-mesure.js` | 1479 | les modes de mesure (auto, point, arête, face, pièce) — accroche, désignation, surlignage, étiquettes, ΔXYZ, fenêtre de résultats |
-| `js/08-interface.js` | 989 | barre d'outils, ouverture, dialogues de réglages, clavier |
-| `js/09-demarrage.js` | 98 | assemblage des modules et branchements |
-| `js/travailleur-occt.js` | 88 | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
+| Fichier | Rôle |
+| :--- | :--- |
+| `js/00-config.js` | préférences et **table des gestes de souris** : c'est elle que lit la navigation |
+| `js/01-scene.js` | scène, deux caméras pour un même cadrage, éclairage, sol, modes d'affichage, plan de coupe |
+| `js/02-import.js` | fichier → maillages : les six formats, hiérarchie, couleurs (y compris par face B-Rep), unités, arêtes vives |
+| `js/03-navigation.js` | orbite (libre / contrainte), panoramique, zoom, tactile, inertie, animations de vue |
+| `js/04-cube-vue.js` | cube de vues : 26 zones cliquables, triade, rendu dans son propre canevas |
+| `js/05-arbre.js` | arbre d'assemblage, sélection, isolement, fiche de propriétés, volume et surface |
+| `js/06-topologie.js` | **arêtes et faces sous les triangles** : soudure, régions, chaînes, reconnaissance des formes, formules de cotation, repère propre d'une pièce, points d'accroche, distance entre pièces |
+| `js/07-mesure.js` | les modes de mesure (auto, point, arête, face, pièce) — accroche, désignation, surlignage, étiquettes, ΔXYZ, fenêtre de résultats |
+| `js/07b-coupe.js` | coupe selon X, Y, Z ou une face désignée sur le modèle, avec son manipulateur et son panneau |
+| `js/08-interface.js` | barre d'outils, ouverture, dialogues de réglages, clavier |
+| `js/09-demarrage.js` | assemblage des modules et branchements |
+| `js/10-export-step.js` | réexport STEP d'une pièce isolée ou d'une sélection, extraite du fichier d'origine |
+| `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 
 ---
 
@@ -301,11 +310,14 @@ Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution.
 | :--- | :--- | :--- | :--- |
 | [three.js](https://threejs.org) | r186 | MIT | rendu WebGL, lecteurs STL / 3MF / OBJ / MTL, export glTF |
 | [fflate](https://github.com/101arrowz/fflate) | livré avec three.js | MIT | décompression du 3MF (une archive ZIP) |
-| [occt-import-js](https://github.com/kovacsv/occt-import-js) | 0.0.23 | MIT | OpenCascade en WebAssembly : lecture STEP / IGES / BREP |
+| [occt-import-js](https://github.com/kovacsv/occt-import-js) | 0.0.23 | LGPL-2.1 | OpenCascade en WebAssembly : lecture STEP / IGES / BREP |
 
 Les textes de licence accompagnent les fichiers dans `vendor/three/` et
-`vendor/occt/`. Côté `exemples/`, `assemblage-as1.stp`, `cube-conges.step` et
-`surface-conique.step` proviennent du jeu d'essai de occt-import-js (MIT) et
+`vendor/occt/`. occt-import-js et OpenCascade sont sous **LGPL-2.1** : leurs
+sources sont celles des dépôts liés ci-dessus (version 0.0.23, non modifiée), et
+le module reste un fichier à part (`vendor/occt/occt-import-js.wasm`) qu'on peut
+remplacer par une autre version sans toucher au reste de la visionneuse. Côté `exemples/`, `assemblage-as1.stp`, `cube-conges.step` et
+`surface-conique.step` proviennent du jeu d'essai de occt-import-js (LGPL-2.1) et
 des exemples publics du CAx Interoperability Forum ; `support.3mf`,
 `support-pouces.3mf`, `equerre.obj` + `equerre.mtl` et `tetraedre.stl` ont été
 fabriqués pour ce dépôt, un par voie de lecture. `essai-mesure.obj` sert à
