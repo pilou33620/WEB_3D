@@ -67,6 +67,50 @@ for chemin, hote, attendu in CAS:
 if code("/.git/config", methode="HEAD") != 404:
     echecs += 1
     print("ECHEC HEAD /.git/config")
+
+
+# --- Projets (--projets) : lister, ranger, relire, sans sortir du dossier ---
+import json      # noqa: E402
+import tempfile  # noqa: E402
+
+
+def requete(methode, chemin, corps=None, entetes=None):
+    c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=10)
+    c.request(methode, chemin, body=corps, headers=entetes or {})
+    r = c.getresponse()
+    donnees = r.read()
+    c.close()
+    return r.status, donnees
+
+
+def verifier(nom, obtenu, attendu):
+    global echecs, essais
+    essais += 1
+    if obtenu != attendu:
+        echecs += 1
+        print("ECHEC %s : attendu %r, obtenu %r" % (nom, attendu, obtenu))
+
+
+essais = len(CAS) + 1
+verifier("sans --projets : pas de projets", json.loads(requete("GET", "/api/projets")[1])["dispo"], False)
+with tempfile.TemporaryDirectory() as tmp:
+    web_3D.PROJETS = tmp
+    with open(os.path.join(tmp, "secret.txt"), "w") as f:
+        f.write("non")
+    stl = open(os.path.join(RACINE, "exemples", "tetraedre.stl"), "rb").read()
+    ranger = lambda nom, h={"X-Web3D": "1"}: requete("POST", "/api/projets?nom=" + nom, stl, h)
+    verifier("rangement sans X-Web3D", ranger("t.stl", {})[0], 403)
+    verifier("rangement d'un .txt", ranger("x.txt")[0], 400)
+    verifier("nom qui remonte : gardé dans le dossier", json.loads(ranger("..%2F..%2Ft.stl")[1]).get("chemin"), "t.stl")
+    verifier("pas d'écrasement", json.loads(ranger("t.stl")[1])["chemin"], "t (2).stl")
+    liste = json.loads(requete("GET", "/api/projets")[1])
+    verifier("liste", (liste["dispo"], sorted(f["chemin"] for f in liste["fichiers"])), (True, ["t (2).stl", "t.stl"]))
+    verifier("relecture", requete("GET", "/projets/t.stl")[1], stl)
+    for chemin in ("/projets/secret.txt", "/projets/../web_3D.py", "/projets/..%5cweb_3D.py",
+                   "/projets/C:%5cWindows%5cwin.ini", "/projets/.git/config"):
+        verifier("refus " + chemin, requete("GET", chemin)[0], 404)
+    web_3D.PROJETS = None
+
 serveur.shutdown()
-print("%d/%d ok" % (len(CAS) + 1 - echecs, len(CAS) + 1))
+print("%d/%d ok" % (essais - echecs, essais))
 sys.exit(1 if echecs else 0)

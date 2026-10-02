@@ -67,6 +67,7 @@ button.tb{
   padding:6px 11px;border-radius:5px;font-size:13px;cursor:pointer;font-family:var(--ui);
   display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
 }
+button.tb[hidden]{display:none}
 button.tb:hover{border-color:var(--blue);color:#fff}
 button.tb.on{background:var(--blue-deep);border-color:var(--blue);color:#fff}
 button.tb:disabled{opacity:.45;cursor:default;border-color:var(--border2);color:var(--txt-dim)}
@@ -286,6 +287,10 @@ table.gestes select:disabled{opacity:.55}
 table.raccourcis{width:100%;border-collapse:collapse;font-size:13.5px}
 table.raccourcis td{padding:4px 7px;border-bottom:1px solid #212429}
 table.raccourcis td:first-child{width:140px;white-space:nowrap}
+#tabProjets tr{cursor:pointer}
+#tabProjets tr:hover td{color:#fff;background:var(--panel2)}
+#tabProjets td:first-child{width:auto;white-space:normal;word-break:break-all}
+#tabProjets td:not(:first-child){color:var(--txt-dim);text-align:right;white-space:nowrap}
 
 /* ---------- étiquettes de mesure, posées sur la vue ---------- */
 .cote{position:absolute;transform:translate(-50%,-50%);background:rgba(15,16,18,.92);

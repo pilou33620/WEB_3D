@@ -294,6 +294,7 @@ export class Interface {
       if(stats.aretesIgnorees){
         $("etatStats").textContent += " · arêtes non calculées (modèle trop lourd)";
       }
+      this.derniersFichiers = fichiers;            // ce que « Ranger » copierait (11-projets.js)
       this.majEtatBoutons();
     }catch(e){
       console.error(e);

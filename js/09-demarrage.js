@@ -18,6 +18,7 @@ import { Arbre } from "./05-arbre.js";
 import { Mesure } from "./07-mesure.js";
 import { CoupeManager } from "./07b-coupe.js";
 import { Interface, pieceSous } from "./08-interface.js";
+import { brancherProjets } from "./11-projets.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -75,6 +76,7 @@ arbre.surSelection = (objet) => {
 };
 
 const ui = new Interface({ vue, nav, cube, arbre, mesure, coupe });
+brancherProjets(ui);
 
 /* Le cube et la barre d'état suivent les préférences quelle que soit la
    manière dont elles ont changé — dialogue, clavier ou bouton du coin. */

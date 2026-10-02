@@ -47,10 +47,18 @@ Options utiles :
 | `--local` | n'écouter que sur `127.0.0.1` |
 | `--sans-navigateur` | ne pas ouvrir le navigateur au lancement |
 | `--dossier <chemin>` | servir un autre dossier |
+| `--projets <chemin>` | dossier des projets : bouton **🗂 Projets…** (WEB·SUITE y passe `PROJETS/3D`) |
 
 Sur le réseau local, l'adresse affichée au démarrage s'ouvre telle quelle
 depuis une tablette : la navigation tactile (un doigt tourne, deux doigts
 déplacent et pincent pour zoomer) est prévue.
+
+**Les projets.** Avec `--projets`, le bouton **🗂 Projets…** liste les modèles du dossier
+(un clic les ouvre, un `.obj` avec son `.mtl`) et **Ranger le modèle ouvert ici** y copie le
+fichier qu'on vient d'ouvrir — sans jamais en écraser un : un nom pris devient
+`piece (2).stp`. Lancée par WEB·SUITE, la visionneuse pointe sur `PROJETS/3D`, que le
+lanceur envoie sur GitHub à l'arrêt de l'outil : le modèle rangé sur un poste s'ouvre sur
+l'autre. Le serveur ne lit et n'écrit que dans ce dossier, et seulement des formats 3D.
 
 Un modèle peut aussi être ouvert directement par l'URL :
 `http://127.0.0.1:8139/?modele=exemples/assemblage-as1.stp`.
@@ -303,6 +311,7 @@ WEB_3D/
 | `js/08-interface.js` | barre d'outils, ouverture, dialogues de réglages, clavier |
 | `js/09-demarrage.js` | assemblage des modules et branchements |
 | `js/10-export-step.js` | réexport STEP d'une pièce isolée ou d'une sélection, extraite du fichier d'origine |
+| `js/11-projets.js` | le dossier des projets : liste, ouverture, rangement du modèle ouvert |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 
 ---

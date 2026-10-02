@@ -27,6 +27,7 @@
 import argparse
 import http.server
 import ipaddress
+import json
 import os
 import re
 import shutil
@@ -48,6 +49,41 @@ STATIQUE = re.compile(
     r"|^/(?:css|js|vendor|exemples)(?:/[\w-][\w.-]*)+$"
     r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|png|jpe?g)$",
     re.IGNORECASE)
+
+# Le dossier des projets (--projets ; WEB_SUITE y passe PROJETS/3D, synchronisé
+# avec GitHub). None : pas de projets, la page cache son bouton.
+PROJETS = None
+# Ce qu'on y lit et y range : des modèles et ce qui accompagne un .obj.
+NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|png|jpe?g)$",
+                        re.IGNORECASE)
+MAX_PROJET = 200 * 1024 * 1024
+
+
+def chemin_projet(relatif):
+    """Le fichier de PROJETS que désigne `relatif`, ou None s'il en sortirait."""
+    if not PROJETS:
+        return None
+    morceaux = [m for m in relatif.replace("\\", "/").split("/") if m]
+    if (not morceaux or not NOM_PROJET.match(morceaux[-1])
+            or any(m.startswith(".") or ":" in m for m in morceaux)):
+        return None
+    racine = os.path.realpath(PROJETS)
+    cible = os.path.realpath(os.path.join(racine, *morceaux))
+    return cible if cible.startswith(racine + os.sep) else None
+
+
+def lister_projets():
+    """Les fichiers 3D de PROJETS, sous-dossiers compris, du plus récent au plus ancien."""
+    sortie = []
+    for dossier, sous, fichiers in os.walk(PROJETS):
+        sous[:] = [s for s in sous if not s.startswith(".")]
+        for nom in fichiers:
+            if NOM_PROJET.match(nom):
+                complet = os.path.join(dossier, nom)
+                st = os.stat(complet)
+                sortie.append({"chemin": os.path.relpath(complet, PROJETS).replace(os.sep, "/"),
+                               "taille": st.st_size, "date": int(st.st_mtime)})
+    return sorted(sortie, key=lambda f: -f["date"])
 
 
 def hote_permis(entete):
@@ -115,7 +151,75 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
             self.send_response(204)
             self.end_headers()
             return
+        chemin = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if chemin == "/api/projets":
+            return self._json({"dispo": bool(PROJETS), "fichiers": lister_projets() if PROJETS else []})
+        if chemin.startswith("/projets/"):
+            return self._fichier_projet(chemin[len("/projets/"):])
         super().do_GET()
+
+    def do_POST(self):
+        """POST /api/projets?nom=piece.stp : range le fichier reçu dans PROJETS.
+
+        L'en-tête X-Web3D est exigé : une page d'un autre site ne peut pas
+        l'ajouter sans pré-vol CORS, que ce serveur ne valide pas. On n'écrase
+        jamais : un nom déjà pris devient « piece (2).stp »."""
+        if urllib.parse.urlsplit(self.path).path != "/api/projets" or not PROJETS:
+            return self._json({"detail": "Route inconnue"}, 404)
+        if self.headers.get("X-Web3D") != "1":
+            return self._json({"detail": "Requête refusée"}, 403)
+        nom = os.path.basename(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                               .get("nom", [""])[0].replace("\\", "/"))
+        try:
+            taille = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            taille = -1
+        if not NOM_PROJET.match(nom):
+            return self._json({"detail": "Nom ou format refusé : %s" % nom}, 400)
+        if not 0 < taille <= MAX_PROJET:
+            self.close_connection = True
+            return self._json({"detail": "Taille refusée (%d Mo au plus)" % (MAX_PROJET >> 20)}, 413)
+        base, ext = os.path.splitext(nom)
+        cible, n = chemin_projet(nom), 2
+        while cible and os.path.exists(cible):
+            cible, n = chemin_projet("%s (%d)%s" % (base, n, ext)), n + 1
+        if not cible:
+            return self._json({"detail": "Nom refusé"}, 400)
+        provisoire = cible + ".part"
+        with open(provisoire, "wb") as f:
+            reste = taille
+            while reste > 0:
+                bloc = self.rfile.read(min(1 << 20, reste))
+                if not bloc:
+                    break
+                f.write(bloc)
+                reste -= len(bloc)
+        if reste:
+            os.remove(provisoire)
+            return self._json({"detail": "Envoi interrompu"}, 400)
+        os.replace(provisoire, cible)
+        # realpath des deux côtés : un chemin court Windows (PIERRE~1) ne se compare pas au long
+        return self._json({"chemin": os.path.relpath(cible, os.path.realpath(PROJETS)).replace(os.sep, "/")})
+
+    def _fichier_projet(self, relatif):
+        cible = chemin_projet(relatif)
+        if not cible or not os.path.isfile(cible):
+            return self.send_error(404, "File not found")
+        with open(cible, "rb") as f:
+            corps = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", self.guess_type(cible))
+        self.send_header("Content-Length", str(len(corps)))
+        self.end_headers()
+        self.wfile.write(corps)
+
+    def _json(self, charge, code=200):
+        corps = json.dumps(charge, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(corps)))
+        self.end_headers()
+        self.wfile.write(corps)
 
     def end_headers(self):
         # En développement, un fichier modifié doit être servi modifié : le cache
@@ -422,7 +526,14 @@ def main() -> int:
     ap.add_argument("--sans-pause", action="store_true", help="ne pas attendre de touche à l'arrêt")
     ap.add_argument("--sans-maj", dest="verifier_maj", action="store_false", default=True,
                     help="ne pas vérifier les mises à jour GitHub au démarrage")
+    ap.add_argument("--projets", default=None, metavar="DOSSIER",
+                    help="dossier des projets : la page les liste et y range les modèles"
+                         " (WEB_SUITE y passe PROJETS/3D)")
     args = ap.parse_args()
+    if args.projets:
+        global PROJETS
+        PROJETS = os.path.abspath(os.path.expanduser(args.projets))
+        os.makedirs(PROJETS, exist_ok=True)
 
     # Sans argument ni terminal, le double-clic doit se débrouiller seul : trouver
     # un port, ouvrir la page, et laisser ses erreurs à l'écran.
@@ -455,6 +566,8 @@ def main() -> int:
     url = f"http://127.0.0.1:{port}/"
     print("Visionneuse 3D — serveur local")
     print(f"  dossier : {dossier}")
+    if PROJETS:
+        print(f"  projets : {PROJETS}")
     print(f"  adresse : {url}")
     if port != args.port:
         print(f"  (le port {args.port} était occupé)")

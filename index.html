@@ -32,6 +32,7 @@ try{
   </div>
   <div class="tools">
     <button class="tb on" id="bOuvrir" title="Ouvrir un fichier 3D (.stp, .step, .igs, .iges, .brep, .3mf, .obj, .stl) — Ctrl+O">📂 Ouvrir…</button>
+    <button class="tb" id="bProjets" title="Les modèles du dossier des projets (PROJETS/3D sous WEB_SUITE, synchronisé avec GitHub)" hidden>🗂 Projets…</button>
     <button class="tb" id="bFermer" title="Vider la scène" disabled>Fermer</button>
     <div class="sep"></div>
     <button class="tb" id="bAjuster" title="Cadrer tout le modèle">Ajuster <kbd>F</kbd></button>
@@ -349,6 +350,19 @@ try{
       <button type="button" class="tb" id="bAnnulerExport">Annuler</button>
       <span class="grow"></span>
       <button type="button" class="tb on" id="bValiderExport">💾 Exporter .stp</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="dlgProjets">
+  <form method="dialog">
+    <h2>Projets</h2>
+    <p class="aide" id="projetsDossier"></p>
+    <table class="raccourcis" id="tabProjets"></table>
+    <p class="aide" id="projetsEtat"></p>
+    <menu>
+      <button type="button" class="tb" id="bRanger" disabled title="Copie le ou les fichiers ouverts dans le dossier des projets ; WEB_SUITE les envoie sur GitHub à l'arrêt de l'outil">Ranger le modèle ouvert ici</button>
+      <span class="grow"></span><button class="tb on" value="ok">Fermer</button>
     </menu>
   </form>
 </dialog>
