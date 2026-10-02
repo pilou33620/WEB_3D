@@ -413,6 +413,6 @@ function formaterAire(v){
   if(v > 1e4) return `${fmt.format(Math.round(v / 10) / 10)} cm²`;
   return `${fmt.format(Math.round(v * 10) / 10)} mm²`;
 }
-function echapper(s){
+export function echapper(s){
   return String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 }

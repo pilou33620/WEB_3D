@@ -26,15 +26,51 @@
 
 import argparse
 import http.server
+import ipaddress
 import os
+import re
 import shutil
 import socket
 import socketserver
 import subprocess
 import sys
+import urllib.parse
 import webbrowser
 
 RACINE = os.path.dirname(os.path.abspath(__file__))
+
+# Ce que la page charge : elle-même, css/, js/, vendor/, exemples/, et les
+# fichiers 3D posés à côté (?modele=piece.stp). Rien d'autre du dossier ne sort
+# — ni .git/, ni le script, ni la liste des fichiers. Un segment ne commence
+# jamais par un point : ni « .. », ni fichier caché.
+STATIQUE = re.compile(
+    r"^/(?:index\.html)?$"
+    r"|^/(?:css|js|vendor|exemples)(?:/[\w-][\w.-]*)+$"
+    r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|png|jpe?g)$",
+    re.IGNORECASE)
+
+
+def hote_permis(entete):
+    """L'en-tête Host désigne-t-il ce poste ? (parade au DNS rebinding)
+
+    Une page piégée qui fait résoudre son nom vers 127.0.0.1 envoie SON nom
+    dans Host ; une adresse IP littérale, elle, ne se rebranche pas. On accepte
+    donc toutes les IP (la tablette tape celle du poste), localhost et le nom
+    du poste.
+    """
+    h = (entete or "").strip().lower().rstrip(".")
+    if h.startswith("["):
+        h = h[1:].split("]")[0]
+    elif h.count(":") == 1:
+        h = h.split(":")[0]
+    nom = socket.gethostname().lower()
+    if h in ("", "localhost", nom, nom + ".local"):
+        return True
+    try:
+        ipaddress.ip_address(h.split("%")[0])
+        return True
+    except ValueError:
+        return False
 
 
 class Gestionnaire(http.server.SimpleHTTPRequestHandler):
@@ -57,6 +93,22 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         ".mtl": "text/plain",
         ".glb": "model/gltf-binary",
     }
+
+    def parse_request(self):
+        if not super().parse_request():
+            return False
+        if not hote_permis(self.headers.get("Host")):
+            self.send_error(403, "Host non autorisé (protection DNS rebinding)")
+            return False
+        return True
+
+    def send_head(self):
+        # GET et HEAD passent tous deux par ici
+        chemin = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if not STATIQUE.match(chemin):
+            self.send_error(404, "File not found")
+            return None
+        return super().send_head()
 
     def do_GET(self):
         if self.path == "/favicon.ico":

@@ -18,6 +18,7 @@ import { ouvrirFichiers, liberer, calculerAretes, formatDe, estAnnexe,
          LISTE_FORMATS } from "./02-import.js";
 import { MODES as MODES_MESURE, MODES_DELTA } from "./07-mesure.js";
 import { StepExtractor, telechargerFichier, sanitiserNomFichier } from "./10-export-step.js";
+import { echapper } from "./05-arbre.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -541,7 +542,7 @@ export class Interface {
       item.innerHTML = `
         <input type="checkbox" id="cbExp_${idx}" ${visible ? "checked" : ""}>
         <span class="puce" style="background:${coulHex}"></span>
-        <label for="cbExp_${idx}" class="nom" title="${objet.name || "Pièce"}">${objet.name || `Pièce ${idx+1}`}</label>
+        <label for="cbExp_${idx}" class="nom" title="${echapper(objet.name || "Pièce")}">${echapper(objet.name || `Pièce ${idx+1}`)}</label>
         <span class="badge-vis ${visible ? "ok" : "off"}">${visible ? "affichée" : "masquée"}</span>
         <span class="tri">${objet.userData.triangles ? Math.round(objet.userData.triangles) + " △" : ""}</span>
       `;

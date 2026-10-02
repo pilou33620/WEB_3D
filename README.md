@@ -55,6 +55,12 @@ déplacent et pincent pour zoomer) est prévue.
 Un modèle peut aussi être ouvert directement par l'URL :
 `http://127.0.0.1:8139/?modele=exemples/assemblage-as1.stp`.
 
+Le serveur ne sert que la page (`index.html`, `css/`, `js/`, `vendor/`, `exemples/`)
+et les fichiers 3D posés dans le dossier : ni `.git/`, ni le script, ni la liste des
+fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
+`localhost`, ni le nom du poste (DNS rebinding). Vérification :
+`python test/banc-serveur.py`.
+
 ---
 
 ## Ce que la page sait faire
