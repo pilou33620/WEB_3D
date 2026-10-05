@@ -32,6 +32,7 @@ try{
   </div>
   <div class="tools">
     <button class="tb on" id="bOuvrir" title="Ouvrir un fichier 3D (.stp, .step, .igs, .iges, .brep, .3mf, .obj, .stl) — Ctrl+O">📂 Ouvrir…</button>
+    <button class="tb" id="bAjouter" title="Ajouter un fichier à la scène sans fermer ce qui est ouvert — Ctrl+Maj+O, ou déposer avec Maj" disabled>➕ Ajouter…</button>
     <button class="tb" id="bProjets" title="Les modèles du dossier des projets (PROJETS/3D sous WEB_SUITE, synchronisé avec GitHub)" hidden>🗂 Projets…</button>
     <button class="tb" id="bFermer" title="Vider la scène" disabled>Fermer</button>
     <div class="sep"></div>
@@ -45,6 +46,8 @@ try{
     <button class="tb" id="bCoupe" title="Plan de coupe le long d'un axe">Coupe <kbd>C</kbd></button>
     <div class="sep"></div>
     <button class="tb" id="bMesure" title="Mesurer : automatique (Auto par défaut), point à point, arête à arête, face à face. M change de mode.">📏 Mesurer <kbd>K</kbd></button>
+    <button class="tb" id="bDeplacer" title="Placer un fichier par rapport aux autres : position (mm) et rotation (°) — D" disabled>✥ Déplacer <kbd>D</kbd></button>
+    <button class="tb" id="bCollisions" title="Chercher les interférences entre les fichiers ouverts (ou entre les pièces d'un fichier seul). Les pièces masquées sont ignorées ; un simple contact ne compte pas." disabled>💥 Collisions</button>
     <button class="tb" id="bIsoler" title="N'afficher que la sélection" disabled>Isoler <kbd>I</kbd></button>
     <div class="sep"></div>
     <button class="tb" id="bPng" title="Capture de la vue courante en PNG">Exporter .png</button>

@@ -312,6 +312,8 @@ WEB_3D/
 | `js/09-demarrage.js` | assemblage des modules et branchements |
 | `js/10-export-step.js` | réexport STEP d'une pièce isolée ou d'une sélection, extraite du fichier d'origine |
 | `js/11-projets.js` | le dossier des projets : liste, ouverture, rangement du modèle ouvert |
+| `js/12-collisions.js` | interférences entre fichiers ouverts (« Ajouter… » puis « 💥 Collisions ») : triangles qui se traversent, courbe d'intersection en rouge |
+| `js/13-deplacement.js` | « ✥ Déplacer » (D) : un fichier entier, à la souris (glisser une pièce, Maj : à la verticale), au clavier (mm, °), ou par contrainte (deux plans plaqués avec décalage, deux cylindres coaxiaux) |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 
 ---

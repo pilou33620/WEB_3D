@@ -223,6 +223,17 @@ main{flex:1;display:flex;min-height:0}
 .fm-note{grid-template-columns:1fr}
 .fm-note .fm-valeur{font-family:var(--ui);color:var(--txt-dim);text-align:left}
 .fm-dx .fm-cle,.fm-dy .fm-cle,.fm-dz .fm-cle{font-weight:700}
+#fenetreCollisions{left:80px;right:auto;top:10px;bottom:auto;max-height:calc(100% - 60px)}
+#fenetreCollisions .fm-tete{cursor:default}
+#fenetreCollisions .fm-corps .fm-ligne{cursor:pointer}
+#fenetreCollisions .fm-corps .fm-ligne:hover{background:var(--blue-deep)}
+#fenetreDeplacer{left:80px;right:auto;bottom:40px;top:auto;max-height:calc(100% - 60px)}
+#fenetreDeplacer .fm-tete{cursor:default}
+#fenetreDeplacer .fm-ligne{align-items:center}
+#fenetreDeplacer select.fm-valeur{width:170px}
+#fenetreCollisions label.fm-ligne{padding:6px 12px;border-bottom:1px solid var(--border2)}
+#fenetreCollisions input,#fenetreDeplacer input,#fenetreDeplacer select{width:70px;justify-self:end;background:var(--bg);border:1px solid var(--border2);
+  color:var(--txt);border-radius:4px;padding:2px 4px}
 .fm-dx .fm-cle{color:#ef5350}
 .fm-dy .fm-cle{color:#43a047}
 .fm-dz .fm-cle{color:#42a5f5}

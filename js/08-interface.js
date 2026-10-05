@@ -19,6 +19,8 @@ import { ouvrirFichiers, liberer, calculerAretes, formatDe, estAnnexe,
 import { MODES as MODES_MESURE, MODES_DELTA } from "./07-mesure.js";
 import { StepExtractor, telechargerFichier, sanitiserNomFichier } from "./10-export-step.js";
 import { echapper } from "./05-arbre.js";
+import { chercherCollisions, maillageCollisions } from "./12-collisions.js";
+import { mm } from "./06-topologie.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -53,8 +55,9 @@ export class Interface {
   brancherBarre(){
     const { vue, nav, arbre } = this;
 
-    $("bOuvrir").onclick = () => $("fichier").click();
-    $("bParcourir").onclick = () => $("fichier").click();
+    $("bOuvrir").onclick = () => this.choisirFichiers(false);
+    $("bAjouter").onclick = () => this.choisirFichiers(true);
+    $("bParcourir").onclick = () => this.choisirFichiers(false);
     $("bFermer").onclick = () => this.fermer();
     $("bAjuster").onclick = () => vue.ajusterVue(arbre.selection || vue.modele);
     $("bProjection").onclick = () => this.basculerProjection();
@@ -77,6 +80,7 @@ export class Interface {
     };
     $("bCoupe").onclick = () => this.basculerCoupe();
     $("bMesure").onclick = () => this.basculerMesure();
+    $("bCollisions").onclick = () => this.basculerCollisions();
     $("bIsoler").onclick = () => arbre.isoler();
     $("bPng").onclick = () => this.exporterPng();
     $("bGlb").onclick = () => this.exporterGlb();
@@ -219,12 +223,100 @@ export class Interface {
   }
 
   /* ==========================================================================
+     Collisions
+     ========================================================================== */
+  async basculerCollisions(){
+    if(this.collisions) this.effacerCollisions();
+    else await this.lancerCollisions();
+  }
+
+  async lancerCollisions(){
+    const titre = "Recherche des collisions…";
+    this.attendre(true, titre, "");
+    await new Promise(r => setTimeout(r));   // laisser le voile d'attente s'afficher
+    let resultats;
+    try{
+      resultats = await chercherCollisions(this.vue.modele, {
+        tol:prefs.toleranceCollision,
+        visible:visibleEnLignee, surProgres:(txt) => this.attendre(true, titre, txt),
+      });
+    }finally{
+      this.attendre(false);
+    }
+    this.effacerCollisions();
+    this.collisions = maillageCollisions(resultats);
+    this.vue.annotations.add(this.collisions);
+    $("bCollisions").classList.add("on");
+    this.afficherCollisions(resultats);
+    this.vue.invalider();
+  }
+
+  effacerCollisions(){
+    if(!this.collisions) return;
+    this.vue.annotations.remove(this.collisions);
+    liberer(this.collisions);
+    this.collisions = null;
+    $("bCollisions").classList.remove("on");
+    if(this.fenetreCollisions) this.fenetreCollisions.hidden = true;
+    this.vue.invalider();
+  }
+
+  /** La liste des couples en interférence ; un clic cadre la première pièce du couple. */
+  afficherCollisions(resultats){
+    let f = this.fenetreCollisions;
+    if(!f){
+      f = this.fenetreCollisions = document.createElement("div");
+      f.id = "fenetreCollisions";
+      f.className = "fenetre-mesure";
+      f.innerHTML = `<div class="fm-tete"><span></span><button class="fm-plier" title="Effacer les collisions">✕</button></div>
+        <label class="fm-ligne" title="Pénétration en dessous de laquelle on parle de contact. Sous l'écart du maillage (réglage Qualité), une tige dans son alésage au même diamètre passerait pour une collision.">
+          <span class="fm-cle">Tolérance (mm)</span>
+          <input class="fm-valeur" type="number" min="0" step="0.01">
+        </label>
+        <div class="fm-corps"></div>`;
+      f.querySelector(".fm-plier").onclick = () => this.effacerCollisions();
+      const tol = f.querySelector("input");
+      tol.onchange = () => {
+        const v = parseFloat(tol.value);
+        if(!(v >= 0)){ tol.value = prefs.toleranceCollision; return; }
+        prefs.toleranceCollision = v;
+        prefsModifiees("toleranceCollision");
+        this.lancerCollisions();
+      };
+      $("ctr").appendChild(f);
+    }
+    f.querySelector("input").value = prefs.toleranceCollision;
+    f.hidden = false;
+    f.querySelector(".fm-tete span").textContent = `Collisions — ${resultats.length}`;
+    const corps = f.querySelector(".fm-corps");
+    corps.replaceChildren();
+    if(!resultats.length){
+      const l = document.createElement("div");
+      l.className = "fm-ligne fm-note";
+      l.innerHTML = `<span class="fm-valeur">Aucune interférence entre les pièces visibles.</span>`;
+      corps.appendChild(l);
+    }
+    for(const { a, b, longueur } of resultats){
+      const l = document.createElement("div");
+      l.className = "fm-ligne";
+      const cle = document.createElement("span"), val = document.createElement("span");
+      cle.className = "fm-cle"; val.className = "fm-valeur";
+      cle.textContent = `${a.name} ↔ ${b.name}`;
+      val.textContent = mm(longueur);
+      l.title = `Sélectionner et cadrer « ${a.name} »\nLongueur de la courbe d'interférence : ${mm(longueur)}`;
+      l.append(cle, val);
+      l.onclick = () => { this.arbre.selectionner(a); this.vue.ajusterVue(a); };
+      corps.appendChild(l);
+    }
+  }
+
+  /* ==========================================================================
      Ouverture de fichiers
      ========================================================================== */
   brancherFichiers(){
     const entree = $("fichier");
     entree.onchange = () => {
-      if(entree.files?.length) this.charger([...entree.files]);
+      if(entree.files?.length) this.charger([...entree.files], this.modeAjout);
       entree.value = "";
     };
 
@@ -239,11 +331,18 @@ export class Interface {
     }
     addEventListener("drop", (e) => {
       const f = [...(e.dataTransfer?.files || [])];
-      if(f.length) this.charger(f);
+      if(f.length) this.charger(f, e.shiftKey);
     });
   }
 
-  async charger(fichiers){
+  /** `ajout` : les fichiers choisis rejoignent la scène au lieu de la remplacer. */
+  choisirFichiers(ajout){
+    this.modeAjout = ajout;
+    $("fichier").click();
+  }
+
+  async charger(fichiers, ajout = false){
+    ajout = ajout && this.vue.modele.children.length > 0;
     /* Un .mtl ou une image n'est pas un modèle, mais ce n'est pas une erreur
        non plus : c'est ce qui accompagne un .obj. */
     const inconnus = fichiers.filter(f => !formatDe(f.name) && !estAnnexe(f.name));
@@ -264,7 +363,10 @@ export class Interface {
         throw new Error("Le fichier a été lu, mais ne contient aucune géométrie affichable.");
       }
 
-      this.fermer(false);
+      /* En ajout, la sélection tient un matériau cloné que recenserMateriaux
+         prendrait pour celui de la pièce : on la relâche, comme à la fermeture. */
+      if(ajout){ this.arbre.selectionner(null); this.effacerCollisions(); }
+      else this.fermer(false);
       for(const g of groupes) this.vue.modele.add(g);
       this.vue.recenserMateriaux();
       this.vue.adapterAuModele();
@@ -274,28 +376,35 @@ export class Interface {
       if(this.vue.modeTransparent) this.vue.definirTransparence(true);
       this.appliquerCoupe();
 
-      this.nav.allerVersVue("iso", false);
+      if(!ajout) this.nav.allerVersVue("iso", false);   // en ajout, on garde l'angle de vue
       this.vue.ajusterVue(this.vue.modele);
       this.arbre.reconstruire();
 
+      if(ajout) this.derniersFichiers = [...this.derniersFichiers, ...fichiers];
+      else this.derniersFichiers = fichiers;       // ce que « Ranger » copierait (11-projets.js)
+
       /* Le titre nomme les modèles, pas leurs annexes : « equerre.obj » et
          non « equerre.obj + equerre.mtl ». */
-      const nom = fichiers.filter(f => formatDe(f.name)).map(f => f.name).join(" + ");
+      const nom = this.derniersFichiers.filter(f => formatDe(f.name)).map(f => f.name).join(" + ");
       $("nomFichier").textContent = nom.length > 46 ? nom.slice(0, 44) + "…" : nom;
       $("nomFichier").hidden = false;
       $("nomFichier").title = nom;
       document.title = `${nom} — Visionneuse 3D`;
       $("accueil").hidden = true;
 
+      /* Les totaux se lisent sur la scène : en ajout, elle contient plus que
+         ce qui vient d'être lu. */
+      let pieces = 0, triangles = 0;
+      this.vue.modele.traverse(o => { if(o.userData.estPiece){ pieces++; triangles += o.userData.triangles; } });
       const secondes = ((performance.now() - t0) / 1000).toFixed(1).replace(".", ",");
       $("etatStats").textContent =
-        `${fmt(stats.pieces)} pièce${stats.pieces > 1 ? "s" : ""} · ` +
-        `${fmt(stats.triangles)} triangles · ouvert en ${secondes} s`;
+        `${fmt(pieces)} pièce${pieces > 1 ? "s" : ""} · ` +
+        `${fmt(triangles)} triangles · ${ajout ? "ajouté" : "ouvert"} en ${secondes} s`;
       if(stats.aretesIgnorees){
         $("etatStats").textContent += " · arêtes non calculées (modèle trop lourd)";
       }
-      this.derniersFichiers = fichiers;            // ce que « Ranger » copierait (11-projets.js)
       this.majEtatBoutons();
+      this.surModeleChange?.();                    // la liste de « Déplacer » (13-deplacement.js)
     }catch(e){
       console.error(e);
       this.erreur(e.message || String(e));
@@ -311,6 +420,7 @@ export class Interface {
     /* La sélection tient un matériau cloné sur une pièce qui va disparaître :
        on la relâche avant de libérer quoi que ce soit. */
     this.arbre.selectionner(null);
+    this.effacerCollisions();
     for(const g of [...this.vue.modele.children]){ liberer(g); this.vue.modele.remove(g); }
     this.vue.viderModele();
     this.mesure.annuler();
@@ -322,6 +432,7 @@ export class Interface {
       $("etatStats").textContent = "";
       document.title = "Visionneuse 3D — STEP / IGES / BREP / 3MF / OBJ / STL";
       this.majEtatBoutons();
+      this.surModeleChange?.();
     }
   }
 
@@ -363,7 +474,7 @@ export class Interface {
 
   majEtatBoutons(){
     const plein = this.vue.modele.children.length > 0;
-    for(const id of ["bFermer", "bGlb", "bExportPiece"]) $(id).disabled = !plein;
+    for(const id of ["bFermer", "bAjouter", "bDeplacer", "bCollisions", "bGlb", "bExportPiece"]) $(id).disabled = !plein;
     $("bProjection").firstChild.nodeValue =
       this.vue.projection === "ortho" ? "Orthographique " : "Perspective ";
     $("bProjection").classList.toggle("on", this.vue.projection === "ortho");
@@ -736,7 +847,7 @@ export class Interface {
       if(document.querySelector("dialog[open]") && e.key !== "Escape") return;
 
       const k = e.key.toLowerCase();
-      if((e.ctrlKey || e.metaKey) && k === "o"){ e.preventDefault(); $("fichier").click(); return; }
+      if((e.ctrlKey || e.metaKey) && k === "o"){ e.preventDefault(); this.choisirFichiers(e.shiftKey); return; }
       if(e.ctrlKey || e.metaKey || e.altKey) return;
 
       const vues = { "1":"avant", "2":"arriere", "3":"gauche", "4":"droite",
@@ -753,6 +864,7 @@ export class Interface {
         case "t": this.basculerTheme(); break;
         case "c": this.basculerCoupe(); break;
         case "k": this.basculerMesure(); break;
+        case "d": this.basculerDeplacement?.(); break;
         /* M ouvre la mesure s'il le faut, puis fait tourner les modes :
            point → arête → face. Un seul doigt suffit pour tout le cycle. */
         case "m":
@@ -767,6 +879,7 @@ export class Interface {
              on se trompe plus souvent de point que d'outil, et refermer l'outil pour
              recommencer serait une manipulation de trop. */
           if(this.coupe?.actif && this.coupe.enChoixFace) this.coupe.desactiverChoixFace();
+          else if(this.deplacement?.annulerContrainte()) {}
           else if(this.mesure.actif && this.mesure.enCours()) this.mesure.annuler();
           else if(this.mesure.actif) this.basculerMesure(false);
           else if(this.arbre.isole) this.arbre.toutAfficher();

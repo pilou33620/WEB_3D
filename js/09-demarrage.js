@@ -19,6 +19,7 @@ import { Mesure } from "./07-mesure.js";
 import { CoupeManager } from "./07b-coupe.js";
 import { Interface, pieceSous } from "./08-interface.js";
 import { brancherProjets } from "./11-projets.js";
+import { brancherDeplacement } from "./13-deplacement.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -38,7 +39,9 @@ let coupe;
 
 /* ---------------- navigation ---------------- */
 const nav = new Navigation(vue, {
-  surPointeurBasAvant:(ev) => coupe?.testerClicGizmo(ev),
+  /* Panneau « Déplacer » ouvert, le clic gauche sur une pièce l'emporte ou
+     désigne une face de contrainte (13-deplacement.js). */
+  surPointeurBasAvant:(ev) => coupe?.testerClicGizmo(ev) || ui.deplacement?.pointeurBas(ev),
   surSelection:(ev) => {
     /* En mode coupe avec choix de face, le clic sélectionne la face */
     if(coupe?.actif && coupe.enChoixFace && coupe.cliquer(ev)) return;
@@ -77,6 +80,7 @@ arbre.surSelection = (objet) => {
 
 const ui = new Interface({ vue, nav, cube, arbre, mesure, coupe });
 brancherProjets(ui);
+brancherDeplacement(ui);
 
 /* Le cube et la barre d'état suivent les préférences quelle que soit la
    manière dont elles ont changé — dialogue, clavier ou bouton du coin. */

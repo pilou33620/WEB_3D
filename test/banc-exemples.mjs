@@ -95,4 +95,55 @@ verifier("essai-mesure.obj : l'équerre tournée retrouve son repère (40 × 30 
   assert.notDeepEqual(tailles(new THREE.Box3().setFromObject(equerre)).sort((a, b) => b - a), [40, 30, 30]);
 });
 
+/* --- Collisions : une pénétration se voit, un contact face à face non ------- */
+const { chercherCollisions } = await import(pathToFileURL(path.join(RACINE, "js", "12-collisions.js")).href);
+const cartes = async (...positions) => {
+  const racine = new THREE.Group();
+  for(const [nom, x, y, z] of positions){
+    const fichier = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10));
+    m.name = nom; m.position.set(x, y, z); m.userData.estPiece = true;
+    fichier.add(m); racine.add(fichier);
+  }
+  racine.updateMatrixWorld(true);
+  return (await chercherCollisions(racine)).map(r => r.a.name + "/" + r.b.name).sort();
+};
+for(const [nom, positions, attendu] of [
+  ["deux cubes posés face à face : contact, pas collision", [["A", 0, 0, 0], ["B", 10, 0, 0]], []],
+  ["un cube qui rentre dans l'autre", [["A", 0, 0, 0], ["C", 6, 3, 2]], ["A/C"]],
+  ["trois fichiers : seuls les couples qui se pénètrent", [["A", 0, 0, 0], ["B", 10, 0, 0], ["C", 30, 0, 0], ["D", 14, 4, -3]], ["B/D"]],
+]){
+  const obtenu = await cartes(...positions);
+  verifier("collisions — " + nom, () => assert.deepEqual(obtenu, attendu));
+}
+
+/* --- Contraintes : plaquer deux plans, aligner deux axes -------------------- */
+const { contraindre } = await import(pathToFileURL(path.join(RACINE, "js", "13-deplacement.js")).href);
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const proche = (a, b) => assert.ok(a.distanceTo(b) < 1e-6, `${a.toArray()} ≠ ${b.toArray()}`);
+verifier("contrainte — la face du dessous de B plaquée sur le dessus de A, à 10 mm", () => {
+  const g = new THREE.Group(); g.position.set(30, -5, 2); g.rotation.set(0.3, 0, 0.2); g.updateMatrixWorld(true);
+  /* une face plane de B, normale vers -X dans son repère : on la suit dans le monde */
+  const local = { centre:V(0, 0, 0), normale:V(-1, 0, 0) };
+  const monde = () => ({ type:"plan", centre:g.localToWorld(local.centre.clone()),
+                         normale:local.normale.clone().transformDirection(g.matrixWorld) });
+  assert.equal(contraindre(g, monde(), { type:"plan", centre:V(0, 0, 5), normale:V(0, 0, 1) }, 10), null);
+  const apres = monde();
+  proche(apres.normale, V(0, 0, -1));           // les faces se regardent
+  assert.ok(Math.abs(apres.centre.z - 15) < 1e-6, "à 10 mm au-dessus du plan z = 5");
+});
+verifier("contrainte — deux trous mis sur le même axe", () => {
+  const g = new THREE.Group(); g.position.set(7, 3, 0); g.rotation.set(0, 0.4, 0); g.updateMatrixWorld(true);
+  const A = { type:"cylindre", point:g.localToWorld(V(2, 1, 0)), axe:V(0, 0, 1).transformDirection(g.matrixWorld) };
+  assert.equal(contraindre(g, A, { type:"cylindre", point:V(-4, 6, 50), axe:V(0, 0, -1) }), null);
+  const p = g.localToWorld(V(2, 1, 0)), axe = V(0, 0, 1).transformDirection(g.matrixWorld);
+  proche(axe, V(0, 0, 1));
+  proche(V(p.x, p.y, 0), V(-4, 6, 0));          // sur l'axe x = -4, y = 6
+});
+verifier("contrainte — plan contre cylindre refusé", () => {
+  const g = new THREE.Group();
+  assert.match(contraindre(g, { type:"plan", centre:V(0,0,0), normale:V(0,0,1) },
+                              { type:"cylindre", point:V(0,0,0), axe:V(0,0,1) }), /plan|cylindr/);
+});
+
 console.log(`${essais}/${essais} ok`);

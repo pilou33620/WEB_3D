@@ -157,6 +157,11 @@ export const PREFS_DEFAUT = {
   /* mesure */
   mesureDeltaMode:"global",// ΔXYZ façon Fusion 360 : off | sel1 | sel2 | global
   mesurePrecision:3,       // décimales des cotes (0 à 5)
+
+  /* collisions : pénétration en dessous de laquelle on parle de contact (mm).
+     Doit rester au-dessus de l'écart du maillage, sinon une tige dans son
+     alésage au même diamètre passe pour une collision. */
+  toleranceCollision:0.1,
 };
 
 const CLE = "web3d.prefs";
