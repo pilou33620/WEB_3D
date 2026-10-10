@@ -38,6 +38,8 @@ import sys
 import urllib.parse
 import webbrowser
 
+import appairage
+
 RACINE = os.path.dirname(os.path.abspath(__file__))
 
 # Ce que la page charge : elle-même, css/, js/, vendor/, exemples/, et les
@@ -86,27 +88,10 @@ def lister_projets():
     return sorted(sortie, key=lambda f: -f["date"])
 
 
-def hote_permis(entete):
-    """L'en-tête Host désigne-t-il ce poste ? (parade au DNS rebinding)
-
-    Une page piégée qui fait résoudre son nom vers 127.0.0.1 envoie SON nom
-    dans Host ; une adresse IP littérale, elle, ne se rebranche pas. On accepte
-    donc toutes les IP (la tablette tape celle du poste), localhost et le nom
-    du poste.
-    """
-    h = (entete or "").strip().lower().rstrip(".")
-    if h.startswith("["):
-        h = h[1:].split("]")[0]
-    elif h.count(":") == 1:
-        h = h.split(":")[0]
-    nom = socket.gethostname().lower()
-    if h in ("", "localhost", nom, nom + ".local"):
-        return True
-    try:
-        ipaddress.ip_address(h.split("%")[0])
-        return True
-    except ValueError:
-        return False
+# Host contrôlé (DNS rebinding) et code d'appairage exigé des autres appareils du
+# réseau : appairage.py, commun aux web tools. Remplacé dans main() selon --local.
+hote_permis = appairage.hote_permis
+GARDE = appairage.Garde("WEB_3D", actif=False)
 
 
 class Gestionnaire(http.server.SimpleHTTPRequestHandler):
@@ -131,12 +116,7 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
     }
 
     def parse_request(self):
-        if not super().parse_request():
-            return False
-        if not hote_permis(self.headers.get("Host")):
-            self.send_error(403, "Host non autorisé (protection DNS rebinding)")
-            return False
-        return True
+        return super().parse_request() and GARDE.filtrer(self)
 
     def send_head(self):
         # GET et HEAD passent tous deux par ici
@@ -555,6 +535,8 @@ def main() -> int:
 
     os.chdir(dossier)
     hote = "127.0.0.1" if args.local else "0.0.0.0"
+    global GARDE
+    GARDE = appairage.Garde("WEB_3D", actif=not args.local)
 
     try:
         serveur, port = ouvrir_serveur(hote, args.port, 10)
@@ -573,6 +555,8 @@ def main() -> int:
         print(f"  (le port {args.port} était occupé)")
     if not args.local:
         print(f"  réseau  : http://{adresse_locale()}:{port}/   (tablette, autre poste)")
+        print("            l'autre appareil demande une fois le code d'appairage ci-dessous")
+        GARDE.annoncer()
     print("  Ctrl+C pour arrêter.\n")
 
     if not args.sans_navigateur:
