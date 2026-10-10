@@ -54,8 +54,8 @@ depuis une tablette : la navigation tactile (un doigt tourne, deux doigts
 déplacent et pincent pour zoomer) est prévue.
 
 La première fois, la tablette demande un **code d'appairage** à 6 chiffres, affiché
-dans le terminal du serveur (ou dans les logs de WEB_3D, dans WEB·SUITE ou
-web_launcher). Elle s'en souvient ensuite, pour tous les web tools de ce poste
+dans le terminal du serveur (ou dans les logs de WEB_3D, dans WEB·SUITE).
+Elle s'en souvient ensuite, pour tous les web tools de ce poste
 (`appairage.py`, commun aux web tools). Le poste lui-même n'a jamais besoin de code.
 
 **Les projets.** Avec `--projets`, le bouton **🗂 Projets…** liste les modèles du dossier
