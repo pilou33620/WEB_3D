@@ -212,7 +212,7 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         if args and "favicon.ico" in str(args[0]):
             return
         if not args or not str(args[0]).startswith(("GET", "HEAD")) or str(args[1]) != "200":
-            super().log_message(format, *args)
+            super().log_message("%s", appairage.masquer(format % args))
 
 
 class Serveur(socketserver.ThreadingTCPServer):
@@ -561,6 +561,8 @@ def main() -> int:
         print(f"  (le port {args.port} était occupé)")
     if not args.local:
         print(f"  réseau  : http://{adresse_locale()}:{port}/   (tablette, autre poste)")
+        if appairage.ip_tailscale():
+            print(f"  tailscale : http://{appairage.ip_tailscale()}:{port}/")
         print("            l'autre appareil demande une fois le code d'appairage ci-dessous")
         GARDE.annoncer()
     print("  Ctrl+C pour arrêter.\n")
