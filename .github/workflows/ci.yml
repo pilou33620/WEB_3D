@@ -21,5 +21,8 @@ jobs:
       - name: Exemples — OpenCascade, lecteurs three.js, repère propre d'une pièce
         run: node test/banc-exemples.mjs
 
+      - name: Canal de pilotage (MCP de web_suite) — commandes de la page 3D
+        run: node test/banc-pilote-3d.mjs
+
       - name: Serveur — fichiers servis, Host
         run: python test/banc-serveur.py
