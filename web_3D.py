@@ -80,9 +80,11 @@ def lister_projets():
     for dossier, sous, fichiers in os.walk(PROJETS):
         sous[:] = [s for s in sous if not s.startswith(".")]
         for nom in fichiers:
-            if NOM_PROJET.match(nom):
-                complet = os.path.join(dossier, nom)
-                st = os.stat(complet)
+            complet = os.path.join(dossier, nom)
+            # Un lien symbolique n'est pas un fichier du projet : mort, il faisait planter la liste ;
+            # vers l'extérieur, il n'est de toute façon pas servi (chemin_projet)
+            if NOM_PROJET.match(nom) and not os.path.islink(complet):
+                st = os.lstat(complet)
                 sortie.append({"chemin": os.path.relpath(complet, PROJETS).replace(os.sep, "/"),
                                "taille": st.st_size, "date": int(st.st_mtime)})
     return sorted(sortie, key=lambda f: -f["date"])
@@ -166,14 +168,21 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
             self.close_connection = True
             return self._json({"detail": "Taille refusée (%d Mo au plus)" % (MAX_PROJET >> 20)}, 413)
         base, ext = os.path.splitext(nom)
-        cible, n = chemin_projet(nom), 2
-        while cible and os.path.exists(cible):
-            cible, n = chemin_projet("%s (%d)%s" % (base, n, ext)), n + 1
-        if not cible:
+        # Le nom se réserve en le créant, en exclusif et sans suivre de lien : deux envois du même
+        # nom ne s'écrasent pas, et un lien déposé dans PROJETS ne fait pas écrire ailleurs.
+        # Plus de « .part » commun : un fichier coupé en route est retiré.
+        drapeaux = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_BINARY", 0))
+        cible, n, fd = chemin_projet(nom), 2, None
+        while cible and fd is None and n < 1000:
+            try:
+                fd = os.open(cible, drapeaux, 0o644)
+            except FileExistsError:
+                cible, n = chemin_projet("%s (%d)%s" % (base, n, ext)), n + 1
+        if fd is None:
             return self._json({"detail": "Nom refusé"}, 400)
-        provisoire = cible + ".part"
-        with open(provisoire, "wb") as f:
-            reste = taille
+        reste = taille
+        with os.fdopen(fd, "wb") as f:
             while reste > 0:
                 bloc = self.rfile.read(min(1 << 20, reste))
                 if not bloc:
@@ -181,9 +190,8 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
                 f.write(bloc)
                 reste -= len(bloc)
         if reste:
-            os.remove(provisoire)
+            os.remove(cible)
             return self._json({"detail": "Envoi interrompu"}, 400)
-        os.replace(provisoire, cible)
         # realpath des deux côtés : un chemin court Windows (PIERRE~1) ne se compare pas au long
         return self._json({"chemin": os.path.relpath(cible, os.path.realpath(PROJETS)).replace(os.sep, "/")})
 

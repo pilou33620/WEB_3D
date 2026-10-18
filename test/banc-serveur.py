@@ -109,6 +109,37 @@ with tempfile.TemporaryDirectory() as tmp:
     for chemin in ("/projets/secret.txt", "/projets/../web_3D.py", "/projets/..%5cweb_3D.py",
                    "/projets/C:%5cWindows%5cwin.ini", "/projets/.git/config"):
         verifier("refus " + chemin, requete("GET", chemin)[0], 404)
+
+    # Un lien symbolique « piege.stl.part » déposé dans PROJETS (dépôt synchronisé) ne fait
+    # pas écrire ailleurs : l'écriture va dans la cible, créée en exclusif, sans suivre de lien
+    with tempfile.TemporaryDirectory() as dehors:
+        victime = os.path.join(dehors, "victime.txt")
+        with open(victime, "w") as f:
+            f.write("intact")
+        os.symlink(victime, os.path.join(tmp, "piege.stl.part"))
+        verifier("lien .part piégé : rangé quand même", json.loads(ranger("piege.stl")[1])["chemin"], "piege.stl")
+        verifier("lien .part piégé : rien écrit dehors", open(victime).read(), "intact")
+        verifier("lien .part piégé : un vrai fichier", os.path.islink(os.path.join(tmp, "piege.stl")), False)
+        # Liens morts ou vers l'extérieur : ni listés, ni cause d'erreur
+        os.symlink(os.path.join(dehors, "absent.stl"), os.path.join(tmp, "mort.stl"))
+        os.symlink(victime, os.path.join(tmp, "dehors.stl"))
+        statut, corps = requete("GET", "/api/projets")
+        chemins = [f["chemin"] for f in json.loads(corps)["fichiers"]] if statut == 200 else None
+        verifier("liens symboliques ignorés par la liste", (statut, "mort.stl" in (chemins or []),
+                 "dehors.stl" in (chemins or [])), (200, False, False))
+
+    # Deux rangements simultanés du même nom : deux fichiers, chacun intact (jamais d'écrasement)
+    import threading as _t
+    corps_ab = {"A": b"A" * (2 << 20), "B": b"B" * (2 << 20)}
+    rendus = {}
+    fils = [_t.Thread(target=lambda k=k: rendus.update({k: requete("POST", "/api/projets?nom=course.stl", corps_ab[k],
+                                                                    {"X-Web3D": "1"})})) for k in "AB"]
+    for f in fils: f.start()
+    for f in fils: f.join(30)
+    chemins = {k: json.loads(r[1])["chemin"] for k, r in rendus.items() if r[0] == 200}
+    verifier("course : deux réponses 200, deux noms", (len(chemins), len(set(chemins.values()))), (2, 2))
+    verifier("course : chaque fichier a son propre contenu",
+             all(open(os.path.join(tmp, c), "rb").read() == corps_ab[k] for k, c in chemins.items()), True)
     web_3D.PROJETS = None
 
 # Canal de pilotage (pilote.py, MCP de web_suite) : WEB_3D n'a pas de garde CSRF, c'est
