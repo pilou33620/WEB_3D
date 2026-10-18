@@ -204,4 +204,85 @@ await verifier("une pièce masquée n'entre pas dans les collisions", async () =
   }finally{ cachee.visible = true; }
 });
 
+/* --- T5 : déplacement, contrainte, matrices ---------------------------------- */
+const deux = new THREE.Group();          // l'exemple ouvert deux fois : deux fichiers à assembler
+deux.add(lireExemple("assemblage-as1.stp"), lireExemple("assemblage-as1.stp"));
+deux.updateMatrixWorld(true);
+const [f0, f1] = deux.children;
+const centreDe = g => new THREE.Box3().setFromObject(g, true).getCenter(new THREE.Vector3());
+const pres = (a, b, tol = 1e-6) => a.every((x, i) => Math.abs(x - b[i]) <= tol);
+
+await verifier("translation, position absolue, origine", () => {
+  P3.deplacer(f1, { translation: [25, 0, 0] });
+  assert.ok(pres(f1.position.toArray(), [25, 0, 0]));
+  P3.deplacer(f1, { translation: [0, -5, 2] });
+  assert.ok(pres(f1.position.toArray(), [25, -5, 2]));
+  P3.deplacer(f1, { position: [10, 20, 30] });
+  assert.ok(pres(f1.position.toArray(), [10, 20, 30]));
+  P3.deplacer(f1, { origine: true });
+  assert.ok(pres(f1.position.toArray(), [0, 0, 0]) && pres([f1.rotation.x, f1.rotation.y, f1.rotation.z], [0, 0, 0]));
+});
+
+await verifier("une rotation garde le centre de la boîte (comme le panneau Déplacer)", () => {
+  const c0 = centreDe(f1);
+  P3.deplacer(f1, { rotation_deg: [0, 0, 90] });
+  assert.ok(pres(centreDe(f1).toArray(), c0.toArray(), 1e-3), "centre déplacé");
+  assert.ok(Math.abs(f1.rotation.z - Math.PI / 2) < 1e-9);
+  P3.deplacer(f1, { origine: true });
+});
+
+await verifier("état des matrices : déplacer puis remettre redonne l'état au bit près", () => {
+  const e0 = P3.etatMatrices(deux);
+  assert.deepEqual(JSON.parse(JSON.stringify(e0)), e0);
+  P3.deplacer(f1, { translation: [3.3, 1.1, 0], rotation_deg: [10, 20, 30] });
+  assert.notDeepEqual(P3.etatMatrices(deux), e0);
+  P3.remettreMatrices(deux, e0);
+  assert.deepEqual(P3.etatMatrices(deux), e0);
+  assert.throws(() => P3.remettreMatrices(deux, e0.slice(1)), /fichiers/);
+});
+
+await verifier("contrainte plan contre plan : faces plaquées à 5 mm, normales opposées", () => {
+  const plaque = g => P3.pieces(g).find(p => p.name === "plate");
+  const A = plaque(f1), B = plaque(f0);
+  const fA = P3.faces(A).faces.find(f => f.type === "plan" && f.normale[2] < -0.99);   // dessous de la plaque mobile
+  const fB = P3.faces(B).faces.find(f => f.type === "plan" && f.normale[2] > 0.99);    // dessus de la plaque fixe
+  assert.ok(fA && fB, "faces dessous et dessus de la plaque");
+  P3.deplacer(f1, { translation: [7, 9, -40] });
+  P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: fA.index }, fixe: { piece: B.uuid, face: fB.index }, decalage: 5 });
+  const apresA = P3.faces(A).faces[fA.index], apresB = P3.faces(B).faces[fB.index];
+  assert.ok(pres(apresA.normale, apresB.normale.map(x => -x), 1e-6), "normales opposées");
+  const ecart = [0, 1, 2].reduce((s, k) => s + (apresA.centre[k] - apresB.centre[k]) * apresB.normale[k], 0);
+  assert.ok(Math.abs(ecart - 5) < 1e-3, "écart le long de la normale : " + ecart);
+  P3.deplacer(f1, { origine: true });
+});
+
+await verifier("contrainte axe contre axe : deux vis sur le même axe", () => {
+  const vis = g => P3.pieces(g).find(p => p.name === "bolt");
+  const A = vis(f1), B = vis(f0);
+  const fA = P3.faces(A).faces.find(f => f.type === "cylindre"), fB = P3.faces(B).faces.find(f => f.type === "cylindre");
+  P3.deplacer(f1, { translation: [30, -12, 4], rotation_deg: [20, 0, 35] });
+  P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: fA.index }, fixe: { piece: B.uuid, face: fB.index } });
+  const a = P3.faces(A).faces[fA.index], b = P3.faces(B).faces[fB.index];
+  // Axes rendus arrondis au millième, et ajustés sur le maillage d'affichage : on normalise, et
+  // l'écart entre axes se juge à la précision du maillage (0,1 mm)
+  const ax = new THREE.Vector3(...a.axe).normalize(), bx = new THREE.Vector3(...b.axe).normalize();
+  assert.ok(Math.abs(Math.abs(ax.dot(bx)) - 1) < 1e-3, "axes parallèles");
+  const w = new THREE.Vector3(...a.centre).sub(new THREE.Vector3(...b.centre));
+  assert.ok(w.sub(bx.clone().multiplyScalar(w.dot(bx))).length() < 0.1, "axes confondus");
+  P3.deplacer(f1, { origine: true });
+});
+
+await verifier("contraintes refusées : faces incompatibles, face fixe sur le même fichier, index hors limites", () => {
+  const A = P3.pieces(f1).find(p => p.name === "bolt"), B = P3.pieces(f0).find(p => p.name === "plate");
+  const cyl = P3.faces(A).faces.find(f => f.type === "cylindre"), plan = P3.faces(B).faces.find(f => f.type === "plan");
+  assert.throws(() => P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: cyl.index }, fixe: { piece: B.uuid, face: plan.index } }),
+                /deux faces planes|cylindriques/);
+  const memeFichier = P3.pieces(f1).find(p => p.name === "plate");
+  assert.throws(() => P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: cyl.index }, fixe: { piece: memeFichier.uuid, face: 0 } }),
+                /autre fichier/);
+  assert.throws(() => P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: 9999 }, fixe: { piece: B.uuid, face: 0 } }),
+                /hors limites/);
+  assert.ok(pres(f1.position.toArray(), [0, 0, 0]), "rien n'a bougé");
+});
+
 console.log(`${essais}/${essais} ok`);

@@ -15,6 +15,7 @@ import * as THREE from "three";
 import { mesurerSolide } from "./05-arbre.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
 import { chercherCollisions } from "./12-collisions.js";
+import { contraindre, perimerCaches } from "./13-deplacement.js";
 
 /* Arrondi au µm (ou au millième de degré) : des nombres lisibles, et -0 n'existe pas. */
 function arrondir(x){ return Math.round(x * 1000) / 1000 + 0; }
@@ -189,4 +190,71 @@ export async function collisions(modele, { tolerance = 0.1 } = {}){
     nombre:brut.length, tolerance, duree_s:arrondir((performance.now() - debut) / 1000),
     collisions:brut.map(c => ({ a:decrire(modele, c.a), b:decrire(modele, c.b), longueur:arrondir(c.longueur) })),
   };
+}
+
+/* ---------------------------------------------------------------------------
+   Déplacement : on déplace un FICHIER (son groupe), jamais une pièce — comme le
+   panneau Déplacer, dont on reprend les conventions (valeurs absolues, rotation
+   autour du centre de la boîte).
+   ------------------------------------------------------------------------- */
+const RAD = Math.PI / 180;
+const centreBoite = g => new THREE.Box3().setFromObject(g, true).getCenter(new THREE.Vector3());
+
+/** Le groupe d'un fichier par son index. */
+export function trouverFichier(modele, index){
+  const g = Number.isInteger(index) ? modele.children[index] : undefined;
+  if(!g) throw new Error(`Fichier ${index} inconnu : ${modele.children.length} fichier(s) ouvert(s).`);
+  return g;
+}
+
+/** origine, puis position (absolue, mm), translation (relative), rotation_deg (absolue, Euler XYZ). */
+export function deplacer(g, { position, translation, rotation_deg, origine } = {}){
+  if(origine){ g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); }
+  if(position) g.position.fromArray(position);
+  if(translation) g.position.add(new THREE.Vector3().fromArray(translation));
+  if(rotation_deg){
+    g.updateMatrixWorld(true);
+    const avant = centreBoite(g);
+    g.rotation.set(rotation_deg[0] * RAD, rotation_deg[1] * RAD, rotation_deg[2] * RAD);
+    g.updateMatrixWorld(true);
+    g.position.add(avant.sub(centreBoite(g)));
+  }
+  perimerCaches(g);
+}
+
+/** La face d'index donné d'une pièce, en coordonnées du monde (06-topologie). */
+export function faceDe(piece, index){
+  piece.updateMatrixWorld(true);
+  const topo = analyser(piece);
+  const tris = topo && topo.trisParRegion[index];
+  if(!tris) throw new Error(`Face ${index} hors limites pour « ${piece.name} » (${topo ? topo.trisParRegion.length : 0} faces).`);
+  return faceSous(null, { object:piece, faceIndex:tris[0] });
+}
+
+/** Plaquer deux plans ou aligner deux axes : la face mobile sur le fichier g, la fixe sur un autre. */
+export function contrainte(modele, g, { mobile, fixe, decalage = 0 }){
+  const pA = trouverPiece(modele, mobile.piece), pB = trouverPiece(modele, fixe.piece);
+  const fichierA = modele.children[fichierDe(modele, pA)], fichierB = modele.children[fichierDe(modele, pB)];
+  if(fichierA !== g) throw new Error(`La face mobile doit être sur le fichier déplacé (« ${g.name} »).`);
+  if(fichierB === g) throw new Error("La face fixe doit être sur un autre fichier que celui qu'on déplace.");
+  const A = faceDe(pA, mobile.face), B = faceDe(pB, fixe.face);
+  const erreur = contraindre(g, A, B, decalage);
+  if(erreur) throw new Error(erreur);
+  perimerCaches(g);
+}
+
+/** Position, orientation et échelle de chaque fichier : l'Annuler des cartes les remet au bit près. */
+export function etatMatrices(modele){
+  return modele.children.map((g, index) => ({ index, fichier:g.userData.fichier || g.name,
+    position:g.position.toArray(), quaternion:g.quaternion.toArray(), scale:g.scale.toArray() }));
+}
+
+export function remettreMatrices(modele, etat){
+  if(etat.length !== modele.children.length)
+    throw new Error("Le nombre de fichiers ouverts a changé depuis : impossible de remettre les positions.");
+  etat.forEach((e, i) => {
+    const g = modele.children[i];
+    g.position.fromArray(e.position); g.quaternion.fromArray(e.quaternion); g.scale.fromArray(e.scale);
+    perimerCaches(g);
+  });
 }

@@ -68,6 +68,26 @@ export function contraindre(g, A, B, decalage = 0){
   return "Contrainte possible entre deux faces planes (plaquer) ou deux faces cylindriques (même axe).";
 }
 
+/** Ce qui a été calculé en coordonnées monde sur ce fichier (arêtes, faces) est périmé. */
+export function perimerCaches(g){
+  g.updateMatrixWorld(true);
+  g.traverse(o => {
+    const topo = o.geometry?.userData.topo;
+    if(topo){ topo.cacheAretes.clear(); topo.cacheFaces.clear(); }
+  });
+}
+
+/** Après un déplacement : caches périmés, mesure et coupe à refaire, collisions affichées
+    relancées. Le panneau Déplacer et les commandes du canal de pilotage passent ici. */
+export function apresDeplacement(vue, ui, g){
+  perimerCaches(g);
+  ui.mesure.annuler();
+  vue.adapterAuModele();
+  ui.appliquerCoupe();
+  if(ui.collisions) ui.lancerCollisions();
+  vue.invalider();
+}
+
 /* -----------------------------------------------------------------------------
    Panneau et souris
    --------------------------------------------------------------------------- */
@@ -156,17 +176,8 @@ export function brancherDeplacement(ui){
 
   /** Tout ce qui a été calculé en coordonnées monde sur ce fichier est périmé. */
   function apres(g){
-    g.updateMatrixWorld(true);
-    g.traverse(o => {
-      const topo = o.geometry?.userData.topo;
-      if(topo){ topo.cacheAretes.clear(); topo.cacheFaces.clear(); }
-    });
-    ui.mesure.annuler();
-    vue.adapterAuModele();
-    ui.appliquerCoupe();
-    if(ui.collisions) ui.lancerCollisions();
+    apresDeplacement(vue, ui, g);
     lire();
-    vue.invalider();
   }
 
   /* ---------------- contrainte : deux faces à désigner ---------------- */
