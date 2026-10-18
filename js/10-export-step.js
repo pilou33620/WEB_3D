@@ -199,11 +199,14 @@ export class StepExtractor {
     // Résolution des relations de représentation (SHAPE_REPRESENTATION_RELATIONSHIP)
     // Permet d'inclure les représentations géométriques B-Rep (ADVANCED_BREP_SHAPE_REPRESENTATION,
     // MANIFOLD_SOLID_BREP, etc.) liées par Autodesk ATF, SolidWorks, CATIA, etc.
-    let modifRel = true;
-    while (modifRel) {
+    // Les relations seulement, et un plafond de passes : reparcourir toutes les entités à chaque
+    // passe coûtait O(n²) sur un fichier construit pour (longue chaîne de relations à l'envers)
+    const relations = [...this.entites].filter(([, e]) => e.contenu.includes("REPRESENTATION_RELATIONSHIP"));
+    let modifRel = true, passes = 0;
+    while (modifRel && passes++ < 200) {
       modifRel = false;
-      for (const [eid, e] of this.entites) {
-        if (e.contenu.includes("REPRESENTATION_RELATIONSHIP") && !conserves.has(eid)) {
+      for (const [eid, e] of relations) {
+        if (!conserves.has(eid)) {
           if (e.refs.length >= 2) {
             const r1 = e.refs[0];
             const r2 = e.refs[1];
@@ -377,11 +380,14 @@ export class StepExtractor {
     // Résolution des relations de représentation (Autodesk ATF, Fusion 360, SolidWorks, CATIA, etc.)
     // Permet d'inclure les représentations géométriques B-Rep (ADVANCED_BREP_SHAPE_REPRESENTATION,
     // MANIFOLD_SOLID_BREP, etc.) liées par SHAPE_REPRESENTATION_RELATIONSHIP.
-    let modifRel = true;
-    while (modifRel) {
+    // Les relations seulement, et un plafond de passes : reparcourir toutes les entités à chaque
+    // passe coûtait O(n²) sur un fichier construit pour (longue chaîne de relations à l'envers)
+    const relations = [...this.entites].filter(([, e]) => e.contenu.includes("REPRESENTATION_RELATIONSHIP"));
+    let modifRel = true, passes = 0;
+    while (modifRel && passes++ < 200) {
       modifRel = false;
-      for (const [eid, e] of this.entites) {
-        if (e.contenu.includes("REPRESENTATION_RELATIONSHIP") && !conserves.has(eid)) {
+      for (const [eid, e] of relations) {
+        if (!conserves.has(eid)) {
           if (e.refs.length >= 2) {
             const r1 = e.refs[0];
             const r2 = e.refs[1];

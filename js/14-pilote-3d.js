@@ -17,8 +17,14 @@ import { mesurerSolide } from "./05-arbre.js";
 import { compagnons, lireFichiersProjets } from "./11-projets.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
 import { StepExtractor, sanitiserNomFichier } from "./10-export-step.js";
-import { chercherCollisions } from "./12-collisions.js";
+import { chercherCollisions, maillageCollisions } from "./12-collisions.js";
 import { contraindre, perimerCaches, apresDeplacement } from "./13-deplacement.js";
+
+/* Les noms viennent du fichier (produits STEP) : sans caractères de contrôle ni de sens d'écriture,
+   bornés, avant d'aller à Claude ou sur une carte — un nom n'est pas une consigne. */
+export function nomSur(s){
+  return String(s ?? "").replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, "").slice(0, 120);
+}
 
 /* Arrondi au µm (ou au millième de degré) : des nombres lisibles, et -0 n'existe pas. */
 function arrondir(x){ return Math.round(x * 1000) / 1000 + 0; }
@@ -91,7 +97,8 @@ export function trouverPiece(modele, ref){
 /** Les fichiers ouverts et leurs pièces, sérialisés ; filtre (sur le nom) et pagination. */
 export function decrireScene(modele, { filtre = "", debut = 0, nombre = 200 } = {}){
   const fichiers = modele.children.map((g, index) => ({
-    index, nom: g.name, fichier: g.userData.fichier || g.name, format: g.userData.format || "",
+    index, nom:nomSur(g.name), fichier:nomSur(g.userData.fichier || g.name), format:g.userData.format || "",
+    projet:g.userData.projet || null,
     pieces: pieces(g).length, visible: g.visible,
     position: g.position.toArray().map(arrondir),
     rotation_deg: [g.rotation.x, g.rotation.y, g.rotation.z].map(r => arrondir(r * DEG)),
@@ -103,8 +110,8 @@ export function decrireScene(modele, { filtre = "", debut = 0, nombre = 200 } = 
   return {
     fichiers, pieces_total: toutes.length, trouvees: trouvees.length, debut,
     pieces: page.map(p => ({
-      uuid: p.uuid, chemin: cheminDe(modele, p), nom: p.name,
-      parent: p.parent && p.parent !== modele ? p.parent.name : "",
+      uuid: p.uuid, chemin: cheminDe(modele, p), nom: nomSur(p.name),
+      parent: p.parent && p.parent !== modele ? nomSur(p.parent.name) : "",
       fichier: fichierDe(modele, p), visible: visibleEnTout(p, modele),
       triangles: p.userData.triangles || 0, couleur: couleurDe(p),
     })),
@@ -132,7 +139,7 @@ export function dimensions(objet){
 /** Distance minimale entre deux pièces (triangles du maillage d'affichage), avec les deux points. */
 export function distance(A, B){
   const r = mesurerEntites({ genre:"piece", maillage:A }, { genre:"piece", maillage:B });
-  if(!r) throw new Error(`Distance impossible entre « ${A.name} » et « ${B.name} ».`);
+  if(!r) throw new Error(`Distance impossible entre « ${nomSur(A.name)} » et « ${nomSur(B.name)} ».`);
   const d = r.p1.distanceTo(r.p2);
   return { distance:arrondir(d), contact:d <= 1e-6, p1:vec(r.p1), p2:vec(r.p2) };
 }
@@ -141,7 +148,7 @@ export function distance(A, B){
 export function faces(piece){
   piece.updateMatrixWorld(true);
   const topo = analyser(piece);
-  if(!topo) throw new Error(`« ${piece.name} » : trop de triangles pour analyser ses faces.`);
+  if(!topo) throw new Error(`« ${nomSur(piece.name)} » : trop de triangles pour analyser ses faces.`);
   const liste = topo.trisParRegion.map((tris, index) => {
     const e = faceSous(null, { object:piece, faceIndex:tris[0] });
     const f = { index, type:e.type, aire:arrondir(e.aire), centre:vec(e.centre) };
@@ -183,16 +190,21 @@ export function coteClaude(p1, p2, texte, { etiquette } = {}){
 /* ---------------------------------------------------------------------------
    Collisions : couples de pièces dont les surfaces se croisent
    ------------------------------------------------------------------------- */
-const decrire = (modele, p) => ({ uuid:p.uuid, chemin:cheminDe(modele, p), nom:p.name });
+const decrire = (modele, p) => ({ uuid:p.uuid, chemin:cheminDe(modele, p), nom:nomSur(p.name) });
 
 /** Les pièces masquées sont ignorées ; la tolérance est un argument, jamais une préférence écrite. */
-export async function collisions(modele, { tolerance = 0.1, pauses = true } = {}){
+export async function collisions(modele, options = {}){
+  return (await calculerCollisions(modele, options)).resume;
+}
+
+/** Le résultat brut (pour dessiner) et sa version sérialisée (pour Claude). */
+export async function calculerCollisions(modele, { tolerance = 0.1, pauses = true } = {}){
   const debut = performance.now();
   const brut = await chercherCollisions(modele, { tol:tolerance, visible:o => visibleEnTout(o, modele), pauses });
-  return {
+  return { brut, resume:{
     nombre:brut.length, tolerance, duree_s:arrondir((performance.now() - debut) / 1000),
     collisions:brut.map(c => ({ a:decrire(modele, c.a), b:decrire(modele, c.b), longueur:arrondir(c.longueur) })),
-  };
+  } };
 }
 
 /* ---------------------------------------------------------------------------
@@ -230,7 +242,7 @@ export function faceDe(piece, index){
   piece.updateMatrixWorld(true);
   const topo = analyser(piece);
   const tris = topo && topo.trisParRegion[index];
-  if(!tris) throw new Error(`Face ${index} hors limites pour « ${piece.name} » (${topo ? topo.trisParRegion.length : 0} faces).`);
+  if(!tris) throw new Error(`Face ${index} hors limites pour « ${nomSur(piece.name)} » (${topo ? topo.trisParRegion.length : 0} faces).`);
   return faceSous(null, { object:piece, faceIndex:tris[0] });
 }
 
@@ -238,7 +250,7 @@ export function faceDe(piece, index){
 export function contrainte(modele, g, { mobile, fixe, decalage = 0 }){
   const pA = trouverPiece(modele, mobile.piece), pB = trouverPiece(modele, fixe.piece);
   const fichierA = modele.children[fichierDe(modele, pA)], fichierB = modele.children[fichierDe(modele, pB)];
-  if(fichierA !== g) throw new Error(`La face mobile doit être sur le fichier déplacé (« ${g.name} »).`);
+  if(fichierA !== g) throw new Error(`La face mobile doit être sur le fichier déplacé (« ${nomSur(g.name)} »).`);
   if(fichierB === g) throw new Error("La face fixe doit être sur un autre fichier que celui qu'on déplace.");
   const A = faceDe(pA, mobile.face), B = faceDe(pB, fixe.face);
   const erreur = contraindre(g, A, B, decalage);
@@ -257,6 +269,8 @@ export function remettreMatrices(modele, etat){
     throw new Error("Le nombre de fichiers ouverts a changé depuis : impossible de remettre les positions.");
   etat.forEach((e, i) => {
     const g = modele.children[i];
+    if(e.fichier !== (g.userData.fichier || g.name))
+      throw new Error("Les fichiers ouverts ont changé depuis : impossible de remettre les positions.");
     g.position.fromArray(e.position); g.quaternion.fromArray(e.quaternion); g.scale.fromArray(e.scale);
     perimerCaches(g);
   });
@@ -302,10 +316,10 @@ export function extraireStep(modele, refs){
   const texte = modele.children[fichierDe(modele, piece)].userData.stepTexte;
   if(!texte) throw new Error("Ce fichier n'est pas un STEP (ou son texte n'a pas été gardé) : extraction impossible.");
   const ex = new StepExtractor(texte);
-  const memes = [...ex.produits.values()].filter(pr => pr.nom.toLowerCase() === piece.name.toLowerCase());
-  if(!memes.length) throw new Error(`Pièce « ${piece.name} » introuvable dans le STEP d'origine (nom différent ?).`);
+  const memes = [...ex.produits.values()].filter(pr => pr.nom === piece.name);   // exact, la casse compte
+  if(!memes.length) throw new Error(`Pièce « ${nomSur(piece.name)} » introuvable dans le STEP d'origine (nom différent ?).`);
   if(new Set(memes.map(m => m.defId)).size > 1)
-    throw new Error(`Deux produits STEP différents s'appellent « ${piece.name} » : extraction ambiguë.`);
+    throw new Error(`Deux produits STEP différents s'appellent « ${nomSur(piece.name)} » : extraction ambiguë.`);
   const sortie = ex.exportPiece(memes[0]);
   return { produits:[memes[0].nom], texte:sortie, octets:new TextEncoder().encode(sortie).length,
            note:"Positions d'origine du STEP : les déplacements faits dans la vue n'y sont pas." };
@@ -345,6 +359,13 @@ export function brancherPilote3d(W3D, Pilote){
   const { vue, nav, arbre, ui, coupe } = W3D;
   const modele = vue.modele;
   const rafraichir = g => { apresDeplacement(vue, ui, g); ui.surModeleChange?.(); };
+  /* Tous les fichiers d'un coup : caches périmés partout, mais mesure, coupe et collisions
+     affichées refaites une seule fois (apresDeplacement les relançait pour chaque fichier). */
+  const rafraichirTous = () => {
+    modele.children.forEach(perimerCaches);
+    if(modele.children.length) rafraichir(modele.children[0]);
+  };
+  const signature = () => modele.children.map(g => g.uuid).join(",");
 
   Pilote.declarer({ page:"3d", projet:() => (typeof document !== "undefined" ? document.title : "") })
     .capture(() => { vue.rendre(); return vue.canvas; });
@@ -363,10 +384,12 @@ export function brancherPilote3d(W3D, Pilote){
       if(!["ortho", "perspective"].includes(a.projection)) throw new Error("Projection : ortho ou perspective.");
       vue.definirProjection(a.projection);      // la vue seulement, pas les préférences
     }
+    // Recadrer seulement si l'on a changé de vue ou demandé un cadrage : la projection seule ne le demande pas
     const cible = objetVise(modele, a.cadrer || {});
-    vue.ajusterVue(cible);
+    if(a.vue !== undefined || a.cadrer) vue.ajusterVue(cible);
+    ui.majEtatBoutons?.();                     // le bouton de projection suit
     vue.invalider();
-    return { vue:a.vue || null, projection:vue.projection, cadre:cible === modele ? "scène" : cible.name };
+    return { vue:a.vue || null, projection:vue.projection, cadre:cible === modele ? "scène" : nomSur(cible.name) };
   } });
 
   Pilote.commande("web3d_visibilite", { executer:a => {
@@ -396,7 +419,10 @@ export function brancherPilote3d(W3D, Pilote){
     if(a.face){
       const f = faceDe(trouverPiece(modele, a.face.piece), a.face.index);
       if(f.type !== "plan") throw new Error("La coupe se pose sur une face plane.");
-      coupe.definirActif(true); coupe.poserFace(f.normale.clone(), f.centre.clone(), `face ${a.face.index}`);
+      // La face d'abord, puis le choix à la souris coupé : activer avant laisserait le prochain clic choisir
+      coupe.poserFace(f.normale.clone(), f.centre.clone(), `face ${a.face.index}`);
+      coupe.desactiverChoixFace?.();
+      coupe.definirActif(true);
     }
     if(a.decalage_mm !== undefined) coupe.definirOffset(+a.decalage_mm);
     if(a.inverse !== undefined && !!a.inverse !== !!coupe.inverse) coupe.basculerInverse();
@@ -406,7 +432,10 @@ export function brancherPilote3d(W3D, Pilote){
              bornes_mm:[arrondir(coupe.minMm || 0), arrondir(coupe.maxMm || 0)], inverse:!!coupe.inverse };
   } });
 
-  const effacerCote = () => { const c = vue.annotations.getObjectByName("cote-claude"); if(c) vue.annotations.remove(c); };
+  const effacerCote = () => {
+    const c = vue.annotations.getObjectByName("cote-claude");
+    if(c){ vue.annotations.remove(c); liberer(c); }      // géométrie, matériaux, texture du texte
+  };
   Pilote.commande("web3d_mesurer", { executer:a => {
     effacerCote();
     if(a.effacer) { vue.invalider(); return { efface:true }; }
@@ -433,9 +462,18 @@ export function brancherPilote3d(W3D, Pilote){
     /* Onglet caché : le navigateur retarde chaque pause d'au moins une seconde (127 s au lieu de
        3 s mesurés) ; personne ne regarde la page, on calcule donc d'un bloc. */
     const cache = typeof document !== "undefined" && document.visibilityState === "hidden";
-    const r = await collisions(modele, { tolerance:a.tolerance === undefined ? 0.1 : +a.tolerance, pauses:!cache });
+    const { brut, resume:r } = await calculerCollisions(modele,
+      { tolerance:a.tolerance === undefined ? 0.1 : +a.tolerance, pauses:!cache });
     if(cache) r.note = "Onglet caché : calcul fait d'un bloc.";
-    if(a.afficher) ui.lancerCollisions();      // dessinées à la tolérance des préférences de la page
+    if(a.afficher){
+      // Le résultat déjà calculé, dessiné comme le fait le bouton Collisions : pas de second calcul
+      ui.effacerCollisions?.();
+      ui.collisions = maillageCollisions(brut);
+      vue.annotations.add(ui.collisions);
+      if(typeof document !== "undefined") document.getElementById("bCollisions")?.classList.add("on");
+      ui.afficherCollisions?.(brut);
+      vue.invalider();
+    }
     return r;
   } });
 
@@ -449,27 +487,39 @@ export function brancherPilote3d(W3D, Pilote){
       if(!liste.dispo) throw new Error("WEB_3D n'a pas de dossier PROJETS (lancé sans --projets).");
       const chemins = preparerOuverture(a.chemins, liste.fichiers || []);
       const ajout = !!a.ajout && modele.children.length > 0;
-      return { titre:ajout ? "Ajouter à la scène" : "Ouvrir (remplace la scène)", chemins, ajout,
-               avant:modele.children.map(g => g.name).join(" + ") || "scène vide", apres:chemins.join(" + ") };
+      return { titre:ajout ? "Ajouter à la scène" : "Ouvrir (remplace la scène)", chemins, ajout, scene:signature(),
+               avant:modele.children.map(g => nomSur(g.name)).join(" + ") || "scène vide", apres:chemins.join(" + ") };
     },
     appliquer:async (a, prop) => {
+      if(signature() !== prop.scene) throw new Error("La scène a changé depuis la carte : redemande-la.");
       const avant = { fichiers:[...(ui.derniersFichiers || [])], matrices:etatMatrices(modele), vide:!modele.children.length };
       const r = await ui.charger(await lireFichiersProjets(prop.chemins), prop.ajout);
       if(!r || !r.ok) throw new Error((r && r.erreur) || "Ouverture impossible.");
-      return { avant, groupes:r.groupes, ajout:prop.ajout };
+      // Un groupe par modèle, dans l'ordre : chacun garde son chemin dans PROJETS (web3d_scene le rend)
+      const modeles = prop.chemins.filter(c => formatDe(c));
+      r.groupes.forEach((g, i) => { if(modeles[i]) g.userData.projet = modeles[i]; });
+      return { avant, groupes:r.groupes, ajout:r.ajout };
     },
     annuler:async (_a, j) => {
       if(j.ajout){
+        // Comme charger et fermer : sélection, isolement et collisions ne doivent pas viser des pièces retirées
+        const retire = o => j.groupes.some(g => { let x = o; while(x){ if(x === g) return true; x = x.parent; } return false; });
+        if(arbre.isole && retire(arbre.isole)) arbre.toutAfficher();
+        arbre.selectionner(null);
+        ui.effacerCollisions?.();
         for(const g of j.groupes){ modele.remove(g); liberer(g); }
         ui.derniersFichiers = j.avant.fichiers;
-        arbre.reconstruire(); vue.adapterAuModele(); ui.surModeleChange?.(); vue.invalider();
+        vue.recenserMateriaux?.(); ui.mesure?.annuler?.(); ui.appliquerCoupe?.();
+        arbre.reconstruire(); vue.adapterAuModele(); ui.surModeleChange?.(); ui.majEtatBoutons?.(); vue.invalider();
+        if(typeof document !== "undefined")
+          document.title = `${modele.children.map(g => g.name).join(" + ")} — Visionneuse 3D`;
       }else if(j.avant.vide){
         ui.fermer();
       }else{
         const r = await ui.charger(j.avant.fichiers, false);
         if(!r || !r.ok) throw new Error((r && r.erreur) || "Le modèle d'avant ne se rouvre pas.");
         remettreMatrices(modele, j.avant.matrices);
-        modele.children.forEach(rafraichir);
+        rafraichirTous();
       }
     },
     etat:() => JSON.stringify(etatMatrices(modele)),
@@ -488,12 +538,20 @@ export function brancherPilote3d(W3D, Pilote){
       if(a.contrainte) quoi.push(`contrainte : face ${a.contrainte.mobile.face} sur face ${a.contrainte.fixe.face}` +
                                  (a.contrainte.decalage ? `, décalage ${a.contrainte.decalage} mm` : ""));
       if(!quoi.length) throw new Error("Rien à faire : position, translation, rotation_deg, origine ou contrainte.");
-      return { titre:`Déplacer « ${g.name} »`,
-               details:[`position actuelle ${vec(g.position).join(" ; ")} mm`].concat(quoi).join("\n") };
+      // L'aperçu : on applique, on lit, on remet (une contrainte impossible échoue dès la carte)
+      const lire = () => `position ${vec(g.position).join(" ; ")} mm, rotation ${
+        [g.rotation.x, g.rotation.y, g.rotation.z].map(r => arrondir(r * DEG)).join(" ; ")}°`;
+      const jeton = etatMatrices(modele), avant = lire();
+      let apres;
+      try{ deplacer(g, a); if(a.contrainte) contrainte(modele, g, a.contrainte); apres = lire(); }
+      finally{ remettreMatrices(modele, jeton); }
+      return { titre:`Déplacer « ${nomSur(g.name)} »`, uuid:g.uuid, details:quoi.join("\n"), avant, apres };
     },
-    appliquer:a => {
+    appliquer:(a, prop) => {
       const jeton = etatMatrices(modele);
       const g = trouverFichier(modele, a.fichier);
+      if(prop && prop.uuid && g.uuid !== prop.uuid)
+        throw new Error("La scène a changé depuis la carte (ce n'est plus le même fichier) : redemande-la.");
       try{
         deplacer(g, a);
         if(a.contrainte) contrainte(modele, g, a.contrainte);
@@ -501,7 +559,7 @@ export function brancherPilote3d(W3D, Pilote){
       rafraichir(g);
       return jeton;
     },
-    annuler:(_a, jeton) => { remettreMatrices(modele, jeton); modele.children.forEach(rafraichir); },
+    annuler:(_a, jeton) => { remettreMatrices(modele, jeton); rafraichirTous(); },
     etat:() => JSON.stringify(etatMatrices(modele)),
   });
 
@@ -511,14 +569,20 @@ export function brancherPilote3d(W3D, Pilote){
     irreversible:"Crée un nouveau fichier dans PROJETS/3D (jamais d'écrasement : un nom pris devient « x (2) ») ; non annulable ici.",
     proposer:a => {
       const r = extraireStep(modele, [a.piece]);
-      const nom = sanitiserNomFichier(a.nom || r.produits[0]);
-      return { titre:`Ranger « ${nom} » dans PROJETS/3D`, nom, texte:r.texte,
-               details:`Pièce « ${r.produits[0]} », ${Math.round(r.octets / 1024)} ko. ${r.note}` };
+      let nom = sanitiserNomFichier(a.nom || r.produits[0]).slice(-100);
+      if(!/^[\w(]/.test(nom)) nom = "piece_" + nom;       // le serveur exige une lettre, un chiffre ou « ( » en tête
+      return { titre:`Ranger « ${nomSur(nom)} » dans PROJETS/3D`, nom, texte:r.texte,
+               details:`Pièce « ${nomSur(r.produits[0])} », ${Math.round(r.octets / 1024)} ko. ${r.note}` };
     },
     appliquer:async (_a, prop) => {
       const r = await fetch("api/projets?nom=" + encodeURIComponent(prop.nom),
                             { method:"POST", headers:{ "X-Web3D":"1" }, body:prop.texte });
-      if(!r.ok) throw new Error(`Rangement refusé par le serveur : ${r.status}.`);
+      if(!r.ok){
+        let detail = "";
+        try{ detail = (await r.json()).detail || ""; }catch(_){ /* corps illisible */ }
+        throw new Error(`Rangement refusé par le serveur : ${detail || r.status}.`);
+      }
+      delete prop.texte;                                   // le STEP n'a plus à rester en mémoire dans la carte
       return await r.json();
     },
   });
