@@ -285,4 +285,22 @@ await verifier("contraintes refusées : faces incompatibles, face fixe sur le m�
   assert.ok(pres(f1.position.toArray(), [0, 0, 0]), "rien n'a bougé");
 });
 
+/* --- T6 : ouvrir depuis PROJETS/3D (partie pure : chemins et compagnons) ------ */
+const disponibles = [{ chemin: "carte/boitier.stp" }, { chemin: "pieces/equerre.obj" }, { chemin: "pieces/EQUERRE.MTL" },
+                     { chemin: "pieces/vis.stl" }];
+
+await verifier("ouvrir : un .obj emmène son .mtl, les autres vont seuls", () => {
+  assert.deepEqual(P3.preparerOuverture(["pieces/equerre.obj"], disponibles), ["pieces/equerre.obj", "pieces/EQUERRE.MTL"]);
+  assert.deepEqual(P3.preparerOuverture(["carte/boitier.stp", "pieces/vis.stl"], disponibles),
+                   ["carte/boitier.stp", "pieces/vis.stl"]);
+});
+
+await verifier("ouvrir : chemins refusés avant tout fetch", () => {
+  for(const [chemins, motif] of [
+    [[], /au moins un/], [["../web_3D.py"], /invalide/], [["/etc/passwd"], /invalide/], [["a\\b.stp"], /invalide/],
+    [["C:/x.stp"], /invalide/], [["carte/notes.txt"], /format/], [["carte/absent.stp"], /absent/],
+    [Array(21).fill("carte/boitier.stp"), /20 fichiers/], [[42], /invalide/],
+  ]) assert.throws(() => P3.preparerOuverture(chemins, disponibles), motif, JSON.stringify(chemins));
+});
+
 console.log(`${essais}/${essais} ok`);

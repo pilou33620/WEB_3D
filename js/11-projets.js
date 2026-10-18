@@ -23,21 +23,25 @@ async function liste(){
 }
 
 /** Un .obj s'ouvre avec ses matériaux : le .mtl de même nom, s'il est rangé à côté. */
-function compagnons(chemin, fichiers){
+export function compagnons(chemin, fichiers){
   if(!/\.obj$/i.test(chemin)) return [chemin];
   const mtl = chemin.replace(/\.obj$/i, ".mtl").toLowerCase();
   return [chemin, ...fichiers.map(f => f.chemin).filter(c => c.toLowerCase() === mtl)];
 }
 
+/** Les fichiers de PROJETS, lus par le serveur (/projets/…), prêts pour ui.charger. */
+export function lireFichiersProjets(chemins){
+  return Promise.all(chemins.map(async (c) => {
+    const r = await fetch("projets/" + c.split("/").map(encodeURIComponent).join("/"));
+    if(!r.ok) throw new Error(`${c} : ${r.status}`);
+    return new File([await r.blob()], c.split("/").pop());
+  }));
+}
+
 async function ouvrir(ui, chemins){
   $("dlgProjets").close();
   try{
-    const fichiers = await Promise.all(chemins.map(async (c) => {
-      const r = await fetch("projets/" + c.split("/").map(encodeURIComponent).join("/"));
-      if(!r.ok) throw new Error(`${c} : ${r.status}`);
-      return new File([await r.blob()], c.split("/").pop());
-    }));
-    await ui.charger(fichiers);
+    await ui.charger(await lireFichiersProjets(chemins));
   }catch(e){
     ui.erreur(`Impossible d'ouvrir : ${e.message}`);
   }

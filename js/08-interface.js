@@ -347,9 +347,10 @@ export class Interface {
        non plus : c'est ce qui accompagne un .obj. */
     const inconnus = fichiers.filter(f => !formatDe(f.name) && !estAnnexe(f.name));
     if(inconnus.length){
-      this.erreur(`Format non reconnu : ${inconnus.map(f => f.name).join(", ")}\n` +
-                  `Formats acceptés : ${LISTE_FORMATS}`);
-      return;
+      const erreur = `Format non reconnu : ${inconnus.map(f => f.name).join(", ")}\n` +
+                     `Formats acceptés : ${LISTE_FORMATS}`;
+      this.erreur(erreur);
+      return { ok:false, erreur };
     }
     this.erreur(null);
     this.attendre(true, "Lecture du fichier…", "");
@@ -405,12 +406,16 @@ export class Interface {
       }
       this.majEtatBoutons();
       this.surModeleChange?.();                    // la liste de « Déplacer » (13-deplacement.js)
+      /* Le résultat sert au canal de pilotage (14-pilote-3d.js) : savoir si c'est ouvert,
+         et quels groupes retirer pour annuler un ajout. L'interface l'ignore. */
+      return { ok:true, groupes, ajout };
     }catch(e){
       console.error(e);
       this.erreur(e.message || String(e));
       /* Une ouverture ratée ne doit pas effacer ce qui était déjà affiché :
          l'écran d'accueil ne revient que si la scène est vide. */
       $("accueil").hidden = this.vue.modele.children.length > 0;
+      return { ok:false, erreur:e.message || String(e) };
     }finally{
       this.attendre(false);
     }

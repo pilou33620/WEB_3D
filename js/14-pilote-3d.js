@@ -12,7 +12,9 @@
    ========================================================================== */
 
 import * as THREE from "three";
+import { formatDe, LISTE_FORMATS } from "./02-import.js";
 import { mesurerSolide } from "./05-arbre.js";
+import { compagnons } from "./11-projets.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
 import { chercherCollisions } from "./12-collisions.js";
 import { contraindre, perimerCaches } from "./13-deplacement.js";
@@ -257,4 +259,25 @@ export function remettreMatrices(modele, etat){
     g.position.fromArray(e.position); g.quaternion.fromArray(e.quaternion); g.scale.fromArray(e.scale);
     perimerCaches(g);
   });
+}
+
+/* ---------------------------------------------------------------------------
+   Ouvrir : seulement des fichiers de PROJETS/3D, tels que les rend web3d_projets
+   ------------------------------------------------------------------------- */
+
+/** Les chemins à lire : validés (relatifs, format 3D, présents), un .obj suivi de son .mtl. */
+export function preparerOuverture(chemins, disponibles){
+  if(!Array.isArray(chemins) || !chemins.length) throw new Error("Donne au moins un fichier de PROJETS/3D.");
+  if(chemins.length > 20) throw new Error("20 fichiers au plus à la fois.");
+  const connus = new Set(disponibles.map(f => f.chemin));
+  const sortie = [];
+  for(const c of chemins){
+    if(typeof c !== "string" || !c || c.startsWith("/") || c.includes("\\") || c.includes(":")
+       || c.split("/").some(b => b === "" || b === "." || b === ".."))
+      throw new Error(`Chemin invalide : ${c} (relatif à PROJETS/3D, tel que le rend web3d_projets).`);
+    if(!formatDe(c)) throw new Error(`« ${c} » n'est pas un format 3D lisible (${LISTE_FORMATS}).`);
+    if(!connus.has(c)) throw new Error(`« ${c} » absent de PROJETS/3D.`);
+    for(const x of compagnons(c, disponibles)) if(!sortie.includes(x)) sortie.push(x);
+  }
+  return sortie;
 }
