@@ -343,4 +343,104 @@ await verifier("STEP refusé : pièce absente du STEP, fichier qui n'est pas un 
   finally{ modele.children[0].userData.stepTexte = texte; }
 });
 
+/* --- T8 : les 9 commandes déclarées au canal, sur une interface factice ------------ */
+const ecritsLS = [];
+globalThis.localStorage = { getItem: () => null, setItem: (k) => ecritsLS.push(k), removeItem() {} };
+const scene3 = new THREE.Group(); scene3.add(lireExemple("assemblage-as1.stp")); scene3.updateMatrixWorld(true);
+const desc3 = P3.decrireScene(scene3, { nombre: 500 });     // les uuid de CETTE scène (chaque lecture en crée de neufs)
+const traces = [];
+const vue = { modele: scene3, annotations: new THREE.Group(), projection: "perspective",
+  adapterAuModele() { traces.push("adapter"); }, invalider() {}, recenserMateriaux() {},
+  definirProjection(p) { this.projection = p; }, ajusterVue(o) { traces.push("ajuster:" + o.name); } };
+const arbre = { selection: null, isole: null, selectionner(o) { this.selection = o; },
+  basculerVisible(o, force) { o.visible = force === undefined ? !o.visible : force; },
+  isoler(o) { this.isole = o; }, toutAfficher() { scene3.traverse(o => { o.visible = true; }); this.isole = null; },
+  reconstruire() {} };
+const coupe = { actif: false, mode: "x", offsetMm: 0, minMm: -50, maxMm: 50, inverse: false,
+  definirActif(b) { this.actif = b; }, definirAxe(a) { this.mode = a; },
+  poserFace() { this.mode = "face"; }, definirOffset(m) { this.offsetMm = Math.max(this.minMm, Math.min(this.maxMm, m)); },
+  basculerInverse() { this.inverse = !this.inverse; } };
+const ui = { arbre, mesure: { annuler() {} }, appliquerCoupe() { traces.push("coupe"); }, collisions: null,
+  lancerCollisions() { traces.push("collisions"); }, surModeleChange() { traces.push("surModele"); },
+  derniersFichiers: [], majEtatBoutons() {} };
+const nav = { allerVersVue(n, animer) { traces.push("vue:" + n + ":" + animer); } };
+const declare = { commandes: {} };
+const fauxPilote = { declarer(o) { declare.page = o.page; return this; }, capture(f) { declare.capture = f; return this; },
+                     commande(n, d) { declare.commandes[n] = d; return this; } };
+P3.brancherPilote3d({ THREE, vue, nav, arbre, ui, coupe }, fauxPilote);
+const C = declare.commandes;
+
+await verifier("les 9 commandes, avec leur type", () => {
+  assert.equal(declare.page, "3d");
+  for(const n of ["web3d_scene", "web3d_vue", "web3d_visibilite", "web3d_coupe", "web3d_mesurer", "web3d_collisions"])
+    assert.ok(C[n] && typeof C[n].executer === "function" && !C[n].ecriture, n);
+  for(const n of ["web3d_ouvrir", "web3d_deplacer"])
+    assert.ok(C[n] && C[n].ecriture && typeof C[n].annuler === "function" && typeof C[n].etat === "function", n);
+  assert.ok(C.web3d_ranger_step.ecriture && /non annulable/.test(C.web3d_ranger_step.irreversible));
+});
+
+await verifier("scène, vue sans animation et cadrage, visibilité", async () => {
+  const sc = await C.web3d_scene.executer({ nombre: 3 });
+  assert.equal(sc.pieces_total, 18); assert.equal(sc.pieces.length, 3); assert.equal(sc.selection, null);
+  const vis = desc3.pieces.find(p => p.nom === "plate");
+  traces.length = 0;
+  await C.web3d_vue.executer({ vue: "dessus", projection: "ortho", cadrer: { piece: vis.uuid } });
+  assert.ok(traces.includes("vue:dessus:false") && traces.includes("ajuster:plate"), traces.join());
+  assert.equal(vue.projection, "ortho");
+  const plaque = P3.trouverPiece(scene3, vis.chemin);
+  await C.web3d_visibilite.executer({ action: "masquer", pieces: [vis.chemin] });
+  assert.equal(plaque.visible, false);
+  await C.web3d_visibilite.executer({ action: "tout_afficher" });
+  assert.equal(plaque.visible, true);
+  await C.web3d_visibilite.executer({ action: "selectionner", pieces: [vis.chemin] });
+  assert.equal(arbre.selection, plaque);
+  await assert.rejects(async () => C.web3d_visibilite.executer({ action: "exploser", pieces: [] }), /action/);
+});
+
+await verifier("coupe : axe, décalage borné, sens ; face plane", async () => {
+  const e = await C.web3d_coupe.executer({ actif: true, axe: "z", decalage_mm: 500, inverse: true });
+  assert.deepEqual([e.actif, e.mode, e.decalage_mm, e.inverse], [true, "z", 50, true]);
+  const plaque = desc3.pieces.find(p => p.nom === "plate");
+  const fp = P3.faces(P3.trouverPiece(scene3, plaque.uuid)).faces.find(f => f.type === "plan");
+  assert.equal((await C.web3d_coupe.executer({ face: { piece: plaque.uuid, index: fp.index } })).mode, "face");
+  await assert.rejects(async () => C.web3d_coupe.executer({ axe: "w" }), /axe/);
+});
+
+await verifier("mesurer : distance, avec la cote de Claude posée puis effacée", async () => {
+  const [a, b] = ["bolt", "plate"].map(n => desc3.pieces.find(p => p.nom === n).uuid);
+  const r = await C.web3d_mesurer.executer({ quoi: "distance", pieces: [a, b], afficher: true });
+  assert.ok(r.distance >= 0 && vue.annotations.getObjectByName("cote-claude"));
+  await C.web3d_mesurer.executer({ effacer: true });
+  assert.equal(vue.annotations.getObjectByName("cote-claude"), undefined);
+  assert.equal((await C.web3d_mesurer.executer({ quoi: "dimensions" })).pieces, 18);
+});
+
+await verifier("déplacer : carte, application, annulation au bit près", async () => {
+  const d = C.web3d_deplacer, avant = d.etat();
+  const prop = await d.proposer({ fichier: 0, translation: [12, 0, 0] });
+  assert.ok(/Déplacer/.test(prop.titre) && /12/.test(prop.details));
+  const jeton = await d.appliquer({ fichier: 0, translation: [12, 0, 0] }, prop);
+  assert.ok(Math.abs(scene3.children[0].position.x - 12) < 1e-9 && d.etat() !== avant);
+  await d.annuler({}, jeton);
+  assert.equal(d.etat(), avant);
+});
+
+await verifier("ranger un STEP : POST /api/projets avec X-Web3D, chemin rendu", async () => {
+  const nut = desc3.pieces.find(p => p.nom === "nut");
+  const envoi = [];
+  globalThis.fetch = async (url, opts) => { envoi.push([url, opts]); return { ok: true, json: async () => ({ chemin: "nut (2).stp" }) }; };
+  const r = C.web3d_ranger_step;
+  const prop = await r.proposer({ piece: nut.uuid, nom: "nut" });
+  assert.ok(/nut\.stp/.test(prop.titre) && /PROJETS/.test(prop.titre));
+  const retour = await r.appliquer({ piece: nut.uuid, nom: "nut" }, prop);
+  assert.deepEqual(retour, { chemin: "nut (2).stp" });
+  assert.match(envoi[0][0], /api\/projets\?nom=nut\.stp$/);
+  assert.equal(envoi[0][1].method, "POST"); assert.equal(envoi[0][1].headers["X-Web3D"], "1");
+  assert.ok(envoi[0][1].body.startsWith("ISO-10303-21"));
+});
+
+await verifier("aucune commande n'écrit dans les préférences (localStorage)", () => {
+  assert.deepEqual(ecritsLS, []);
+});
+
 console.log(`${essais}/${essais} ok`);

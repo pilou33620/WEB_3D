@@ -12,13 +12,13 @@
    ========================================================================== */
 
 import * as THREE from "three";
-import { formatDe, LISTE_FORMATS } from "./02-import.js";
+import { formatDe, LISTE_FORMATS, liberer } from "./02-import.js";
 import { mesurerSolide } from "./05-arbre.js";
-import { compagnons } from "./11-projets.js";
+import { compagnons, lireFichiersProjets } from "./11-projets.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
-import { StepExtractor } from "./10-export-step.js";
+import { StepExtractor, sanitiserNomFichier } from "./10-export-step.js";
 import { chercherCollisions } from "./12-collisions.js";
-import { contraindre, perimerCaches } from "./13-deplacement.js";
+import { contraindre, perimerCaches, apresDeplacement } from "./13-deplacement.js";
 
 /* Arrondi au µm (ou au millième de degré) : des nombres lisibles, et -0 n'existe pas. */
 function arrondir(x){ return Math.round(x * 1000) / 1000 + 0; }
@@ -309,4 +309,213 @@ export function extraireStep(modele, refs){
   const sortie = ex.exportPiece(memes[0]);
   return { produits:[memes[0].nom], texte:sortie, octets:new TextEncoder().encode(sortie).length,
            note:"Positions d'origine du STEP : les déplacements faits dans la vue n'y sont pas." };
+}
+
+/* ===========================================================================
+   Branchement au canal (js/pilote.js) : les 9 commandes de registre-3d.
+   Lectures et réglages visuels s'appliquent tout de suite (trace dans le
+   panneau) ; ouvrir et déplacer passent par une carte annulable ; ranger un
+   STEP par une carte irréversible. Aucune commande n'écrit les préférences.
+   ========================================================================== */
+const VUES = ["avant", "arriere", "gauche", "droite", "dessus", "dessous", "iso"];
+const AXES = ["x", "y", "z"];
+
+function objetVise(modele, { piece, fichier } = {}){
+  if(piece !== undefined) return trouverPiece(modele, piece);
+  if(fichier !== undefined) return trouverFichier(modele, fichier);
+  return modele;
+}
+
+/* L'étiquette de la cote : un sprite texte (canevas), seulement dans un navigateur. */
+function etiquetteTexte(THREE_, texte){
+  const c = document.createElement("canvas");
+  c.width = 512; c.height = 96;
+  const g = c.getContext("2d");
+  g.fillStyle = "rgba(20,20,28,0.85)"; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = "#ffb000"; g.font = "bold 48px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(texte, c.width / 2, c.height / 2);
+  const s = new THREE_.Sprite(new THREE_.SpriteMaterial({ map:new THREE_.CanvasTexture(c), depthTest:false }));
+  s.scale.set(16, 3, 1);
+  s.renderOrder = 1000;
+  return s;
+}
+
+export function brancherPilote3d(W3D, Pilote){
+  const { vue, nav, arbre, ui, coupe } = W3D;
+  const modele = vue.modele;
+  const rafraichir = g => { apresDeplacement(vue, ui, g); ui.surModeleChange?.(); };
+
+  Pilote.declarer({ page:"3d", projet:() => (typeof document !== "undefined" ? document.title : "") })
+    .capture(() => { vue.rendre(); return vue.canvas; });
+
+  Pilote.commande("web3d_scene", { executer:a => Object.assign(decrireScene(modele, a), {
+    selection:arbre.selection ? arbre.selection.uuid : null, isole:arbre.isole ? arbre.isole.uuid : null,
+    coupe:{ actif:!!coupe.actif, mode:coupe.mode, decalage_mm:arrondir(coupe.offsetMm || 0), inverse:!!coupe.inverse },
+    projection:vue.projection }) });
+
+  Pilote.commande("web3d_vue", { executer:a => {
+    if(a.vue !== undefined){
+      if(!VUES.includes(a.vue)) throw new Error(`Vue inconnue : ${a.vue} (${VUES.join(", ")}).`);
+      nav.allerVersVue(a.vue, false);          // sans animation : un onglet caché ne l'avancerait pas
+    }
+    if(a.projection !== undefined){
+      if(!["ortho", "perspective"].includes(a.projection)) throw new Error("Projection : ortho ou perspective.");
+      vue.definirProjection(a.projection);      // la vue seulement, pas les préférences
+    }
+    const cible = objetVise(modele, a.cadrer || {});
+    vue.ajusterVue(cible);
+    vue.invalider();
+    return { vue:a.vue || null, projection:vue.projection, cadre:cible === modele ? "scène" : cible.name };
+  } });
+
+  Pilote.commande("web3d_visibilite", { executer:a => {
+    const refs = Array.isArray(a.pieces) ? a.pieces : [];
+    const cibles = refs.map(r => trouverPiece(modele, r));
+    switch(a.action){
+      case "masquer": cibles.forEach(o => arbre.basculerVisible(o, false)); break;
+      case "afficher": cibles.forEach(o => arbre.basculerVisible(o, true)); break;
+      case "isoler":
+        if(cibles.length !== 1) throw new Error("isoler : une pièce.");
+        if(arbre.isole !== cibles[0]) arbre.isoler(cibles[0]);   // isoler bascule : rappelé, il réafficherait tout
+        break;
+      case "tout_afficher": arbre.toutAfficher(); break;
+      case "selectionner": arbre.selectionner(cibles[0] || null); break;
+      default: throw new Error(`action inconnue : ${a.action} (masquer, afficher, isoler, tout_afficher, selectionner).`);
+    }
+    vue.invalider();
+    return { action:a.action, pieces:cibles.map(o => o.name), visibles:pieces(modele).filter(o => visibleEnTout(o, modele)).length };
+  } });
+
+  Pilote.commande("web3d_coupe", { executer:a => {
+    if(a.actif !== undefined) coupe.definirActif(!!a.actif);
+    if(a.axe !== undefined){
+      if(!AXES.includes(a.axe)) throw new Error("axe : x, y ou z (ou face).");
+      coupe.definirActif(true); coupe.definirAxe(a.axe);
+    }
+    if(a.face){
+      const f = faceDe(trouverPiece(modele, a.face.piece), a.face.index);
+      if(f.type !== "plan") throw new Error("La coupe se pose sur une face plane.");
+      coupe.definirActif(true); coupe.poserFace(f.normale.clone(), f.centre.clone(), `face ${a.face.index}`);
+    }
+    if(a.decalage_mm !== undefined) coupe.definirOffset(+a.decalage_mm);
+    if(a.inverse !== undefined && !!a.inverse !== !!coupe.inverse) coupe.basculerInverse();
+    ui.appliquerCoupe();
+    vue.invalider?.();
+    return { actif:!!coupe.actif, mode:coupe.mode, decalage_mm:arrondir(coupe.offsetMm || 0),
+             bornes_mm:[arrondir(coupe.minMm || 0), arrondir(coupe.maxMm || 0)], inverse:!!coupe.inverse };
+  } });
+
+  const effacerCote = () => { const c = vue.annotations.getObjectByName("cote-claude"); if(c) vue.annotations.remove(c); };
+  Pilote.commande("web3d_mesurer", { executer:a => {
+    effacerCote();
+    if(a.effacer) { vue.invalider(); return { efface:true }; }
+    let r;
+    if(a.quoi === "distance"){
+      if(!Array.isArray(a.pieces) || a.pieces.length !== 2) throw new Error("distance : deux pièces.");
+      r = distance(trouverPiece(modele, a.pieces[0]), trouverPiece(modele, a.pieces[1]));
+      if(a.afficher){
+        const texte = `${String(r.distance).replace(".", ",")} mm`;
+        vue.annotations.add(coteClaude(r.p1, r.p2, texte,
+          typeof document !== "undefined" ? { etiquette:t => etiquetteTexte(THREE, t) } : {}));
+      }
+    }else if(a.quoi === "faces"){
+      r = faces(trouverPiece(modele, a.piece));
+    }else if(a.quoi === "dimensions" || a.quoi === undefined){
+      r = dimensions(objetVise(modele, a));
+    }else throw new Error("quoi : dimensions, distance ou faces.");
+    vue.invalider();
+    return r;
+  } });
+
+  Pilote.commande("web3d_collisions", { executer:async a => {
+    const r = await collisions(modele, { tolerance:a.tolerance === undefined ? 0.1 : +a.tolerance });
+    if(typeof document !== "undefined" && document.visibilityState === "hidden")
+      r.note = "Onglet caché : le navigateur ralentit le calcul.";
+    if(a.afficher) ui.lancerCollisions();      // dessinées à la tolérance des préférences de la page
+    return r;
+  } });
+
+  /* --- ouvrir : remplacement ou ajout, annulable --------------------------- */
+  Pilote.commande("web3d_ouvrir", {
+    ecriture:true,
+    proposer:async a => {
+      const r = await fetch("api/projets", { cache:"no-store" });
+      if(!r.ok) throw new Error(`Liste de PROJETS/3D illisible : ${r.status}.`);
+      const liste = await r.json();
+      if(!liste.dispo) throw new Error("WEB_3D n'a pas de dossier PROJETS (lancé sans --projets).");
+      const chemins = preparerOuverture(a.chemins, liste.fichiers || []);
+      const ajout = !!a.ajout && modele.children.length > 0;
+      return { titre:ajout ? "Ajouter à la scène" : "Ouvrir (remplace la scène)", chemins, ajout,
+               avant:modele.children.map(g => g.name).join(" + ") || "scène vide", apres:chemins.join(" + ") };
+    },
+    appliquer:async (a, prop) => {
+      const avant = { fichiers:[...(ui.derniersFichiers || [])], matrices:etatMatrices(modele), vide:!modele.children.length };
+      const r = await ui.charger(await lireFichiersProjets(prop.chemins), prop.ajout);
+      if(!r || !r.ok) throw new Error((r && r.erreur) || "Ouverture impossible.");
+      return { avant, groupes:r.groupes, ajout:prop.ajout };
+    },
+    annuler:async (_a, j) => {
+      if(j.ajout){
+        for(const g of j.groupes){ modele.remove(g); liberer(g); }
+        ui.derniersFichiers = j.avant.fichiers;
+        arbre.reconstruire(); vue.adapterAuModele(); ui.surModeleChange?.(); vue.invalider();
+      }else if(j.avant.vide){
+        ui.fermer();
+      }else{
+        const r = await ui.charger(j.avant.fichiers, false);
+        if(!r || !r.ok) throw new Error((r && r.erreur) || "Le modèle d'avant ne se rouvre pas.");
+        remettreMatrices(modele, j.avant.matrices);
+        modele.children.forEach(rafraichir);
+      }
+    },
+    etat:() => JSON.stringify(etatMatrices(modele)),
+  });
+
+  /* --- déplacer : un fichier, annulable par les matrices ------------------- */
+  Pilote.commande("web3d_deplacer", {
+    ecriture:true,
+    proposer:a => {
+      const g = trouverFichier(modele, a.fichier);
+      const quoi = [];
+      if(a.origine) quoi.push("retour à l'origine du fichier");
+      if(a.position) quoi.push(`position ${a.position.join(" ; ")} mm`);
+      if(a.translation) quoi.push(`translation ${a.translation.join(" ; ")} mm`);
+      if(a.rotation_deg) quoi.push(`rotation ${a.rotation_deg.join(" ; ")}° (autour du centre)`);
+      if(a.contrainte) quoi.push(`contrainte : face ${a.contrainte.mobile.face} sur face ${a.contrainte.fixe.face}` +
+                                 (a.contrainte.decalage ? `, décalage ${a.contrainte.decalage} mm` : ""));
+      if(!quoi.length) throw new Error("Rien à faire : position, translation, rotation_deg, origine ou contrainte.");
+      return { titre:`Déplacer « ${g.name} »`, details:quoi.join("\n"),
+               avant:`position ${vec(g.position).join(" ; ")}` };
+    },
+    appliquer:a => {
+      const jeton = etatMatrices(modele);
+      const g = trouverFichier(modele, a.fichier);
+      try{
+        deplacer(g, a);
+        if(a.contrainte) contrainte(modele, g, a.contrainte);
+      }catch(e){ remettreMatrices(modele, jeton); throw e; }      // rien à moitié
+      rafraichir(g);
+      return jeton;
+    },
+    annuler:(_a, jeton) => { remettreMatrices(modele, jeton); modele.children.forEach(rafraichir); },
+    etat:() => JSON.stringify(etatMatrices(modele)),
+  });
+
+  /* --- ranger le STEP d'une pièce dans PROJETS/3D (irréversible ici) -------- */
+  Pilote.commande("web3d_ranger_step", {
+    ecriture:true,
+    irreversible:"Crée un nouveau fichier dans PROJETS/3D (jamais d'écrasement : un nom pris devient « x (2) ») ; non annulable ici.",
+    proposer:a => {
+      const r = extraireStep(modele, [a.piece]);
+      const nom = sanitiserNomFichier(a.nom || r.produits[0]);
+      return { titre:`Ranger « ${nom} » dans PROJETS/3D`, nom, texte:r.texte,
+               details:`Pièce « ${r.produits[0]} », ${Math.round(r.octets / 1024)} ko. ${r.note}` };
+    },
+    appliquer:async (_a, prop) => {
+      const r = await fetch("api/projets?nom=" + encodeURIComponent(prop.nom),
+                            { method:"POST", headers:{ "X-Web3D":"1" }, body:prop.texte });
+      if(!r.ok) throw new Error(`Rangement refusé par le serveur : ${r.status}.`);
+      return await r.json();
+    },
+  });
 }

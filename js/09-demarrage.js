@@ -20,6 +20,7 @@ import { CoupeManager } from "./07b-coupe.js";
 import { Interface, pieceSous } from "./08-interface.js";
 import { brancherProjets } from "./11-projets.js";
 import { brancherDeplacement } from "./13-deplacement.js";
+import { brancherPilote3d } from "./14-pilote-3d.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -115,9 +116,6 @@ if(depuisUrl){
 window.W3D = { THREE, vue, nav, cube, arbre, mesure, ui, prefs, coupe };
 
 /* Canal de pilotage du MCP de web_suite (js/pilote.js, script classique chargé avant
-   ce module) : la page se déclare et Claude peut capturer la vue. Le tampon WebGL est
-   gardé (preserveDrawingBuffer), mais on redessine avant, comme Vue3D.capture(). */
-if(window.Pilote){
-  window.Pilote.declarer({ page: "3d", projet: () => document.title || "" })
-    .capture(() => { vue.rendre(); return vue.canvas; });
-}
+   ce module) : la page se déclare, Claude capture la vue et dispose des commandes de
+   registre-3d (js/14-pilote-3d.js). */
+if(window.Pilote) brancherPilote3d({ THREE, vue, nav, arbre, ui, coupe, mesure }, window.Pilote);
