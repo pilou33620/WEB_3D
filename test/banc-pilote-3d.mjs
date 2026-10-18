@@ -123,4 +123,59 @@ await verifier("filtre et pagination", () => {
   assert.equal(page.pieces_total, 18);
 });
 
+/* --- T3 : mesures et cote --------------------------------------------------- */
+const { mesurerEntites } = await import("../js/06-topologie.js");
+const parNom = n => scene.pieces.filter(p => p.nom === n).map(p => P3.trouverPiece(modele, p.uuid));
+const proche = (a, b, tol = 0.01) => Math.abs(a - b) <= tol;
+
+await verifier("dimensions de l'assemblage : 200 × 150 × 84, 18 pièces, volume et surface", () => {
+  const d = P3.dimensions(modele);
+  assert.ok(proche(d.taille[0], 200) && proche(d.taille[1], 150) && proche(d.taille[2], 84), JSON.stringify(d.taille));
+  assert.equal(d.pieces, 18);
+  assert.ok(d.volume > 0 && d.surface > 0);
+  assert.equal(d.min.length, 3); assert.equal(d.max.length, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(d)), d);
+});
+
+await verifier("dimensions d'une pièce : volume et surface positifs, une seule pièce", () => {
+  const d = P3.dimensions(parNom("bolt")[0]);
+  assert.ok(d.volume > 0 && d.surface > 0);
+  assert.equal(d.pieces, 1);
+});
+
+await verifier("distance entre pièces : celle de mesurerEntites, contact quand elles s'interpénètrent", () => {
+  const bolts = parNom("bolt"), equerres = parNom("l-bracket");
+  assert.ok(bolts.length && equerres.length, "bolt et l-bracket dans l'exemple");
+  let contacts = 0, ecarts = 0;
+  for(const b of bolts) for(const e of equerres){
+    const d = P3.distance(b, e);
+    const r = mesurerEntites({ genre: "piece", maillage: b }, { genre: "piece", maillage: e });
+    assert.ok(proche(d.distance, r.p1.distanceTo(r.p2), 0.001));
+    assert.equal(d.p1.length, 3);
+    if(d.contact){ contacts++; assert.equal(d.distance, 0); } else ecarts++;
+  }
+  assert.ok(contacts >= 1, "au moins un boulon touche une équerre");
+  assert.ok(ecarts >= 1, "et au moins un couple est séparé");
+});
+
+await verifier("faces d'un boulon : un cylindre au moins, avec son rayon ; index stables", () => {
+  const b = parNom("bolt")[0];
+  const f1 = P3.faces(b), f2 = P3.faces(b);
+  assert.deepEqual(f1, f2);
+  assert.deepEqual(JSON.parse(JSON.stringify(f1)), f1);
+  const cyl = f1.faces.filter(f => f.type === "cylindre");
+  assert.ok(cyl.length >= 1 && cyl.every(f => f.rayon > 0 && f.axe.length === 3));
+  assert.ok(f1.faces.every((f, i) => f.index === i && f.aire > 0));
+  assert.ok(f1.faces.some(f => f.type === "plan" && f.normale.length === 3));
+});
+
+await verifier("la cote de Claude : une ligne entre les deux points, nommée, remplaçable", () => {
+  const c = P3.coteClaude([0, 0, 0], [10, 0, 0], "10 mm");
+  assert.equal(c.name, "cote-claude");
+  assert.equal(c.userData.texte, "10 mm");
+  const ligne = c.children.find(o => o.isLine);
+  const pos = ligne.geometry.attributes.position.array;
+  assert.deepEqual(Array.from(pos), [0, 0, 0, 10, 0, 0]);
+});
+
 console.log(`${essais}/${essais} ok`);

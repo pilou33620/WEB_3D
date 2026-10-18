@@ -11,6 +11,10 @@
    Spec : web_suite/lanceur/docs/SPEC-mcp-registre-3d.md.
    ========================================================================== */
 
+import * as THREE from "three";
+import { mesurerSolide } from "./05-arbre.js";
+import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
+
 /* Arrondi au µm (ou au millième de degré) : des nombres lisibles, et -0 n'existe pas. */
 function arrondir(x){ return Math.round(x * 1000) / 1000 + 0; }
 const DEG = 180 / Math.PI;
@@ -100,4 +104,73 @@ export function decrireScene(modele, { filtre = "", debut = 0, nombre = 200 } = 
       triangles: p.userData.triangles || 0, couleur: couleurDe(p),
     })),
   };
+}
+
+const vec = v => [v.x, v.y, v.z].map(arrondir);
+
+/* ---------------------------------------------------------------------------
+   Mesures : nombres en mm, repère du monde
+   ------------------------------------------------------------------------- */
+
+/** Encombrement (sur les sommets, exact même tourné), volume, surface, nombre de pièces. */
+export function dimensions(objet){
+  objet.updateMatrixWorld(true);
+  const boite = new THREE.Box3();
+  const nb = pieces(objet).length || (objet.isMesh ? 1 : 0);
+  objet.traverse(o => { if(o.isMesh) boite.expandByObject(o, true); });
+  const { volume, aire } = mesurerSolide(objet);
+  const taille = boite.isEmpty() ? [0, 0, 0] : vec(boite.getSize(new THREE.Vector3()));
+  return { pieces:nb, taille, min:boite.isEmpty() ? [0, 0, 0] : vec(boite.min),
+           max:boite.isEmpty() ? [0, 0, 0] : vec(boite.max), volume:arrondir(volume), surface:arrondir(aire) };
+}
+
+/** Distance minimale entre deux pièces (triangles du maillage d'affichage), avec les deux points. */
+export function distance(A, B){
+  const r = mesurerEntites({ genre:"piece", maillage:A }, { genre:"piece", maillage:B });
+  if(!r) throw new Error(`Distance impossible entre « ${A.name} » et « ${B.name} ».`);
+  const d = r.p1.distanceTo(r.p2);
+  return { distance:arrondir(d), contact:d <= 1e-6, p1:vec(r.p1), p2:vec(r.p2) };
+}
+
+/** Les faces d'une pièce : index stable (région de la topologie), type, géométrie, aire. */
+export function faces(piece){
+  piece.updateMatrixWorld(true);
+  const topo = analyser(piece);
+  if(!topo) throw new Error(`« ${piece.name} » : trop de triangles pour analyser ses faces.`);
+  const liste = topo.trisParRegion.map((tris, index) => {
+    const e = faceSous(null, { object:piece, faceIndex:tris[0] });
+    const f = { index, type:e.type, aire:arrondir(e.aire), centre:vec(e.centre) };
+    if(e.type === "plan") f.normale = vec(e.normale);
+    if(e.type === "cylindre") Object.assign(f, { axe:vec(e.axe), rayon:arrondir(e.rayon), hauteur:arrondir(e.hauteur),
+                                                 ferme:!!e.ferme });
+    return f;
+  });
+  return { piece:piece.name, uuid:piece.uuid, faces:liste };
+}
+
+/**
+ * La cote de Claude : une ligne et deux pastilles, à poser dans vue.annotations. Elle est
+ * à part de l'outil Mesure, qui ne prévoit pas qu'on lui fournisse un résultat. L'étiquette
+ * texte demande un canevas : la page la fournit (etiquette), le banc s'en passe.
+ */
+export function coteClaude(p1, p2, texte, { etiquette } = {}){
+  const g = new THREE.Group();
+  g.name = "cote-claude";
+  g.userData.texte = texte;
+  const geo = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute([...p1, ...p2], 3));
+  const ligne = new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0xffb000, depthTest:false }));
+  ligne.renderOrder = 999;
+  g.add(ligne);
+  for(const p of [p1, p2]){
+    const pastille = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 8),
+                                    new THREE.MeshBasicMaterial({ color:0xffb000, depthTest:false }));
+    pastille.position.fromArray(p);
+    g.add(pastille);
+  }
+  if(etiquette){
+    const e = etiquette(texte);
+    e.position.fromArray(p1.map((x, i) => (x + p2[i]) / 2));
+    g.add(e);
+  }
+  return g;
 }
