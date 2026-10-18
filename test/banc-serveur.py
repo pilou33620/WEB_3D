@@ -123,6 +123,11 @@ verifier("pilote : battement de la page", requete("POST", "/api/pilote/battement
 verifier("pilote : onglet vu par le MCP",
          [o["id"] for o in json.loads(requete("GET", "/api/pilote/onglets")[1])["onglets"]], ["o1"])
 verifier("pilote : fichiers de la page servis", (code("/js/pilote.js"), code("/css/pilote.css")), (200, 200))
+_c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=10)
+_c.request("GET", "/")
+_r = _c.getresponse(); _r.read(); _c.close()
+verifier("cadres : même origine seulement", (_r.getheader("X-Frame-Options"),
+         "frame-ancestors 'self'" in (_r.getheader("Content-Security-Policy") or "")), ("SAMEORIGIN", True))
 
 serveur.shutdown()
 print("%d/%d ok" % (essais - echecs, essais))

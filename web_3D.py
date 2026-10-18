@@ -211,6 +211,9 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         # En développement, un fichier modifié doit être servi modifié : le cache
         # du navigateur ferait perdre plus de temps qu'il n'en fait gagner.
         self.send_header("Cache-Control", "no-store, max-age=0")
+        # Pas d'affichage dans le cadre d'un autre site : un clic piégé sur « Appliquer » du panneau Claude
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'")
         super().end_headers()
 
     def log_message(self, format, *args):
