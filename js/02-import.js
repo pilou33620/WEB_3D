@@ -104,7 +104,7 @@ function lireAvecOcct(format, tampon, nom, params, surProgres){
    --------------------------------------------------------------------------- */
 
 /** Un matériau par couleur : deux cents pièces grises ne font qu'un état GPU. */
-function fabriqueMateriaux(){
+export function fabriqueMateriaux(){
   const cache = new Map();
   return (rvb) => {
     const couleur = rvb
@@ -240,7 +240,7 @@ function creerMaillage(m, materiau){
   return maillage;
 }
 
-function construireNoeud(noeud, maillages, materiau){
+export function construireNoeud(noeud, maillages, materiau){
   const groupe = new THREE.Group();
   groupe.name = noeud.name || "";
   for(const i of noeud.meshes || []){
@@ -273,7 +273,7 @@ export function calculerAretes(maillage, angle = prefs.angleAretes){
  * anonymes à un seul enfant. On la replie : l'arbre affiché doit montrer
  * l'assemblage, pas la plomberie de l'exportateur.
  */
-function replier(objet){
+export function replier(objet){
   for(const enfant of [...objet.children]) replier(enfant);
   if(objet.isGroup && objet.children.length === 1 && !objet.name){
     const seul = objet.children[0];
@@ -283,7 +283,7 @@ function replier(objet){
 }
 
 /** Nomme, marque et compte les pièces d'un groupe fraîchement construit. */
-function recenser(groupe, etat){
+export function recenser(groupe, etat){
   groupe.traverse(o => {
     if(!o.isMesh || !o.geometry) return;
     if(!o.name) o.name = `Pièce ${etat.compteur + 1}`;
