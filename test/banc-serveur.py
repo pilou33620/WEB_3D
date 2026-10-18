@@ -111,6 +111,19 @@ with tempfile.TemporaryDirectory() as tmp:
         verifier("refus " + chemin, requete("GET", chemin)[0], 404)
     web_3D.PROJETS = None
 
+# Canal de pilotage (pilote.py, MCP de web_suite) : WEB_3D n'a pas de garde CSRF, c'est
+# pilote.py qui refuse une autre origine ; la page bat, le MCP de ce poste voit l'onglet
+import json  # noqa: E402
+battement = json.dumps({"navigateur": "n1", "onglets": [{"id": "o1", "page": "3d", "projet": "", "focus_il_y_a": 0}]})
+json_ = {"Content-Type": "application/json"}
+verifier("pilote : autre origine refusée", requete("POST", "/api/pilote/battement", battement,
+                                                   dict(json_, Origin="http://evil.example"))[0], 403)
+verifier("pilote : battement de la page", requete("POST", "/api/pilote/battement", battement,
+                                                  dict(json_, Origin="http://127.0.0.1:%d" % PORT))[0], 200)
+verifier("pilote : onglet vu par le MCP",
+         [o["id"] for o in json.loads(requete("GET", "/api/pilote/onglets")[1])["onglets"]], ["o1"])
+verifier("pilote : fichiers de la page servis", (code("/js/pilote.js"), code("/css/pilote.css")), (200, 200))
+
 serveur.shutdown()
 print("%d/%d ok" % (essais - echecs, essais))
 sys.exit(1 if echecs else 0)

@@ -92,6 +92,8 @@ def lister_projets():
 # réseau : appairage.py, commun aux web tools. Remplacé dans main() selon --local.
 hote_permis = appairage.hote_permis
 GARDE = appairage.Garde("WEB_3D", actif=False)
+import pilote  # noqa: E402  (canal de pilotage des pages par le MCP de web_suite)
+PILOTE = pilote.Pilote()
 
 
 class Gestionnaire(http.server.SimpleHTTPRequestHandler):
@@ -127,6 +129,8 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         return super().send_head()
 
     def do_GET(self):
+        if PILOTE.traiter(self):
+            return
         if self.path == "/favicon.ico":
             self.send_response(204)
             self.end_headers()
@@ -144,6 +148,8 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         L'en-tête X-Web3D est exigé : une page d'un autre site ne peut pas
         l'ajouter sans pré-vol CORS, que ce serveur ne valide pas. On n'écrase
         jamais : un nom déjà pris devient « piece (2).stp »."""
+        if PILOTE.traiter(self):     # refuse lui-même une autre origine : ce serveur n'a pas de garde CSRF
+            return
         if urllib.parse.urlsplit(self.path).path != "/api/projets" or not PROJETS:
             return self._json({"detail": "Route inconnue"}, 404)
         if self.headers.get("X-Web3D") != "1":

@@ -113,3 +113,11 @@ if(depuisUrl){
 
 /* De quoi inspecter la scène depuis la console du navigateur, sans outil. */
 window.W3D = { THREE, vue, nav, cube, arbre, mesure, ui, prefs, coupe };
+
+/* Canal de pilotage du MCP de web_suite (js/pilote.js, script classique chargé avant
+   ce module) : la page se déclare et Claude peut capturer la vue. Le tampon WebGL est
+   gardé (preserveDrawingBuffer), mais on redessine avant, comme Vue3D.capture(). */
+if(window.Pilote){
+  window.Pilote.declarer({ page: "3d", projet: () => document.title || "" })
+    .capture(() => { vue.rendre(); return vue.canvas; });
+}
