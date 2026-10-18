@@ -14,6 +14,7 @@
 import * as THREE from "three";
 import { mesurerSolide } from "./05-arbre.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
+import { chercherCollisions } from "./12-collisions.js";
 
 /* Arrondi au µm (ou au millième de degré) : des nombres lisibles, et -0 n'existe pas. */
 function arrondir(x){ return Math.round(x * 1000) / 1000 + 0; }
@@ -173,4 +174,19 @@ export function coteClaude(p1, p2, texte, { etiquette } = {}){
     g.add(e);
   }
   return g;
+}
+
+/* ---------------------------------------------------------------------------
+   Collisions : couples de pièces dont les surfaces se croisent
+   ------------------------------------------------------------------------- */
+const decrire = (modele, p) => ({ uuid:p.uuid, chemin:cheminDe(modele, p), nom:p.name });
+
+/** Les pièces masquées sont ignorées ; la tolérance est un argument, jamais une préférence écrite. */
+export async function collisions(modele, { tolerance = 0.1 } = {}){
+  const debut = performance.now();
+  const brut = await chercherCollisions(modele, { tol:tolerance, visible:o => visibleEnTout(o, modele) });
+  return {
+    nombre:brut.length, tolerance, duree_s:arrondir((performance.now() - debut) / 1000),
+    collisions:brut.map(c => ({ a:decrire(modele, c.a), b:decrire(modele, c.b), longueur:arrondir(c.longueur) })),
+  };
 }

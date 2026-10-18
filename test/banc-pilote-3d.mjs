@@ -178,4 +178,30 @@ await verifier("la cote de Claude : une ligne entre les deux points, nommée, re
   assert.deepEqual(Array.from(pos), [0, 0, 0, 10, 0, 0]);
 });
 
+/* --- T4 : collisions ---------------------------------------------------------- */
+const { chercherCollisions } = await import("../js/12-collisions.js");
+await verifier("collisions de l'exemple : celles de chercherCollisions, sérialisées", async () => {
+  const r = await P3.collisions(modele, { tolerance: 0.1 });
+  const brut = await chercherCollisions(modele, { tol: 0.1 });
+  assert.equal(r.nombre, brut.length);
+  assert.deepEqual(r.collisions.map(c => c.a.uuid + c.b.uuid), brut.map(c => c.a.uuid + c.b.uuid));
+  assert.ok(r.nombre > 0, "l'exemple a des pièces qui se pénètrent");
+  for(const c of r.collisions) assert.ok(c.longueur > 0 && c.a.uuid && c.b.chemin);
+  assert.equal(r.tolerance, 0.1);
+  assert.deepEqual(JSON.parse(JSON.stringify(r)), r);
+  const compte = {};
+  for(const c of r.collisions){ const k = [c.a.nom, c.b.nom].sort().join("↔"); compte[k] = (compte[k] || 0) + 1; }
+  console.log("       " + r.nombre + " collisions en " + r.duree_s + " s : " + JSON.stringify(compte));
+});
+
+await verifier("une pièce masquée n'entre pas dans les collisions", async () => {
+  const r = await P3.collisions(modele);
+  const cachee = P3.trouverPiece(modele, r.collisions[0].a.uuid);
+  cachee.visible = false;
+  try{
+    const r2 = await P3.collisions(modele);
+    assert.equal(r2.nombre, r.nombre - r.collisions.filter(c => c.a.uuid === cachee.uuid || c.b.uuid === cachee.uuid).length);
+  }finally{ cachee.visible = true; }
+});
+
 console.log(`${essais}/${essais} ok`);
