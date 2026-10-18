@@ -28,7 +28,7 @@ const CASES_MAX = 64;          // par axe : au-delà, la grille coûte plus qu'e
  * Rend [{ a, b, segments, longueur }] : les segments de la courbe où leurs
  * surfaces se croisent (6 coordonnées monde chacun), et sa longueur totale.
  */
-export async function chercherCollisions(racine, { tol = 0.1, surProgres, visible = () => true } = {}){
+export async function chercherCollisions(racine, { tol = 0.1, surProgres, visible = () => true, pauses = true } = {}){
   const pieces = [];
   const parFichier = racine.children.length > 1;
   for(const fichier of racine.children){
@@ -58,8 +58,9 @@ export async function chercherCollisions(racine, { tol = 0.1, surProgres, visibl
     const [a, b, zone] = paires[k];
     const segments = croiser(sommets(a), sommets(b), zone, tol);
     if(segments) resultats.push({ a, b, segments, longueur:longueur(segments) });
-    /* Rendre la main de temps en temps : le voile d'attente doit vivre. */
-    if(performance.now() - t > 40){
+    /* Rendre la main de temps en temps : le voile d'attente doit vivre. Sauf si l'on
+       demande le contraire (onglet caché : chaque pause y coûterait au moins une seconde). */
+    if(pauses && performance.now() - t > 40){
       surProgres?.(`${k + 1} / ${paires.length} couples de pièces`);
       await new Promise(r => setTimeout(r));
       t = performance.now();

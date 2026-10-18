@@ -23,6 +23,7 @@ globalThis.localStorage ??= { getItem: () => null, setItem() {}, removeItem() {}
 
 const THREE = await import("three");
 const { construireNoeud, recenser, replier, fabriqueMateriaux } = await import("../js/02-import.js");
+const { prefs } = await import("../js/00-config.js");
 const P3 = await import("../js/14-pilote-3d.js");
 
 let essais = 0;
@@ -44,7 +45,11 @@ function compacter(resultat){        // ce que fait le Worker (js/travailleur-oc
 
 function lireExemple(nom){
   const texte = readFileSync(path.join(RACINE, "exemples", nom));
-  const r = occt.ReadStepFile(new Uint8Array(texte), { linearUnit: "millimeter" });
+  // Les réglages de maillage de la page (02-import.js) : une autre finesse donne d'autres
+  // collisions sur des vis serrées dans leurs perçages (22 au lieu de 2 sur l'exemple)
+  const r = occt.ReadStepFile(new Uint8Array(texte), { linearUnit: prefs.unite,
+    linearDeflectionType: "bounding_box_ratio", linearDeflection: prefs.tolLineaire,
+    angularDeflection: prefs.tolAngulaire * Math.PI / 180 });
   assert.ok(r.success, "OpenCascade n'a pas lu " + nom);
   const maillages = compacter(r);
   const racine = r.root || { name: nom, meshes: maillages.map((_, i) => i), children: [] };
@@ -192,6 +197,18 @@ await verifier("collisions de l'exemple : celles de chercherCollisions, sériali
   const compte = {};
   for(const c of r.collisions){ const k = [c.a.nom, c.b.nom].sort().join("↔"); compte[k] = (compte[k] || 0) + 1; }
   console.log("       " + r.nombre + " collisions en " + r.duree_s + " s : " + JSON.stringify(compte));
+});
+
+await verifier("sans pauses (onglet caché) : même résultat, jamais la main rendue", async () => {
+  const avec = await P3.collisions(modele);
+  let pauses = 0;
+  const vrai = globalThis.setTimeout;
+  globalThis.setTimeout = (f, ms) => { pauses++; return vrai(f, ms); };
+  try{
+    const sans = await P3.collisions(modele, { pauses: false });
+    assert.equal(pauses, 0, "aucune pause");
+    assert.deepEqual(sans.collisions, avec.collisions);
+  }finally{ globalThis.setTimeout = vrai; }
 });
 
 await verifier("une pièce masquée n'entre pas dans les collisions", async () => {

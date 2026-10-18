@@ -186,9 +186,9 @@ export function coteClaude(p1, p2, texte, { etiquette } = {}){
 const decrire = (modele, p) => ({ uuid:p.uuid, chemin:cheminDe(modele, p), nom:p.name });
 
 /** Les pièces masquées sont ignorées ; la tolérance est un argument, jamais une préférence écrite. */
-export async function collisions(modele, { tolerance = 0.1 } = {}){
+export async function collisions(modele, { tolerance = 0.1, pauses = true } = {}){
   const debut = performance.now();
-  const brut = await chercherCollisions(modele, { tol:tolerance, visible:o => visibleEnTout(o, modele) });
+  const brut = await chercherCollisions(modele, { tol:tolerance, visible:o => visibleEnTout(o, modele), pauses });
   return {
     nombre:brut.length, tolerance, duree_s:arrondir((performance.now() - debut) / 1000),
     collisions:brut.map(c => ({ a:decrire(modele, c.a), b:decrire(modele, c.b), longueur:arrondir(c.longueur) })),
@@ -326,8 +326,9 @@ function objetVise(modele, { piece, fichier } = {}){
   return modele;
 }
 
-/* L'étiquette de la cote : un sprite texte (canevas), seulement dans un navigateur. */
-function etiquetteTexte(THREE_, texte){
+/* L'étiquette de la cote : un sprite texte (canevas), seulement dans un navigateur. Sa largeur suit
+   le modèle (25 % de sa diagonale) : une taille fixe la rendait illisible sur un grand assemblage. */
+function etiquetteTexte(THREE_, texte, largeur){
   const c = document.createElement("canvas");
   c.width = 512; c.height = 96;
   const g = c.getContext("2d");
@@ -335,7 +336,7 @@ function etiquetteTexte(THREE_, texte){
   g.fillStyle = "#ffb000"; g.font = "bold 48px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
   g.fillText(texte, c.width / 2, c.height / 2);
   const s = new THREE_.Sprite(new THREE_.SpriteMaterial({ map:new THREE_.CanvasTexture(c), depthTest:false }));
-  s.scale.set(16, 3, 1);
+  s.scale.set(largeur, largeur * c.height / c.width, 1);
   s.renderOrder = 1000;
   return s;
 }
@@ -415,8 +416,9 @@ export function brancherPilote3d(W3D, Pilote){
       r = distance(trouverPiece(modele, a.pieces[0]), trouverPiece(modele, a.pieces[1]));
       if(a.afficher){
         const texte = `${String(r.distance).replace(".", ",")} mm`;
+        const diagonale = new THREE.Box3().setFromObject(modele).getSize(new THREE.Vector3()).length() || 100;
         vue.annotations.add(coteClaude(r.p1, r.p2, texte,
-          typeof document !== "undefined" ? { etiquette:t => etiquetteTexte(THREE, t) } : {}));
+          typeof document !== "undefined" ? { etiquette:t => etiquetteTexte(THREE, t, diagonale * 0.25) } : {}));
       }
     }else if(a.quoi === "faces"){
       r = faces(trouverPiece(modele, a.piece));
@@ -428,9 +430,11 @@ export function brancherPilote3d(W3D, Pilote){
   } });
 
   Pilote.commande("web3d_collisions", { executer:async a => {
-    const r = await collisions(modele, { tolerance:a.tolerance === undefined ? 0.1 : +a.tolerance });
-    if(typeof document !== "undefined" && document.visibilityState === "hidden")
-      r.note = "Onglet caché : le navigateur ralentit le calcul.";
+    /* Onglet caché : le navigateur retarde chaque pause d'au moins une seconde (127 s au lieu de
+       3 s mesurés) ; personne ne regarde la page, on calcule donc d'un bloc. */
+    const cache = typeof document !== "undefined" && document.visibilityState === "hidden";
+    const r = await collisions(modele, { tolerance:a.tolerance === undefined ? 0.1 : +a.tolerance, pauses:!cache });
+    if(cache) r.note = "Onglet caché : calcul fait d'un bloc.";
     if(a.afficher) ui.lancerCollisions();      // dessinées à la tolérance des préférences de la page
     return r;
   } });
@@ -484,8 +488,8 @@ export function brancherPilote3d(W3D, Pilote){
       if(a.contrainte) quoi.push(`contrainte : face ${a.contrainte.mobile.face} sur face ${a.contrainte.fixe.face}` +
                                  (a.contrainte.decalage ? `, décalage ${a.contrainte.decalage} mm` : ""));
       if(!quoi.length) throw new Error("Rien à faire : position, translation, rotation_deg, origine ou contrainte.");
-      return { titre:`Déplacer « ${g.name} »`, details:quoi.join("\n"),
-               avant:`position ${vec(g.position).join(" ; ")}` };
+      return { titre:`Déplacer « ${g.name} »`,
+               details:[`position actuelle ${vec(g.position).join(" ; ")} mm`].concat(quoi).join("\n") };
     },
     appliquer:a => {
       const jeton = etatMatrices(modele);
