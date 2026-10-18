@@ -16,6 +16,7 @@ import { formatDe, LISTE_FORMATS } from "./02-import.js";
 import { mesurerSolide } from "./05-arbre.js";
 import { compagnons } from "./11-projets.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
+import { StepExtractor } from "./10-export-step.js";
 import { chercherCollisions } from "./12-collisions.js";
 import { contraindre, perimerCaches } from "./13-deplacement.js";
 
@@ -280,4 +281,32 @@ export function preparerOuverture(chemins, disponibles){
     for(const x of compagnons(c, disponibles)) if(!sortie.includes(x)) sortie.push(x);
   }
   return sortie;
+}
+
+/* ---------------------------------------------------------------------------
+   Extraire un STEP : la pièce recopiée du STEP d'origine, aux positions d'origine —
+   un déplacement fait dans la vue n'y est pas.
+   ------------------------------------------------------------------------- */
+
+/**
+ * Une pièce à la fois. StepExtractor retrouve un produit par nom exact, puis approché : on
+ * n'accepte que l'exact (les 8 « nut » sont 8 occurrences d'un même produit : ça va). Un
+ * sous-ensemble choisi pièce par pièce n'est pas fiable : exportAssemblageFiltre remonte au
+ * sous-ensemble parent et redescend vers tous ses enfants, voisins compris.
+ */
+export function extraireStep(modele, refs){
+  if(!Array.isArray(refs) || !refs.length) throw new Error("Donne une pièce.");
+  if(refs.length > 1) throw new Error("Une pièce à la fois : l'extraction d'un sous-ensemble choisi pièce par pièce " +
+                                      "emporterait aussi ses pièces voisines.");
+  const piece = trouverPiece(modele, refs[0]);
+  const texte = modele.children[fichierDe(modele, piece)].userData.stepTexte;
+  if(!texte) throw new Error("Ce fichier n'est pas un STEP (ou son texte n'a pas été gardé) : extraction impossible.");
+  const ex = new StepExtractor(texte);
+  const memes = [...ex.produits.values()].filter(pr => pr.nom.toLowerCase() === piece.name.toLowerCase());
+  if(!memes.length) throw new Error(`Pièce « ${piece.name} » introuvable dans le STEP d'origine (nom différent ?).`);
+  if(new Set(memes.map(m => m.defId)).size > 1)
+    throw new Error(`Deux produits STEP différents s'appellent « ${piece.name} » : extraction ambiguë.`);
+  const sortie = ex.exportPiece(memes[0]);
+  return { produits:[memes[0].nom], texte:sortie, octets:new TextEncoder().encode(sortie).length,
+           note:"Positions d'origine du STEP : les déplacements faits dans la vue n'y sont pas." };
 }

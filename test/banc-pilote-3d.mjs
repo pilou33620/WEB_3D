@@ -303,4 +303,44 @@ await verifier("ouvrir : chemins refusés avant tout fetch", () => {
   ]) assert.throws(() => P3.preparerOuverture(chemins, disponibles), motif, JSON.stringify(chemins));
 });
 
+/* --- T7 : extraction STEP, relue par OpenCascade ------------------------------- */
+const relire = texte => occt.ReadStepFile(new TextEncoder().encode(texte), { linearUnit: "millimeter" });
+const tailleTriee = arr => [...arr].map(x => +x.toFixed(2)).sort((x, y) => y - x);
+
+await verifier("STEP d'une pièce : relu par OpenCascade, même encombrement que la pièce", () => {
+  const nut = parNom("nut")[3];                       // une occurrence parmi 8 : c'est le même produit
+  const r = P3.extraireStep(modele, [nut.uuid]);
+  assert.deepEqual(r.produits, ["nut"]);
+  assert.ok(r.octets > 100 && r.texte.startsWith("ISO-10303-21"));
+  const lu = relire(r.texte);
+  assert.ok(lu.success, "STEP relu");
+  assert.equal(lu.meshes.length, 1);
+  const boite = new THREE.Box3();
+  const p = lu.meshes[0].attributes.position.array;
+  for(let i = 0; i < p.length; i += 3) boite.expandByPoint(new THREE.Vector3(p[i], p[i+1], p[i+2]));
+  nut.geometry.computeBoundingBox();
+  assert.deepEqual(tailleTriee(boite.getSize(new THREE.Vector3()).toArray()),
+                   tailleTriee(nut.geometry.boundingBox.getSize(new THREE.Vector3()).toArray()));
+});
+
+/* Un sous-ensemble choisi pièce par pièce n'est pas fiable : exportAssemblageFiltre remonte au
+   sous-ensemble parent puis redescend vers tous ses enfants (un écrou demandé emporte toutes les
+   vis et tous les écrous de « nut-bolt-assembly »). Une pièce à la fois. */
+await verifier("STEP de deux pièces : refusé, une pièce à la fois", () => {
+  assert.throws(() => P3.extraireStep(modele, [parNom("nut")[0].uuid, parNom("bolt")[0].uuid]), /une pièce à la fois/i);
+  assert.throws(() => P3.extraireStep(modele, []), /une pièce/);
+});
+
+await verifier("STEP refusé : pièce absente du STEP, fichier qui n'est pas un STEP", () => {
+  const plaque = parNom("plate")[0];
+  const vrai = plaque.name;
+  plaque.name = "plaque-renommee";
+  try{ assert.throws(() => P3.extraireStep(modele, [plaque.uuid]), /introuvable/); }
+  finally{ plaque.name = vrai; }
+  const texte = modele.children[0].userData.stepTexte;
+  delete modele.children[0].userData.stepTexte;
+  try{ assert.throws(() => P3.extraireStep(modele, [plaque.uuid]), /STEP/); }
+  finally{ modele.children[0].userData.stepTexte = texte; }
+});
+
 console.log(`${essais}/${essais} ok`);
