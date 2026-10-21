@@ -51,7 +51,8 @@ Options utiles :
 
 Sur le réseau local, l'adresse affichée au démarrage s'ouvre telle quelle
 depuis une tablette : la navigation tactile (un doigt tourne, deux doigts
-déplacent et pincent pour zoomer) est prévue.
+déplacent et pincent pour zoomer) est codée, mais pas encore essayée sur une
+vraie tablette.
 
 La première fois, la tablette demande un **code d'appairage** à 6 chiffres, affiché
 dans le terminal du serveur (ou dans les logs de WEB_3D, dans WEB·SUITE).
@@ -77,7 +78,9 @@ fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
 Les exemples ont leur banc, sous Node et sans navigateur (`node test/banc-exemples.mjs`) :
 les STEP passent par le vrai noyau OpenCascade de `vendor/occt/`, l'OBJ et le STL par les
 lecteurs three.js, et l'équerre tournée d'`essai-mesure.obj` doit retrouver son repère
-propre. Les deux bancs tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`).
+propre. Le canal de pilotage a le sien (`node test/banc-pilote-3d.mjs`) : les commandes
+de la page 3D, sur une vraie scène. Les trois bancs — exemples, pilotage et
+`test/banc-serveur.py` — tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`).
 
 ---
 
@@ -230,6 +233,22 @@ d'affichage, et le texte le dit.
   fichier d'origine : la géométrie exacte (B-Rep) est reprise telle quelle, sans
   passer par les triangles.
 
+### Se laisser piloter par Claude
+La page reçoit les ordres de Claude par le MCP de web_suite (canal de pilotage,
+`js/pilote.js` et `pilote.py`). Elle porte, en bas à droite, un panneau **« Claude »** : on le glisse par sa tête, on le masque par × — il revient dès
+que Claude propose une modification.
+
+| Genre | Commandes | Ce qui se passe |
+| :--- | :--- | :--- |
+| Lectures | `web3d_scene`, `web3d_mesurer`, `web3d_collisions` | réponse directe, rien ne change |
+| Directes | `web3d_vue`, `web3d_visibilite`, `web3d_coupe` | appliquées tout de suite : vue, œil, plan de coupe — rien du fichier |
+| En carte | `web3d_ouvrir`, `web3d_deplacer`, `web3d_ranger_step` | une carte avant → après, Appliquer ou Refuser ; ouvrir et déplacer s'annulent par la carte, le STEP rangé non |
+
+L'interrupteur « Appliquer directement (cet onglet) » saute la carte ; il est éteint à
+chaque chargement. Le détail du panneau est dans `web_suite/lanceur/docs/DETAILS.md`
+(*Le panneau « Claude »*), celui des commandes dans
+`web_suite/lanceur/docs/SPEC-mcp-registre-3d.md`.
+
 ---
 
 ## La souris — le vrai sujet d'une visionneuse
@@ -292,10 +311,13 @@ signale — sauf si l'option correspondante est cochée.
 WEB_3D/
 ├── index.html                    structure de la page et carte des imports
 ├── web_3D.py                     serveur statique (bibliothèque standard)
+├── pilote.py                     canal de pilotage, côté serveur (copie de web_suite)
+├── appairage.py                  code d'appairage des tablettes (copie commune aux web tools)
 ├── css/
 │   └── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
 ├── js/                           modules ES, chargés par 09-demarrage.js
 ├── exemples/                     fichiers d'essai, un par voie de lecture
+├── test/                         bancs d'essai : exemples, pilotage, serveur
 └── vendor/                       bibliothèques, servies en local
     ├── three/                    three.js r186 + modules d'exemples (lecteurs
     │                              STL, 3MF, OBJ, MTL, export glTF, fflate)
@@ -319,6 +341,11 @@ WEB_3D/
 | `js/11-projets.js` | le dossier des projets : liste, ouverture, rangement du modèle ouvert |
 | `js/12-collisions.js` | interférences entre fichiers ouverts (« Ajouter… » puis « 💥 Collisions ») : triangles qui se traversent, courbe d'intersection en rouge |
 | `js/13-deplacement.js` | « ✥ Déplacer » (D) : un fichier entier, à la souris (glisser une pièce, Maj : à la verticale), au clavier (mm, °), ou par contrainte (deux plans plaqués avec décalage, deux cylindres coaxiaux) |
+| `js/14-pilote-3d.js` | les commandes du MCP pour la page 3D (`brancherPilote3d`) : scène, vue, visibilité, coupe, mesure, collisions, et en carte ouvrir, déplacer, ranger un STEP |
+| `js/pilote.js` | canal de pilotage côté page : relais entre onglets, panneau « Claude », cartes, interrupteur. **Copie** de `web_suite/lanceur/pilote.js`, à ne pas modifier ici |
+| `pilote.py` | canal de pilotage côté serveur : file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement. Copie de `web_suite/lanceur/pilote.py` |
+| `appairage.py` | le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste. Copie commune aux web tools |
+| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py` — ceux que lance la CI |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 
 ---
@@ -365,6 +392,8 @@ de fichier, puis réutilisé pour les suivants.
 | <kbd>O</kbd> | perspective ↔ orthographique |
 | <kbd>A</kbd> / <kbd>W</kbd> / <kbd>X</kbd> / <kbd>G</kbd> | arêtes / filaire / rayons X / grille |
 | <kbd>C</kbd> | plan de coupe |
+| <kbd>D</kbd> | déplacer un fichier (« ✥ Déplacer ») |
+| <kbd>T</kbd> | thème clair ↔ sombre |
 | <kbd>K</kbd> | ouvrir / fermer la mesure |
 | <kbd>M</kbd> | mode de mesure : point → arête → face |
 | <kbd>I</kbd> / <kbd>H</kbd> | isoler la sélection / tout réafficher |
