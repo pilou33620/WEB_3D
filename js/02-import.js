@@ -303,8 +303,14 @@ export function recenser(groupe, etat){
    --------------------------------------------------------------------------- */
 
 /** Le STL n'a ni hiérarchie, ni couleur, ni nom : un maillage, rien de plus. */
-function lireStl(tampon, nomFichier, materiau){
-  const geo = new STLLoader().parse(tampon);
+export function lireStl(tampon, nomFichier, materiau){
+  /* Le lecteur de three.js prend un texte qu'il ne reconnaît pas pour du binaire et
+     lève une erreur de DataView : on la dit comme celle d'un STEP illisible. */
+  const illisible = () => new Error("Ce fichier STL est illisible : ni STL texte ni STL binaire valide, ou tronqué.");
+  let geo;
+  try { geo = new STLLoader().parse(tampon); }
+  catch(e){ throw illisible(); }
+  if(!geo.attributes.position || !geo.attributes.position.count) throw illisible();
   if(!geo.attributes.normal) geo.computeVertexNormals();
   const maillage = new THREE.Mesh(geo, materiau(null));
   maillage.name = nomFichier.replace(/\.[^.]+$/, "");

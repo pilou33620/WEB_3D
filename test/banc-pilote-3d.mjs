@@ -22,7 +22,7 @@ register("data:text/javascript," + encodeURIComponent(`
 globalThis.localStorage ??= { getItem: () => null, setItem() {}, removeItem() {} };
 
 const THREE = await import("three");
-const { construireNoeud, recenser, replier, fabriqueMateriaux } = await import("../js/02-import.js");
+const { construireNoeud, recenser, replier, fabriqueMateriaux, lireStl } = await import("../js/02-import.js");
 const { prefs } = await import("../js/00-config.js");
 const P3 = await import("../js/14-pilote-3d.js");
 
@@ -580,6 +580,14 @@ await verifier("STEP : nom de produit exact (la casse compte)", () => {
   nut.name = "NUT";
   try{ assert.throws(() => P3.extraireStep(scene3, [nut.uuid]), /introuvable/); }
   finally{ nut.name = "nut"; }
+});
+
+await verifier("STL illisible : un message de la page, pas l'erreur brute du lecteur (web3d_ouvrir le rend)", () => {
+  const mat = fabriqueMateriaux(), enc = t => new TextEncoder().encode(t).buffer;
+  for(const tampon of [enc("solid x\nfacet garbage\n"), enc("solid vide\nendsolid vide\n"), new ArrayBuffer(90)])
+    assert.throws(() => lireStl(tampon, "casse.stl", mat), /^Error: Ce fichier STL est illisible/);
+  const bon = readFileSync(path.join(RACINE, "exemples", "tetraedre.stl"));
+  assert.equal(lireStl(new Uint8Array(bon).buffer, "tetraedre.stl", mat).children[0].geometry.attributes.position.count, 12);
 });
 
 await verifier("aucune commande n'écrit dans les préférences (localStorage)", () => {
