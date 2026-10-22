@@ -59,6 +59,8 @@ dans le terminal du serveur (ou dans les logs de WEB_3D, dans WEB·SUITE).
 Elle s'en souvient ensuite, pour tous les web tools de ce poste
 (`appairage.py`, commun aux web tools). Le poste lui-même n'a jamais besoin de code.
 
+En mode réseau, la connexion est **chiffrée (HTTPS)** quand la commande `openssl` est présente sur le poste (Raspberry Pi, Linux, macOS ; sous Windows, celle de Git) : une autorité propre au poste, créée une fois dans `~/.web_tools/tls/`, signe le certificat du serveur. Chaque appareil l'installe une fois, depuis le lien de la page du code (`/appairage/ca.pem`) ; sur iPad : Réglages › Profil téléchargé › Installer, puis Général › Informations › Réglages des certificats › activer. Comparer son empreinte SHA-256 avec celle du terminal. Sans `openssl` (ou avec `WEB_TOOLS_HTTP=1`), tout reste en HTTP et le terminal le dit.
+
 **Les projets.** Avec `--projets`, le bouton **🗂 Projets…** liste les modèles du dossier
 (un clic les ouvre, un `.obj` avec son `.mtl`) et **Ranger le modèle ouvert ici** y copie le
 fichier qu'on vient d'ouvrir — sans jamais en écraser un : un nom pris devient

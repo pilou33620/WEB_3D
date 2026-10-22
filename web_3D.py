@@ -568,6 +568,7 @@ def main() -> int:
         attendre(interactif)
         return 1
 
+    GARDE.brancher(serveur)             # en mode réseau : HTTPS sur le même port
     url = f"http://127.0.0.1:{port}/"
     print("Visionneuse 3D — serveur local")
     print(f"  dossier : {dossier}")
@@ -577,9 +578,9 @@ def main() -> int:
     if port != args.port:
         print(f"  (le port {args.port} était occupé)")
     if not args.local:
-        print(f"  réseau  : http://{adresse_locale()}:{port}/   (tablette, autre poste)")
+        print(f"  réseau  : {GARDE.adresse(adresse_locale(), port)}   (tablette, autre poste)")
         if appairage.ip_tailscale():
-            print(f"  tailscale : http://{appairage.ip_tailscale()}:{port}/")
+            print(f"  tailscale : {GARDE.adresse(appairage.ip_tailscale(), port)}")
         print("            l'autre appareil demande une fois le code d'appairage ci-dessous")
         GARDE.annoncer()
     print("  Ctrl+C pour arrêter.\n")
