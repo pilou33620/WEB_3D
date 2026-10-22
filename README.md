@@ -240,6 +240,11 @@ La page reçoit les ordres de Claude par le MCP de web_suite (canal de pilotage,
 `js/pilote.js` et `pilote.py`). Elle porte, en bas à droite, un panneau **« Claude »** : on le glisse par sa tête, on le masque par × — il revient dès
 que Claude propose une modification.
 
+On peut aussi lui écrire **depuis la page**, sur n'importe quel appareil : la zone
+« Demander à Claude » du panneau passe la demande, par WEB·SUITE, à Claude Code du
+poste des outils, avec ses pièces jointes éventuelles : images, captures (« Vue »), PDF,
+fichiers texte (`lanceur/docs/SPEC-claude-pages.md` de web_suite).
+
 | Genre | Commandes | Ce qui se passe |
 | :--- | :--- | :--- |
 | Lectures | `web3d_scene`, `web3d_mesurer`, `web3d_collisions` | réponse directe, rien ne change |
