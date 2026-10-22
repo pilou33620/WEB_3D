@@ -248,10 +248,12 @@ class ServeurDoublePile(Serveur):
     address_family = socket.AF_INET6
 
     def server_bind(self):
+        # sans double pile, la socket n'écouterait qu'en IPv6 : l'OSError fait passer à 0.0.0.0
+        # (TCPServer ferme la socket ratée)
         try:
             self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-        except (AttributeError, OSError):
-            pass
+        except AttributeError as exc:
+            raise OSError("IPV6_V6ONLY absent : pas de double pile") from exc
         super().server_bind()
 
 
