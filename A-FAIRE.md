@@ -1,7 +1,7 @@
 # À faire — fonctionnalités et bugs
 
 Ce qui reste à coder dans WEB_3D, au 22/10/2026 : nouvelles fonctionnalités et bugs, rien
-d'autre. Les essais sont dans [TESTS-A-FAIRE.md](TESTS-A-FAIRE.md).
+d'autre (les essais sont repoussés à plus tard).
 
 ## Bugs
 
