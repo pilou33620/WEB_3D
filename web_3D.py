@@ -243,6 +243,32 @@ class Serveur(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
+class ServeurDoublePile(Serveur):
+    """IPv4 et IPv6 sur la même socket (Tailscale fd7a::, ULA) quand le système le permet."""
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except (AttributeError, OSError):
+            pass
+        super().server_bind()
+
+
+def ipv4_libre(port: int) -> bool:
+    """Sous Windows, une socket en double pile se lie au port même si un autre programme
+    tient déjà son IPv4, et les clients IPv4 iraient chez lui : on le demande avant.
+    Ailleurs le bind échoue franchement (et une sonde sans SO_REUSEADDR buterait sur TIME_WAIT)."""
+    if os.name != "nt":
+        return True
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("0.0.0.0", port))
+            return True
+        except OSError:
+            return False
+
+
 def adresse_locale() -> str:
     """Adresse de la machine sur le réseau, pour ouvrir la page sur une tablette."""
     try:
@@ -343,11 +369,17 @@ def ouvrir_serveur(hote: str, port: int, essais: int):
     """Le premier port libre à partir de `port`. Un double-clic ne doit pas
     échouer simplement parce qu'un serveur de la veille occupe encore 8139."""
     derniere: OSError | None = None
+    # Réseau : double pile d'abord, IPv4 seule si IPv6 manque (Pyto, conteneurs)
+    piles = [(ServeurDoublePile, "::"), (Serveur, hote)] if hote == "0.0.0.0" else [(Serveur, hote)]
     for p in range(port, port + essais):
-        try:
-            return Serveur((hote, p), Gestionnaire), p
-        except OSError as e:
-            derniere = e
+        if hote == "0.0.0.0" and not ipv4_libre(p):
+            derniere = OSError(f"l'IPv4 du port {p} est déjà pris")
+            continue
+        for classe, h in piles:
+            try:
+                return classe((h, p), Gestionnaire), p
+            except OSError as e:
+                derniere = e
     raise derniere
 
 
