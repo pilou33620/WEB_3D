@@ -1,0 +1,254 @@
+{
+  "appairage.py": {
+    "mtime": 1792705630.054732,
+    "seen": 1792732066.6284854,
+    "ast_hash": "aa04730cea8450db5bd97abe43abf203",
+    "semantic_hash": ""
+  },
+  "js/00-config.js": {
+    "mtime": 1791663133.7503052,
+    "seen": 1791891218.8074105,
+    "ast_hash": "d9b6ac48e2b365d28051ff5354c13634",
+    "semantic_hash": "d9b6ac48e2b365d28051ff5354c13634"
+  },
+  "js/01-scene.js": {
+    "mtime": 1791663133.7553773,
+    "seen": 1791891218.8074183,
+    "ast_hash": "35a32ebd5739acf9ddcd26aec4609093",
+    "semantic_hash": "35a32ebd5739acf9ddcd26aec4609093"
+  },
+  "js/02-import.js": {
+    "mtime": 1792613928.674202,
+    "seen": 1792732066.6285293,
+    "ast_hash": "9b93d50f8a0b23a35f3e5287459da49a",
+    "semantic_hash": ""
+  },
+  "js/03-navigation.js": {
+    "mtime": 1791663133.7553773,
+    "seen": 1791891218.8074317,
+    "ast_hash": "911a84af901f2e0250e88a68fa908fc7",
+    "semantic_hash": "911a84af901f2e0250e88a68fa908fc7"
+  },
+  "js/04-cube-vue.js": {
+    "mtime": 1791663133.7553773,
+    "seen": 1791891218.8074377,
+    "ast_hash": "824e4b34ccb42959442776c0f27cbfa5",
+    "semantic_hash": "824e4b34ccb42959442776c0f27cbfa5"
+  },
+  "js/05-arbre.js": {
+    "mtime": 1791663133.7553773,
+    "seen": 1791891218.8074434,
+    "ast_hash": "f3ef92390afff0d59e522083ba958ebc",
+    "semantic_hash": "f3ef92390afff0d59e522083ba958ebc"
+  },
+  "js/06-topologie.js": {
+    "mtime": 1791663133.7553773,
+    "seen": 1791891218.807449,
+    "ast_hash": "b8c2f6b51c0d703b7f69094787a16c32",
+    "semantic_hash": "b8c2f6b51c0d703b7f69094787a16c32"
+  },
+  "js/07-mesure.js": {
+    "mtime": 1791663133.7553773,
+    "seen": 1791891218.8074548,
+    "ast_hash": "854a7d0d838346b6230d6fbfa3603382",
+    "semantic_hash": "854a7d0d838346b6230d6fbfa3603382"
+  },
+  "js/07b-coupe.js": {
+    "mtime": 1791663133.7553773,
+    "seen": 1791891218.80746,
+    "ast_hash": "0bbc1c73bd29115769dd2200ad8b396a",
+    "semantic_hash": "0bbc1c73bd29115769dd2200ad8b396a"
+  },
+  "js/08-interface.js": {
+    "mtime": 1792340853.4821224,
+    "seen": 1792354609.4050722,
+    "ast_hash": "efe336bdd20b705f77561b95a79e7c38",
+    "semantic_hash": ""
+  },
+  "js/09-demarrage.js": {
+    "mtime": 1792344962.2077553,
+    "seen": 1792354609.40508,
+    "ast_hash": "c26523f50d87ff53df0c42973d1ba095",
+    "semantic_hash": ""
+  },
+  "js/10-export-step.js": {
+    "mtime": 1792351396.20738,
+    "seen": 1792354609.405087,
+    "ast_hash": "6aea3b01ba50644d6e1b53f7f42b14e1",
+    "semantic_hash": ""
+  },
+  "js/11-projets.js": {
+    "mtime": 1792340853.4796731,
+    "seen": 1792354609.405094,
+    "ast_hash": "ff0203df5c568de2dacc6091c13722e3",
+    "semantic_hash": ""
+  },
+  "js/12-collisions.js": {
+    "mtime": 1792349205.96437,
+    "seen": 1792354609.405101,
+    "ast_hash": "7e4b1014903e3e09e01164ab79170e7a",
+    "semantic_hash": ""
+  },
+  "js/13-deplacement.js": {
+    "mtime": 1792340666.0112884,
+    "seen": 1792354609.4051082,
+    "ast_hash": "17ed99e596574c52cb9e9f470b500dc4",
+    "semantic_hash": ""
+  },
+  "js/travailleur-occt.js": {
+    "mtime": 1791663133.758305,
+    "seen": 1791891218.8075004,
+    "ast_hash": "1c6162c1b6f2e4598d0d40eb6cebc1e8",
+    "semantic_hash": "1c6162c1b6f2e4598d0d40eb6cebc1e8"
+  },
+  "test/banc-exemples.mjs": {
+    "mtime": 1791663133.758305,
+    "seen": 1791891218.8075058,
+    "ast_hash": "dd497007563efe3755e1f73ddb2590f8",
+    "semantic_hash": "dd497007563efe3755e1f73ddb2590f8"
+  },
+  "test/banc-serveur.py": {
+    "mtime": 1792351069.3392267,
+    "seen": 1792354609.405162,
+    "ast_hash": "713b9780a66e726ae1ad8a0cb211082d",
+    "semantic_hash": ""
+  },
+  "vendor/occt/occt-import-js.js": {
+    "mtime": 1791663133.7634387,
+    "seen": 1791891218.8075175,
+    "ast_hash": "a596b0030818bd887baa3c9df6c3350a",
+    "semantic_hash": "a596b0030818bd887baa3c9df6c3350a"
+  },
+  "vendor/three/addons/environments/RoomEnvironment.js": {
+    "mtime": 1791663133.8620834,
+    "seen": 1791891218.8075233,
+    "ast_hash": "c37d244b9379eaea34b6a8af0c0f0c8b",
+    "semantic_hash": "c37d244b9379eaea34b6a8af0c0f0c8b"
+  },
+  "vendor/three/addons/exporters/GLTFExporter.js": {
+    "mtime": 1791663133.8620834,
+    "seen": 1791891218.807529,
+    "ast_hash": "cfb5723ff8680b32d569d89a350c272c",
+    "semantic_hash": "cfb5723ff8680b32d569d89a350c272c"
+  },
+  "vendor/three/addons/libs/fflate.module.js": {
+    "mtime": 1791663133.8620834,
+    "seen": 1791891218.8075356,
+    "ast_hash": "d731a3c949ef32c7290e0079204fbd48",
+    "semantic_hash": "d731a3c949ef32c7290e0079204fbd48"
+  },
+  "vendor/three/addons/loaders/3MFLoader.js": {
+    "mtime": 1791663133.8620834,
+    "seen": 1791891218.807541,
+    "ast_hash": "385bd49aa4cb3fdffb297de39fd0b79c",
+    "semantic_hash": "385bd49aa4cb3fdffb297de39fd0b79c"
+  },
+  "vendor/three/addons/loaders/MTLLoader.js": {
+    "mtime": 1791663133.86487,
+    "seen": 1791891218.8075464,
+    "ast_hash": "1f2801a86d25dc9ed0d5a9b23146d450",
+    "semantic_hash": "1f2801a86d25dc9ed0d5a9b23146d450"
+  },
+  "vendor/three/addons/loaders/OBJLoader.js": {
+    "mtime": 1791663133.86487,
+    "seen": 1791891218.8075519,
+    "ast_hash": "16bf5933674686b6c20fb7478e434b16",
+    "semantic_hash": "16bf5933674686b6c20fb7478e434b16"
+  },
+  "vendor/three/addons/loaders/STLLoader.js": {
+    "mtime": 1791663133.86487,
+    "seen": 1791891218.8075576,
+    "ast_hash": "5d6b8c19034ad33d6e6cd13c7731cf03",
+    "semantic_hash": "5d6b8c19034ad33d6e6cd13c7731cf03"
+  },
+  "vendor/three/addons/utils/BufferGeometryUtils.js": {
+    "mtime": 1791663133.86487,
+    "seen": 1791891218.807563,
+    "ast_hash": "0bbf02d4791c526bfdfdd8bff1db26ff",
+    "semantic_hash": "0bbf02d4791c526bfdfdd8bff1db26ff"
+  },
+  "vendor/three/three.core.js": {
+    "mtime": 1791663133.874304,
+    "seen": 1791891218.8075683,
+    "ast_hash": "6bdce60e9b22a09cbd6815f58e63f1c6",
+    "semantic_hash": "6bdce60e9b22a09cbd6815f58e63f1c6"
+  },
+  "vendor/three/three.module.js": {
+    "mtime": 1791663133.882304,
+    "seen": 1791891218.8075738,
+    "ast_hash": "3f776a49922e8a0b0e491c2c5fe641f1",
+    "semantic_hash": "3f776a49922e8a0b0e491c2c5fe641f1"
+  },
+  "web_3D.py": {
+    "mtime": 1792705595.454105,
+    "seen": 1792732066.6287708,
+    "ast_hash": "26cf2f549000299674928ff7f744746b",
+    "semantic_hash": ""
+  },
+  ".github/workflows/ci.yml": {
+    "mtime": 1792345139.2214925,
+    "seen": 1792354609.405264,
+    "ast_hash": "eecd7e6f06d1b9ecd3d19f3c1f4a2e38",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1792695432.8511932,
+    "seen": 1792732066.628795,
+    "ast_hash": "86ad33fd8fe7405cced500d09e568e7f",
+    "semantic_hash": ""
+  },
+  "index.html": {
+    "mtime": 1792329173.0202508,
+    "seen": 1792354609.4052784,
+    "ast_hash": "b8e6d535a2363ef7c4b233ab2016f28f",
+    "semantic_hash": ""
+  },
+  "vendor/occt/license.occt-import-js.txt": {
+    "mtime": 1791663133.76296,
+    "seen": 1791891218.807601,
+    "ast_hash": "1803fa9c2c3ce8cb06b4861d75310742",
+    "semantic_hash": "1803fa9c2c3ce8cb06b4861d75310742"
+  },
+  "vendor/occt/license.occt.txt": {
+    "mtime": 1791663133.7634387,
+    "seen": 1791891218.807606,
+    "ast_hash": "6ab17b41640564434dda85c06b7124f7",
+    "semantic_hash": "6ab17b41640564434dda85c06b7124f7"
+  },
+  "vendor/three/LICENSE-three.txt": {
+    "mtime": 1791663133.858304,
+    "seen": 1791891218.8076117,
+    "ast_hash": "b3fc5f5e1fb66bb4c7e45d1a905627e5",
+    "semantic_hash": "b3fc5f5e1fb66bb4c7e45d1a905627e5"
+  },
+  "js/14-pilote-3d.js": {
+    "mtime": 1792351396.2061503,
+    "seen": 1792354609.4051166,
+    "ast_hash": "4bb6309ca3709e8fef6897b49c494b4e",
+    "semantic_hash": ""
+  },
+  "js/pilote.js": {
+    "mtime": 1792696518.5022695,
+    "seen": 1792732066.6286402,
+    "ast_hash": "7fbde4db0f34028d4306a4bfb2bb0f9a",
+    "semantic_hash": ""
+  },
+  "pilote.py": {
+    "mtime": 1792695815.5698783,
+    "seen": 1792732066.6286554,
+    "ast_hash": "d01cc402942db97d01c3415a8d3ecfe4",
+    "semantic_hash": ""
+  },
+  "test/banc-pilote-3d.mjs": {
+    "mtime": 1792613928.678202,
+    "seen": 1792732066.6286705,
+    "ast_hash": "357b74798d6818dfb7880ca110585cbf",
+    "semantic_hash": ""
+  },
+  "A-FAIRE.md": {
+    "mtime": 1792691820.4489028,
+    "seen": 1792732066.628787,
+    "ast_hash": "eae592e0d0f31b205c004b9756185af0",
+    "semantic_hash": ""
+  }
+}
