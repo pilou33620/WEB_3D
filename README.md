@@ -243,7 +243,8 @@ que Claude propose une modification.
 On peut aussi lui écrire **depuis la page**, sur n'importe quel appareil : la zone
 « Demander à Claude » du panneau passe la demande, par WEB·SUITE, à Claude Code du
 poste des outils, avec ses pièces jointes éventuelles : images, captures (« Vue »), PDF,
-fichiers texte (`lanceur/docs/SPEC-claude-pages.md` de web_suite).
+fichiers texte, avec le modèle choisi (Opus, Sonnet, Haiku) ; une ligne d'état dit à chaque
+ouverture si Claude Code est prêt (`lanceur/docs/SPEC-claude-pages.md` de web_suite).
 
 | Genre | Commandes | Ce qui se passe |
 | :--- | :--- | :--- |
