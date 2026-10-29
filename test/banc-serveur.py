@@ -160,6 +160,32 @@ _r = _c.getresponse(); _r.read(); _c.close()
 verifier("cadres : même origine seulement", (_r.getheader("X-Frame-Options"),
          "frame-ancestors 'self'" in (_r.getheader("Content-Security-Policy") or "")), ("SAMEORIGIN", True))
 
+# Ouvrir depuis le gestionnaire de fichiers (ouvrir.py) : la copie est servie au seul poste
+import ouvrir  # noqa: E402
+import urllib.parse  # noqa: E402
+verifier("ouvrir : noms sûrs", [ouvrir.nom_sur(n) for n in ("/a/x,y&z.STEP", ".cache.stp", "été 1+1.stp")],
+         ["x_y_z.step", "_.cache.stp", "été 1+1.stp"])
+with tempfile.TemporaryDirectory() as tmp:
+    ouvrir.DOSSIER = os.path.join(tmp, "ouvrir")
+    source = os.path.join(tmp, "Pièce, v2.STEP")
+    with open(source, "wb") as f:
+        f.write(b"ISO-10303-21;")
+    os.makedirs(ouvrir.DOSSIER)
+    vieux = os.path.join(ouvrir.DOSSIER, "vieux.stp")
+    open(vieux, "w").close()
+    os.utime(vieux, (0, 0))
+    nom = ouvrir.copier(source)
+    verifier("ouvrir : copie, vieilles copies retirées", (nom, sorted(os.listdir(ouvrir.DOSSIER))),
+             ("Pièce_ v2.step", ["Pièce_ v2.step"]))
+    url = "/ouvrir/" + urllib.parse.quote(nom)
+    verifier("ouvrir : servi au poste", requete("GET", url)[1], b"ISO-10303-21;")
+    for chemin in ("/ouvrir/../web_3D.py", "/ouvrir/..%2F..%2Fsecret.stp", "/ouvrir/.part"):
+        verifier("ouvrir : refus " + chemin, requete("GET", chemin)[0], 404)
+    ce_poste = web_3D.appairage.Garde.ce_poste
+    web_3D.appairage.Garde.ce_poste = staticmethod(lambda h: False)
+    verifier("ouvrir : refusé à un autre appareil", requete("GET", url)[0], 404)
+    web_3D.appairage.Garde.ce_poste = ce_poste
+
 serveur.shutdown()
 print("%d/%d ok" % (essais - echecs, essais))
 sys.exit(1 if echecs else 0)

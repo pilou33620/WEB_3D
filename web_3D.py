@@ -39,6 +39,7 @@ import urllib.parse
 import webbrowser
 
 import appairage
+import ouvrir  # ~/.web_tools/ouvrir/ : les fichiers ouverts depuis le gestionnaire de fichiers
 
 RACINE = os.path.dirname(os.path.abspath(__file__))
 
@@ -61,15 +62,16 @@ NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl
 MAX_PROJET = 200 * 1024 * 1024
 
 
-def chemin_projet(relatif):
-    """Le fichier de PROJETS que désigne `relatif`, ou None s'il en sortirait."""
-    if not PROJETS:
+def chemin_projet(relatif, dossier=None):
+    """Le fichier de `dossier` (PROJETS par défaut) que désigne `relatif`, ou None s'il en sortirait."""
+    dossier = dossier or PROJETS
+    if not dossier:
         return None
     morceaux = [m for m in relatif.replace("\\", "/").split("/") if m]
     if (not morceaux or not NOM_PROJET.match(morceaux[-1])
             or any(m.startswith(".") or ":" in m for m in morceaux)):
         return None
-    racine = os.path.realpath(PROJETS)
+    racine = os.path.realpath(dossier)
     cible = os.path.realpath(os.path.join(racine, *morceaux))
     return cible if cible.startswith(racine + os.sep) else None
 
@@ -142,6 +144,11 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
             return self._json({"dispo": bool(PROJETS), "fichiers": lister_projets() if PROJETS else []})
         if chemin.startswith("/projets/"):
             return self._fichier_projet(chemin[len("/projets/"):])
+        if chemin.startswith("/ouvrir/"):
+            # Les fichiers que ouvrir.py a copiés depuis ce poste : jamais servis à un autre appareil
+            if not appairage.Garde.ce_poste(self):
+                return self.send_error(404, "File not found")
+            return self._fichier_projet(chemin[len("/ouvrir/"):], ouvrir.DOSSIER)
         super().do_GET()
 
     def do_POST(self):
@@ -195,8 +202,8 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         # realpath des deux côtés : un chemin court Windows (PIERRE~1) ne se compare pas au long
         return self._json({"chemin": os.path.relpath(cible, os.path.realpath(PROJETS)).replace(os.sep, "/")})
 
-    def _fichier_projet(self, relatif):
-        cible = chemin_projet(relatif)
+    def _fichier_projet(self, relatif, dossier=None):
+        cible = chemin_projet(relatif, dossier)
         if not cible or not os.path.isfile(cible):
             return self.send_error(404, "File not found")
         with open(cible, "rb") as f:

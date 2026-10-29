@@ -95,6 +95,14 @@ de la page 3D, sur une vraie scène. Les trois bancs — exemples, pilotage et
   un `.stp`.
 - Glisser-déposer n'importe où dans la fenêtre, ou `Ctrl+O`. Plusieurs fichiers
   déposés ensemble composent un assemblage dans une même scène.
+- **Depuis le gestionnaire de fichiers** : `python3 ouvrir.py --associer` (une fois)
+  ajoute « Ouvrir avec WEB_3D » aux `.step` / `.stp` — sous Linux il devient
+  aussi l'application du double-clic ; sous Windows, choisir WEB_3D dans
+  *Ouvrir avec* puis « Toujours ». Le fichier est copié dans
+  `~/.web_tools/ouvrir/` (copies retirées après un jour), servi au seul poste
+  (`/ouvrir/…`), et WEB_3D démarre s'il le faut : par le lanceur de WEB_SUITE
+  quand l'outil en fait partie, seul sinon. Il est seulement affiché :
+  **Ranger** le garde dans les projets.
 - Un `.obj` déposé **avec son `.mtl`** (et ses images de texture) garde ses
   matériaux : les chemins écrits dans le `.mtl` sont réécrits à la volée vers
   les fichiers réellement déposés, puisqu'aucun d'eux n'a d'adresse sur le
