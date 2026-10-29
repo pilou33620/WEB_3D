@@ -1,28 +1,28 @@
-# Graph Report - WEB_3D  (2026-10-23)
+# Graph Report - WEB_3D  (2026-10-29)
 
 ## Corpus Check
-- 37 files · ~424,671 words
+- 39 files · ~428,884 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 13 file(s) not represented in the graph (top: .css 2, .step 2, .obj 2)
+- Unclassified: 14 file(s) not represented in the graph (top: .css 3, .step 2, .obj 2)
 
 ## Summary
-- 4297 nodes · 9476 edges · 193 communities (109 shown, 84 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 254 edges (avg confidence: 0.85)
+- 4343 nodes · 9594 edges · 217 communities (115 shown, 102 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 258 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b130ae85`
+- Built from commit: `ea67b7a4`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - three.core.js
 - three.module.js
-- Float32BufferAttribute
+- .setAttribute
 - .subVectors
-- warn
-- .fromBufferAttribute
-- get
+- error
+- .normalize
+- update
 - .parse
 - WebGLRenderer
 - Object3D
@@ -30,36 +30,36 @@
 - 06-topologie.js
 - .render
 - Vector2
-- 09-demarrage.js
+- 08-interface.js
 - Mesure
-- .equals
+- earcutLinked
 - Material
 - Interface
 - Quaternion
 - Vector4
-- Plane
+- Mesh
 - .constructor
 - Vector3
 - .load
-- PerspectiveCamera
+- PMREMGenerator
 - AnimationAction
 - Box3
 - Matrix4
-- EventDispatcher
-- ObjectLoader
-- Vue3D
+- LoadingManager
 - .parseObject
+- Vue3D
+- Light
 - PropertyBinding
 - Color
 - 14-pilote-3d.js
 - 07-mesure.js
 - BatchedMesh
 - CoupeManager
-- .invert
+- Layers
 - 05-arbre.js
 - .processTextureAsync
 - AnimationMixer
-- .clone
+- .applyMatrix4
 - BufferAttribute
 - Matrix3
 - WebGLProgram
@@ -72,7 +72,7 @@
 - RenderTarget
 - KeyframeTrack
 - LineBasicMaterial
-- .setStyle
+- get
 - Euler
 - WebGLBindingStates
 - GLTFWriter
@@ -81,18 +81,18 @@
 - Texture
 - MaterialCreator
 - InterleavedBuffer
-- faceSous
-- Ray
+- brancherDeplacement
+- web_3D.py
 - BufferGeometryUtils.js
 - fflate.module.js
-- createColorManagement
+- .getDataURL
 - arraysEqual
 - banc-exemples.mjs
 - CubicBezierCurve
-- TextureSource
+- DepthTexture
 - .constructor
 - QuadraticBezierCurve
-- index.html structure de la page
+- DataTexture
 - Interpolant
 - creer
 - GLTFExporter.js
@@ -110,7 +110,7 @@
 - createWasm
 - zip
 - banc-pilote-3d.mjs
-- DirectionalLight
+- BufferGeometry
 - mm
 - addToRenderList
 - Path
@@ -120,12 +120,12 @@
 - .parse
 - PropertyMixer
 - C
-- makeClipAdditive
+- QuaternionLinearInterpolant
 - .copy
 - VideoTexture
 - Appairage
-- error
-- Mesh
+- warn
+- Line
 - Timer
 - 02-import.js
 - .mmap
@@ -134,13 +134,14 @@
 - Raycaster
 - Pilote
 - CompressedArrayTexture
-- DataTexture
+- TextureSource
 - 11-projets.js
 - abort
 - OrthographicCamera
 - Camera
 - À faire — fonctionnalités et bugs
-- .fromArray
+- SplineCurve
+- .constructor
 - Scene
 - DataArrayTexture
 - postRun
@@ -148,38 +149,48 @@
 - .writeAsync
 - gzip
 - Clock
-- CatmullRom
+- WebXRManager
 - Cylindrical
+- eliminateHoles
 - GLBufferAttribute
 - RoomEnvironment.js
-- 08-interface.js
+- 12-collisions.js
 - flatten
-- CylinderGeometry
+- denormalize
 - AnimationClip
-- BufferGeometry
+- PerspectiveCamera
+- .getAttribute
 - ThreeMFLoader
 - cloneUniforms
 - AnimationUtils
 - H
-- adresses_poste
-- web_3D.py
+- ouvrir.py
+- pilote.py
 - craftInvokerFunction
 - getCallstack
 - ___syscall_ioctl
+- telephone.js
 - StepExtractor
 - BezierInterpolant
-- LightShadow
+- EventDispatcher
+- CurvePath
 - InstancedBufferAttribute
+- addShape
+- .toShapes
 - write
 - registerType
 - syncfs
 - syscallGetVarargI
+- .bind
 - decompress
 - ZipPassThrough
 - FenetreResultats
+- Float16BufferAttribute
 - .push
 - Uniform
 - _points
+- EllipseCurve
+- LineCurve
 - close
 - CubicPoly
 - .lerp
@@ -188,7 +199,8 @@
 - getKeyframeOrder
 - probeAsync
 - MultiDrawRenderList
-- WebGLLights
+- LineCurve3
+- PointLight
 - compacter
 - allocate
 - ioctl
@@ -203,6 +215,19 @@
 - symlink
 - unlink
 - FlateErrorCode
+- ShaderMaterial
+- CubeCamera
+- ShapePath
+- AnimationObjectGroup
+- .constructor
+- MaterialLoader
+- Fog
+- FogExp2
+- Sprite
+- MeshPhongMaterial
+- Int8BufferAttribute
+- Uint32BufferAttribute
+- Uint8BufferAttribute
 
 ## God Nodes (most connected - your core abstractions)
 1. `Vector3` - 113 edges
@@ -212,9 +237,9 @@
 5. `Object3D` - 72 edges
 6. `BufferGeometry` - 71 edges
 7. `Vector4` - 65 edges
-8. `BufferAttribute` - 55 edges
-9. `Mesure` - 53 edges
-10. `WebGLTextures()` - 52 edges
+8. `creer()` - 58 edges
+9. `BufferAttribute` - 55 edges
+10. `Mesure` - 53 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `LGPL-2.1 (occt-import-js)` --references--> `OpenCascade / occt-import-js (WebAssembly)`  [EXTRACTED]
@@ -225,8 +250,8 @@
   README.md → vendor/occt/license.occt-import-js.txt
 - `construire()` --indirect_call--> `liste()`  [INFERRED]
   js/pilote.js → js/11-projets.js
-- `Barre d'outils (ouvrir, mesure, coupe, collisions, déplacer, export)` --references--> `Outil de mesure (Auto, Point, Arête, Pièce, Face)`  [INFERRED]
-  index.html → README.md
+- `update()` --calls--> `error()`  [EXTRACTED]
+  vendor/three/three.module.js → vendor/three/three.core.js
 
 ## Import Cycles
 - None detected.
@@ -235,7 +260,7 @@
 - **Chaîne de mesure** — js_06_topologie, js_07_mesure, readme_measure [INFERRED 0.85]
 - **Chaîne de lecture STEP** — js_02_import, js_travailleur_occt, readme_opencascade [INFERRED 0.85]
 
-## Communities (193 total, 84 thin omitted)
+## Communities (217 total, 102 thin omitted)
 
 ### Community 0 - "three.core.js"
 Cohesion: 0.01
@@ -243,95 +268,99 @@ Nodes (225): RFC-3987, _addedEvent, _alignedPosition, _axis, _baseVector, _batch
 
 ### Community 1 - "three.module.js"
 Cohesion: 0.01
-Nodes (38): TOUCH, arrayCacheF32, arrayCacheI32, _clearColor, _cubeDirections, _cubeUps, DATA, _direction (+30 more)
+Nodes (38): arrayCacheF32, arrayCacheI32, _clearColor, _cubeDirections, _cubeUps, DATA, _direction, empty3dTexture (+30 more)
 
-### Community 3 - "Float32BufferAttribute"
-Cohesion: 0.06
-Nodes (10): arrayNeedsUint32(), CapsuleGeometry, CircleGeometry, Float32BufferAttribute, LatheGeometry, PlaneGeometry, RingGeometry, SphereGeometry (+2 more)
+### Community 3 - ".setAttribute"
+Cohesion: 0.08
+Nodes (11): arrayNeedsUint32(), buildPlane(), CapsuleGeometry, CircleGeometry, generateCap(), generateTorso(), Float32BufferAttribute, LatheGeometry (+3 more)
 
-### Community 5 - "warn"
+### Community 4 - ".subVectors"
+Cohesion: 0.05
+Nodes (5): checkGeometryIntersection(), checkIntersection$1(), Plane, Ray, Triangle
+
+### Community 5 - "error"
 Cohesion: 0.11
-Nodes (54): createCanvasElement(), createElementNS(), warn(), setValueT1(), setValueT2DArray1(), setValueT3D1(), setValueT6(), getContext() (+46 more)
+Nodes (45): error(), setValueT1(), setValueT2DArray1(), setValueT3D1(), setValueT6(), WebGLState(), activeTexture(), bindTexture() (+37 more)
 
-### Community 6 - ".fromBufferAttribute"
-Cohesion: 0.09
-Nodes (4): copyAttributeData(), InterleavedBufferAttribute, isUniqueEdge(), WireframeGeometry
+### Community 6 - ".normalize"
+Cohesion: 0.08
+Nodes (5): copyAttributeData(), createColorManagement(), InterleavedBufferAttribute, applyRadius(), SkinnedMesh
 
-### Community 7 - "get"
-Cohesion: 0.07
-Nodes (47): includeReplacer(), WebGLAttributes(), createBuffer(), get(), remove(), update(), updateBuffer(), releaseStatesOfGeometry() (+39 more)
+### Community 7 - "update"
+Cohesion: 0.06
+Nodes (45): WebGLAttributes(), createBuffer(), get(), remove(), update(), updateBuffer(), WebGLBufferRenderer(), render() (+37 more)
 
 ### Community 8 - ".parse"
 Cohesion: 0.11
 Nodes (37): analyzeObject(), applyExtensions(), build(), buildBasematerial(), buildBasematerialsMeshes(), buildComposite(), buildDefaultMesh(), buildGroup() (+29 more)
 
 ### Community 9 - "WebGLRenderer"
-Cohesion: 0.04
-Nodes (20): WebGLRenderTarget, _createRenderTarget(), WebGLRenderer, renderObject(), renderObjects(), renderTransmissionPass(), VSMPass(), bindFramebuffer() (+12 more)
+Cohesion: 0.06
+Nodes (12): WebGLRenderTarget, WebGLOutput(), WebGLRenderer, renderTransmissionPass(), VSMPass(), ColorBuffer(), drawBuffers(), viewport() (+4 more)
 
 ### Community 12 - "06-topologie.js"
-Cohesion: 0.09
-Nodes (42): analyser(), aplatir(), areteSous(), AXES_MONDE, barycentre(), cerclePlan(), COS_ALIGNE_MONDE, COS_MEME_PLAN (+34 more)
+Cohesion: 0.08
+Nodes (43): analyser(), aplatir(), areteSous(), AXES_MONDE, barycentre(), cerclePlan(), constructionAretePlan(), COS_ALIGNE_MONDE (+35 more)
 
 ### Community 13 - ".render"
-Cohesion: 0.07
-Nodes (29): ExternalTexture, shadowCastingAndTexturingLightsFirst(), WebGLClipping(), projectPlanes(), resetGlobalState(), setup(), WebGLOutput(), WebGLPrograms() (+21 more)
+Cohesion: 0.08
+Nodes (32): ExternalTexture, ShadowUniformsCache(), UniformsCache(), WebGLClipping(), projectPlanes(), resetGlobalState(), WebGLLights(), setup() (+24 more)
 
-### Community 15 - "09-demarrage.js"
-Cohesion: 0.10
-Nodes (22): abonnes, actionPourGeste(), BOUTONS, chargerPrefs(), enregistrerPrefs(), nomBouton(), prefs, PREFS_DEFAUT (+14 more)
+### Community 15 - "08-interface.js"
+Cohesion: 0.08
+Nodes (34): abonnes, actionPourGeste(), ACTIONS, BOUTONS, chargerPrefs(), EMPLACEMENTS, enregistrerPrefs(), gestesActifs() (+26 more)
 
-### Community 17 - ".equals"
-Cohesion: 0.07
-Nodes (34): addContour(), compareXYSlope(), createNode(), cureLocalIntersections(), earcut(), earcutLinked(), eliminateHole(), eliminateHoles() (+26 more)
+### Community 17 - "earcutLinked"
+Cohesion: 0.13
+Nodes (24): cureLocalIntersections(), earcutLinked(), eliminateHole(), filterPoints(), findHoleBridge(), indexCurve(), intersects(), intersectsPolygon() (+16 more)
 
 ### Community 18 - "Material"
 Cohesion: 0.06
-Nodes (12): LineDashedMaterial, Material, MeshDepthMaterial, MeshDistanceMaterial, MeshLambertMaterial, MeshMatcapMaterial, MeshNormalMaterial, MeshPhongMaterial (+4 more)
+Nodes (11): LineDashedMaterial, Material, MeshDepthMaterial, MeshDistanceMaterial, MeshLambertMaterial, MeshMatcapMaterial, MeshNormalMaterial, MeshToonMaterial (+3 more)
 
 ### Community 19 - "Interface"
-Cohesion: 0.13
-Nodes (8): gestesActifs(), prefsModifiees(), reinitialiserPrefs(), resumeGestes(), visibleEnLignee(), calculerAretes(), liberer(), Interface
+Cohesion: 0.14
+Nodes (5): prefsModifiees(), reinitialiserPrefs(), calculerAretes(), liberer(), Interface
+
+### Community 22 - "Mesh"
+Cohesion: 0.08
+Nodes (8): HemisphereLightHelper, Mesh, MeshBasicMaterial, PlaneGeometry, PlaneHelper, PointLightHelper, SphereGeometry, _createPlanes()
 
 ### Community 23 - ".constructor"
-Cohesion: 0.09
-Nodes (32): object(), getDFGLUT(), WebGLAnimation(), onAnimationFrame(), WebGLIndexedBufferRenderer(), render(), renderInstances(), renderMultiDraw() (+24 more)
+Cohesion: 0.10
+Nodes (30): object(), WebGLIndexedBufferRenderer(), render(), renderInstances(), renderMultiDraw(), setIndex(), setMode(), getUniforms() (+22 more)
 
 ### Community 25 - ".load"
 Cohesion: 0.28
 Nodes (3): loadTexture(), loadTexture(), FileLoader
 
-### Community 26 - "PerspectiveCamera"
+### Community 26 - "PMREMGenerator"
+Cohesion: 0.15
+Nodes (4): BoxGeometry, _createRenderTarget(), PMREMGenerator, _setViewport()
+
+### Community 30 - "LoadingManager"
+Cohesion: 0.12
+Nodes (8): handleError(), readData(), HttpError, ImageBitmapLoader, onImageError(), onImageLoad(), removeEventListeners(), LoadingManager
+
+### Community 33 - "Light"
 Cohesion: 0.07
-Nodes (12): ArrayCamera, Layers, PerspectiveCamera, RawShaderMaterial, ShaderMaterial, _getBlurShader(), _getCommonVertexShader(), _getCubemapMaterial() (+4 more)
+Nodes (7): AmbientLight, DirectionalLight, HemisphereLight, Light, LightProbe, RectAreaLight, SpotLight
 
-### Community 29 - "Matrix4"
-Cohesion: 0.06
-Nodes (3): Bone, Matrix4, Skeleton
-
-### Community 30 - "EventDispatcher"
-Cohesion: 0.11
-Nodes (9): handleError(), EventDispatcher, readData(), HttpError, onImageError(), onImageLoad(), removeEventListeners(), LoadingManager (+1 more)
-
-### Community 31 - "ObjectLoader"
-Cohesion: 0.18
-Nodes (3): MaterialLoader, ObjectLoader, parseConstant()
-
-### Community 33 - ".parseObject"
-Cohesion: 0.05
-Nodes (13): AmbientLight, Fog, FogExp2, HemisphereLight, Light, LightProbe, LineLoop, getGeometry() (+5 more)
-
-### Community 34 - "PropertyBinding"
-Cohesion: 0.06
-Nodes (3): AnimationObjectGroup, Composite, PropertyBinding
+### Community 35 - "Color"
+Cohesion: 0.08
+Nodes (4): Color, handleAlpha(), hue2rgb(), LinearToSRGB()
 
 ### Community 36 - "14-pilote-3d.js"
-Cohesion: 0.16
-Nodes (35): formatDe(), sanitiserNomFichier(), apresDeplacement(), perimerCaches(), arrondir(), AXES, brancherPilote3d(), calculerCollisions() (+27 more)
+Cohesion: 0.14
+Nodes (40): formatDe(), faceSous(), sanitiserNomFichier(), maillageCollisions(), apresDeplacement(), AXES, contraindre(), perimerCaches() (+32 more)
 
 ### Community 37 - "07-mesure.js"
-Cohesion: 0.13
-Nodes (14): centreDeFace(), contourFace(), geometrieArete(), geometrieFace(), numeroArete(), PLAFOND_TRIANGLES, pointSurArete(), tailleParPixel() (+6 more)
+Cohesion: 0.12
+Nodes (13): centreDeFace(), contourFace(), geometrieArete(), geometrieFace(), numeroArete(), PLAFOND_TRIANGLES, tailleParPixel(), NOMS_ACCROCHE (+5 more)
+
+### Community 38 - "BatchedMesh"
+Cohesion: 0.11
+Nodes (4): ascIdSort(), BatchedMesh, copyArrayContents(), flattenJSON()
 
 ### Community 41 - "05-arbre.js"
 Cohesion: 0.15
@@ -341,65 +370,73 @@ Nodes (13): Arbre, couleurDe(), echapper(), estDansBranche(), fmt, formaterAire(
 Cohesion: 0.09
 Nodes (8): GLTFMaterialsAnisotropyExtension, GLTFMaterialsBumpExtension, GLTFMaterialsClearcoatExtension, GLTFMaterialsIridescenceExtension, GLTFMaterialsSheenExtension, GLTFMaterialsSpecularExtension, GLTFMaterialsTransmissionExtension, GLTFMaterialsVolumeExtension
 
-### Community 44 - ".clone"
+### Community 44 - ".applyMatrix4"
 Cohesion: 0.09
-Nodes (7): checkIntersection(), checkIntersection$1(), scalePt2(), InstancedMesh, LOD, testPoint(), transformVertex()
+Nodes (3): checkIntersection(), InstancedMesh, testPoint()
 
 ### Community 45 - "BufferAttribute"
-Cohesion: 0.05
-Nodes (11): BufferAttribute, DataUtils, denormalize(), Float16BufferAttribute, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, Uint16BufferAttribute (+3 more)
+Cohesion: 0.08
+Nodes (5): BufferAttribute, Int16BufferAttribute, Int32BufferAttribute, Uint16BufferAttribute, Uint8ClampedBufferAttribute
 
 ### Community 46 - "Matrix3"
-Cohesion: 0.07
+Cohesion: 0.08
 Nodes (5): Matrix3, Source, warnOnce(), WebGLExtensions(), getExtension()
 
 ### Community 47 - "WebGLProgram"
-Cohesion: 0.09
-Nodes (24): fetchAttributeLocations(), filterEmptyLine(), generateCubeUVSize(), generateDefines(), generateEnvMapBlendingDefine(), generateEnvMapModeDefine(), generateEnvMapTypeDefine(), generatePrecision() (+16 more)
+Cohesion: 0.08
+Nodes (25): fetchAttributeLocations(), filterEmptyLine(), generateCubeUVSize(), generateDefines(), generateEnvMapBlendingDefine(), generateEnvMapModeDefine(), generateEnvMapTypeDefine(), generatePrecision() (+17 more)
+
+### Community 48 - "Frustum"
+Cohesion: 0.07
+Nodes (4): Frustum, FrustumArray, LightShadow, LOD
 
 ### Community 49 - "travailleur-occt.js"
-Cohesion: 0.11
-Nodes (13): Workflow CI bancs d'essai, Banc des exemples (test/banc-exemples.mjs), Banc du serveur (test/banc-serveur.py), Fichiers d'exemples (as1, essai-mesure.obj...), OpenCascade / occt-import-js (WebAssembly), Appairage par code à 6 chiffres (appairage.py), Sécurité serveur : liste blanche, contrôle Host (DNS rebinding), Visionneuse 3D (WEB_3D) (+5 more)
+Cohesion: 0.08
+Nodes (20): Workflow CI bancs d'essai, Dialogues : aide, préférences, projets, export de pièce, Import map (three), index.html structure de la page, Barre d'outils (ouvrir, mesure, coupe, collisions, déplacer, export), Banc des exemples (test/banc-exemples.mjs), Banc du serveur (test/banc-serveur.py), Fichiers d'exemples (as1, essai-mesure.obj...) (+12 more)
 
 ### Community 52 - "WebGLMaterials"
 Cohesion: 0.33
 Nodes (14): WebGLMaterials(), refreshMaterialUniforms(), refreshTransformUniform(), refreshUniformsCommon(), refreshUniformsDash(), refreshUniformsDistance(), refreshUniformsLine(), refreshUniformsMatcap() (+6 more)
 
 ### Community 53 - "appairage.py"
-Cohesion: 0.11
-Nodes (16): _a_refaire(), appairer(), _ca_a_refaire(), _cnf(), contexte_tls(), dossier_tls(), empreinte_ca(), en_https() (+8 more)
+Cohesion: 0.10
+Nodes (18): _a_refaire(), adresses_poste(), appairer(), _ca_a_refaire(), _cnf(), contexte_tls(), dossier_tls(), empreinte_ca() (+10 more)
 
 ### Community 54 - "RenderTarget"
 Cohesion: 0.20
 Nodes (4): Data3DTexture, RenderTarget, RenderTarget3D, WebGL3DRenderTarget
 
 ### Community 55 - "KeyframeTrack"
-Cohesion: 0.12
-Nodes (7): BooleanKeyframeTrack, ColorKeyframeTrack, KeyframeTrack, QuaternionKeyframeTrack, StringKeyframeTrack, subclip(), VectorKeyframeTrack
+Cohesion: 0.13
+Nodes (6): BooleanKeyframeTrack, ColorKeyframeTrack, KeyframeTrack, StringKeyframeTrack, subclip(), VectorKeyframeTrack
 
 ### Community 56 - "LineBasicMaterial"
-Cohesion: 0.08
-Nodes (10): AxesHelper, Box3Helper, BoxHelper, getBoneList(), GridHelper, LineBasicMaterial, LineSegments, PolarGridHelper (+2 more)
+Cohesion: 0.09
+Nodes (9): AxesHelper, Box3Helper, BoxHelper, getBoneList(), GridHelper, LineBasicMaterial, LineSegments, PolarGridHelper (+1 more)
+
+### Community 57 - "get"
+Cohesion: 0.14
+Nodes (35): createCanvasElement(), createElementNS(), checkMaterialsReady(), getReadableState(), get(), bindFramebuffer(), WebGLTextures(), createCanvas() (+27 more)
 
 ### Community 58 - "Euler"
 Cohesion: 0.13
 Nodes (3): Euler, onQuaternionChange(), onRotationChange()
 
 ### Community 59 - "WebGLBindingStates"
-Cohesion: 0.17
-Nodes (21): WebGLBindingStates(), bindVertexArrayObject(), createBindingState(), createVertexArrayObject(), deleteVertexArrayObject(), disableUnusedAttributes(), dispose(), enableAttribute() (+13 more)
+Cohesion: 0.14
+Nodes (22): WebGLBindingStates(), bindVertexArrayObject(), createBindingState(), createVertexArrayObject(), deleteVertexArrayObject(), disableUnusedAttributes(), dispose(), enableAttribute() (+14 more)
 
 ### Community 60 - "GLTFWriter"
 Cohesion: 0.23
 Nodes (4): equalArray(), getMinMax(), GLTFWriter, isIdentityMatrix()
 
 ### Community 61 - ".dispose"
-Cohesion: 0.10
-Nodes (21): log(), dispose(), WebGLCubeRenderTarget, WebGLEnvironments(), dispose(), get(), getCube(), getPMREM() (+13 more)
+Cohesion: 0.13
+Nodes (19): log(), WebGLCubeRenderTarget, WebGLEnvironments(), dispose(), get(), getCube(), getPMREM(), isCubeTextureComplete() (+11 more)
 
 ### Community 63 - "Texture"
-Cohesion: 0.08
-Nodes (5): CanvasTexture, CubeTexture, FramebufferTexture, HTMLTexture, Texture
+Cohesion: 0.09
+Nodes (4): CanvasTexture, FramebufferTexture, HTMLTexture, Texture
 
 ### Community 64 - "MaterialCreator"
 Cohesion: 0.16
@@ -407,11 +444,15 @@ Nodes (4): MaterialCreator, resolveURL(), setMapForType(), MTLLoader
 
 ### Community 65 - "InterleavedBuffer"
 Cohesion: 0.09
-Nodes (7): getArrayBuffer(), getInterleavedBuffer(), generateUUID(), getTypedArray(), InstancedBufferGeometry, InterleavedBuffer, Sprite
+Nodes (6): getArrayBuffer(), getInterleavedBuffer(), generateUUID(), InstancedBufferGeometry, InstancedInterleavedBuffer, InterleavedBuffer
 
-### Community 66 - "faceSous"
-Cohesion: 0.30
-Nodes (15): faceSous(), AXES, brancherDeplacement(), annulerContrainte(), apres(), basculer(), choisirFace(), construire() (+7 more)
+### Community 66 - "brancherDeplacement"
+Cohesion: 0.49
+Nodes (11): brancherDeplacement(), annulerContrainte(), apres(), basculer(), choisirFace(), construire(), demarrerContrainte(), lire() (+3 more)
+
+### Community 67 - "web_3D.py"
+Cohesion: 0.10
+Nodes (11): adresse_locale(), attendre(), ipv4_libre(), lance_par_double_clic(), main(), ouvrir_serveur(), processus_de_la_console(), redemarrer_application() (+3 more)
 
 ### Community 68 - "BufferGeometryUtils.js"
 Cohesion: 0.13
@@ -421,9 +462,9 @@ Nodes (9): unzipSync(), buildLatticeMesh(), computeMikkTSpaceTangents(), compute
 Cohesion: 0.09
 Nodes (17): RFC-1951, AsyncDecompress(), AsyncGunzip(), AsyncInflate(), AsyncUnzipInflate(), AsyncUnzlib(), DecodeUTF8(), decompressSync() (+9 more)
 
-### Community 70 - "createColorManagement"
-Cohesion: 0.29
-Nodes (3): createColorManagement(), LinearToSRGB(), SRGBToLinear()
+### Community 70 - ".getDataURL"
+Cohesion: 0.18
+Nodes (4): AudioContext, ImageUtils, serializeImage(), SRGBToLinear()
 
 ### Community 71 - "arraysEqual"
 Cohesion: 0.21
@@ -437,10 +478,6 @@ Nodes (3): occtimportjs, RACINE, STEP
 Cohesion: 0.11
 Nodes (7): CubicBezier(), CubicBezierCurve, CubicBezierCurve3, CubicBezierP0(), CubicBezierP1(), CubicBezierP2(), CubicBezierP3()
 
-### Community 74 - "TextureSource"
-Cohesion: 0.12
-Nodes (5): CubeDepthTexture, DepthTexture, ImageUtils, serializeImage(), TextureSource
-
 ### Community 75 - ".constructor"
 Cohesion: 0.13
 Nodes (4): GLTFExporter, GLTFLightExtension, GLTFMaterialsIorExtension, GLTFMeshGpuInstancing
@@ -449,41 +486,37 @@ Nodes (4): GLTFExporter, GLTFLightExtension, GLTFMaterialsIorExtension, GLTFMesh
 Cohesion: 0.12
 Nodes (6): QuadraticBezier(), QuadraticBezierCurve, QuadraticBezierCurve3, QuadraticBezierP0(), QuadraticBezierP1(), QuadraticBezierP2()
 
-### Community 77 - "index.html structure de la page"
-Cohesion: 0.14
-Nodes (13): Dialogues : aide, préférences, projets, export de pièce, Import map (three), index.html structure de la page, Barre d'outils (ouvrir, mesure, coupe, collisions, déplacer, export), Export PNG, glTF/GLB, STEP, fflate, Formats : STEP, IGES, BREP, 3MF, OBJ, STL, STPZ, Préréglages de souris (Onshape, SolidWorks, Fusion...) (+5 more)
+### Community 77 - "DataTexture"
+Cohesion: 0.13
+Nodes (5): Bone, DataTexture, DataTextureLoader, Skeleton, getDFGLUT()
 
 ### Community 78 - "Interpolant"
-Cohesion: 0.14
-Nodes (5): CubicInterpolant, DiscreteInterpolant, Interpolant, LinearInterpolant, QuaternionLinearInterpolant
+Cohesion: 0.17
+Nodes (4): CubicInterpolant, DiscreteInterpolant, Interpolant, LinearInterpolant
 
 ### Community 79 - "creer"
-Cohesion: 0.11
-Nodes (44): creer(), afficher(), ajouter(), annoncer(), annuler(), appliquer(), base64(), battre() (+36 more)
+Cohesion: 0.08
+Nodes (58): creer(), afficher(), ajouter(), annoncer(), annuler(), appliquer(), base64(), battre() (+50 more)
 
 ### Community 80 - "GLTFExporter.js"
 Cohesion: 0.13
 Nodes (8): DEFAULT_SPECULAR_COLOR, GLTFMaterialsDispersionExtension, GLTFMaterialsEmissiveStrengthExtension, GLTFMaterialsUnlitExtension, KHR_mesh_quantization_ExtraAttrTypes, PATH_PROPERTIES, THREE_TO_WEBGL, WEBGL_CONSTANTS
-
-### Community 81 - "Curve"
-Cohesion: 0.07
-Nodes (5): ArcCurve, Curve, EllipseCurve, LineCurve, LineCurve3
 
 ### Community 82 - "PolyhedronGeometry"
 Cohesion: 0.13
 Nodes (5): DodecahedronGeometry, IcosahedronGeometry, OctahedronGeometry, PolyhedronGeometry, TetrahedronGeometry
 
 ### Community 84 - "has"
-Cohesion: 0.14
-Nodes (13): isPackedRGFormat(), WebGLCapabilities(), getMaxAnisotropy(), getMaxPrecision(), textureFormatReadable(), textureTypeReadable(), getChannel(), getParameters() (+5 more)
+Cohesion: 0.15
+Nodes (12): isPackedRGFormat(), WebGLCapabilities(), getMaxAnisotropy(), getMaxPrecision(), textureFormatReadable(), textureTypeReadable(), getChannel(), getParameters() (+4 more)
 
 ### Community 85 - "Gestionnaire"
-Cohesion: 0.20
+Cohesion: 0.22
 Nodes (3): chemin_projet(), Gestionnaire, lister_projets()
 
 ### Community 86 - "Garde"
-Cohesion: 0.09
-Nodes (9): brancher_tls(), Garde, hote_url(), _html(), ligne_https(), attendre(), main(), redemarrer_application() (+1 more)
+Cohesion: 0.10
+Nodes (7): brancher_tls(), en_https(), filtrer_tls(), Garde, hote_url(), _html(), ligne_https()
 
 ### Community 88 - "OBJLoader.js"
 Cohesion: 0.18
@@ -491,7 +524,7 @@ Nodes (8): _ab, _cb, _color, OBJLoader, ParserState(), _vA, _vB, _vC
 
 ### Community 89 - "Loader"
 Cohesion: 0.08
-Nodes (9): AnimationLoader, AudioLoader, BufferGeometryLoader, CompressedTextureLoader, CubeTextureLoader, ImageBitmapLoader, ImageLoader, Loader (+1 more)
+Nodes (9): AnimationLoader, AudioLoader, BufferGeometryLoader, CompressedTextureLoader, CubeTexture, CubeTextureLoader, ImageLoader, Loader (+1 more)
 
 ### Community 92 - "createWasm"
 Cohesion: 0.20
@@ -505,21 +538,21 @@ Nodes (6): deflateSync(), EncodeUTF8(), strFromU8(), strToU8(), zip, zipSync()
 Cohesion: 0.05
 Nodes (19): arbre, compte, coupe, declare, desc3, deux, disponibles, ecritsLS (+11 more)
 
+### Community 95 - "BufferGeometry"
+Cohesion: 0.12
+Nodes (5): BufferGeometry, EdgesGeometry, isUniqueEdge(), TorusKnotGeometry, WireframeGeometry
+
 ### Community 96 - "mm"
 Cohesion: 0.16
-Nodes (30): arcEntre(), constructionAngle(), constructionAretePlan(), constructionPlans(), coordonnees(), cote(), degres(), diam() (+22 more)
+Nodes (30): arcEntre(), constructionAngle(), constructionPlans(), coordonnees(), cote(), degres(), diam(), dimCercle() (+22 more)
 
 ### Community 98 - "addToRenderList"
-Cohesion: 0.48
-Nodes (6): getUnlitUniformColorSpace(), WebGLBackground(), addToRenderList(), getBackground(), render(), setClear()
-
-### Community 99 - "Path"
-Cohesion: 0.07
-Nodes (6): CurvePath, Path, Shape, ShapePath, getInteriorPoint(), pointInPolygon()
+Cohesion: 0.33
+Nodes (8): getUnlitUniformColorSpace(), WebGLBackground(), addToRenderList(), dispose(), getBackground(), render(), setClear(), refreshFogUniforms()
 
 ### Community 100 - ".constructor"
-Cohesion: 0.30
-Nodes (11): applyRadius(), azimuth(), correctSeam(), correctUV(), correctUVs(), generateUVs(), getVertexByIndex(), inclination() (+3 more)
+Cohesion: 0.35
+Nodes (10): azimuth(), correctSeam(), correctUV(), correctUVs(), generateUVs(), getVertexByIndex(), inclination(), pushVertex() (+2 more)
 
 ### Community 101 - "parseUniform"
 Cohesion: 0.17
@@ -538,56 +571,60 @@ Cohesion: 0.40
 Nodes (3): C, CS, S
 
 ### Community 107 - ".copy"
-Cohesion: 0.10
-Nodes (4): handleTriangle(), handleVertex(), Line3, SphericalHarmonics3
-
-### Community 110 - "error"
-Cohesion: 0.13
-Nodes (27): enhanceLogMessage(), error(), WebGLInfo(), update(), renderScene(), WebGLState(), ColorBuffer(), compressedTexImage2D() (+19 more)
-
-### Community 111 - "Mesh"
 Cohesion: 0.08
-Nodes (8): ArrowHelper, DirectionalLightHelper, Line, Mesh, MeshBasicMaterial, PlaneHelper, PointLightHelper, _createPlanes()
+Nodes (7): handleTriangle(), handleVertex(), CatmullRomCurve3, scalePt2(), Line3, SphericalHarmonics3, transformVertex()
+
+### Community 110 - "warn"
+Cohesion: 0.17
+Nodes (7): enhanceLogMessage(), getGeometry(), getMaterial(), getTexture(), parseConstant(), setQuaternionFromProperEuler(), warn()
+
+### Community 111 - "Line"
+Cohesion: 0.08
+Nodes (6): ArrowHelper, ConeGeometry, CylinderGeometry, DirectionalLightHelper, Line, SpotLightHelper
 
 ### Community 113 - "02-import.js"
-Cohesion: 0.13
-Nodes (26): ANNEXES, appliquerCouleursFaces(), construireNoeud(), creerGeometrie(), creerMaillage(), estAnnexe(), extension(), fabriqueMateriaux() (+18 more)
+Cohesion: 0.14
+Nodes (25): ANNEXES, appliquerCouleursFaces(), construireNoeud(), creerGeometrie(), creerMaillage(), estAnnexe(), extension(), fabriqueMateriaux() (+17 more)
 
 ### Community 114 - ".mmap"
 Cohesion: 0.31
 Nodes (7): createLazyFile(), stream_ops, writeChunks(), get_char(), mmap(), position(), read()
 
 ### Community 117 - "Raycaster"
-Cohesion: 0.15
-Nodes (3): ascSort(), Matrix2, Raycaster
+Cohesion: 0.32
+Nodes (3): ascSort(), intersect(), Raycaster
 
 ### Community 118 - "Pilote"
-Cohesion: 0.15
+Cohesion: 0.13
 Nodes (4): _pieces(), Pilote, Refus, _texte()
 
 ### Community 119 - "CompressedArrayTexture"
 Cohesion: 0.22
 Nodes (3): CompressedArrayTexture, CompressedCubeTexture, CompressedTexture
 
-### Community 120 - "DataTexture"
-Cohesion: 0.16
-Nodes (6): DataTexture, DataTextureLoader, intersect(), LoaderUtils, deserializeImage(), deserializeImage()
+### Community 120 - "TextureSource"
+Cohesion: 0.19
+Nodes (6): getTypedArray(), LoaderUtils, deserializeImage(), loadImage(), deserializeImage(), TextureSource
 
 ### Community 121 - "11-projets.js"
-Cohesion: 0.42
-Nodes (9): brancherProjets(), compagnons(), jour(), lireFichiersProjets(), liste(), ouvrir(), ranger(), remplir() (+1 more)
+Cohesion: 0.18
+Nodes (15): brancherProjets(), compagnons(), jour(), lireFichiersProjets(), liste(), ouvrir(), ranger(), remplir() (+7 more)
 
 ### Community 122 - "abort"
 Cohesion: 0.25
 Nodes (8): abort(), assert(), getBinaryPromise(), getBinarySync(), instantiateArrayBuffer(), instantiateAsync(), lookup_name(), ___syscall_unlinkat()
 
+### Community 123 - "OrthographicCamera"
+Cohesion: 0.14
+Nodes (3): DirectionalLightShadow, OrthographicCamera, SpotLightShadow
+
 ### Community 126 - "À faire — fonctionnalités et bugs"
 Cohesion: 0.50
 Nodes (3): Bugs, Fonctionnalités, À faire — fonctionnalités et bugs
 
-### Community 127 - ".fromArray"
-Cohesion: 0.11
-Nodes (3): CatmullRomCurve3, flattenJSON(), SplineCurve
+### Community 128 - ".constructor"
+Cohesion: 0.17
+Nodes (8): ArrayCamera, WebGLAnimation(), onAnimationFrame(), onAnimationFrame(), WebXRDepthSensing, setProjectionFromUnion(), updateCamera(), updateUserCamera()
 
 ### Community 131 - "postRun"
 Cohesion: 0.29
@@ -601,33 +638,37 @@ Nodes (3): getPaddedArrayBuffer(), getPaddedBufferSize(), stringToArrayBuffer()
 Cohesion: 0.18
 Nodes (6): AsyncGzip(), AsyncZlib(), gzip, gzipSync(), zlib, zlibSync()
 
-### Community 142 - "08-interface.js"
-Cohesion: 0.13
-Nodes (22): ACTIONS, EMPLACEMENTS, PRESETS_SOURIS, MODES, MODES_DELTA, fmt(), nf, boiteMonde() (+14 more)
+### Community 138 - "eliminateHoles"
+Cohesion: 0.18
+Nodes (10): addContour(), compareXYSlope(), createNode(), earcut(), eliminateHoles(), getLeftmost(), insertNode(), linkedList() (+2 more)
+
+### Community 142 - "12-collisions.js"
+Cohesion: 0.27
+Nodes (13): boiteMonde(), chercherCollisions(), croiser(), dansZone(), distances(), longueur(), scal(), seTraversent() (+5 more)
 
 ### Community 143 - "flatten"
 Cohesion: 0.29
 Nodes (7): flatten(), setValueM2Array(), setValueM3Array(), setValueM4Array(), setValueV2fArray(), setValueV3fArray(), setValueV4fArray()
 
-### Community 147 - "BufferGeometry"
-Cohesion: 0.09
-Nodes (10): BufferGeometry, convertBufferAttribute(), CameraHelper, addLine(), addPoint(), copyArrayContents(), EdgesGeometry, HemisphereLightHelper (+2 more)
+### Community 147 - ".getAttribute"
+Cohesion: 0.21
+Nodes (4): CameraHelper, addLine(), addPoint(), setPoint()
 
 ### Community 149 - "cloneUniforms"
 Cohesion: 0.40
 Nodes (4): cloneUniforms(), cloneUniformsGroups(), isThreeObject(), mergeUniforms()
 
 ### Community 150 - "AnimationUtils"
-Cohesion: 0.17
+Cohesion: 0.20
 Nodes (4): AnimationUtils, getTrackTypeForValueTypeName(), parseKeyframeTrack(), scaleTangentTimes()
 
-### Community 152 - "adresses_poste"
-Cohesion: 0.21
-Nodes (5): adresses_poste(), hote_permis(), ip_tailscale(), masquer(), _nom_local()
+### Community 152 - "ouvrir.py"
+Cohesion: 0.14
+Nodes (12): masquer(), associer(), attendre(), copier(), demarrer(), dire(), lire(), main() (+4 more)
 
-### Community 153 - "web_3D.py"
-Cohesion: 0.06
-Nodes (11): battement(), commander(), H, req(), adresse_locale(), ipv4_libre(), lance_par_double_clic(), ouvrir_serveur() (+3 more)
+### Community 153 - "pilote.py"
+Cohesion: 0.11
+Nodes (4): battement(), commander(), H, req()
 
 ### Community 154 - "craftInvokerFunction"
 Cohesion: 0.67
@@ -641,13 +682,21 @@ Nodes (3): _emscripten_get_callstack(), getCallstack(), jsStackTrace()
 Cohesion: 0.50
 Nodes (4): ioctl_tcgets(), ioctl_tcsets(), ioctl_tiocgwinsz(), ___syscall_ioctl()
 
+### Community 157 - "telephone.js"
+Cohesion: 0.38
+Nodes (9): appliquer(), construire(), mesurer(), ouvrir(), panneaux(), redimensionner(), remplir(), rendre() (+1 more)
+
 ### Community 159 - "BezierInterpolant"
 Cohesion: 0.50
 Nodes (3): BezierInterpolant, cubicBezierSlope(), solveBezierParameter()
 
-### Community 160 - "LightShadow"
-Cohesion: 0.10
-Nodes (3): CubeCamera, LightShadow, UniformsGroup
+### Community 163 - "addShape"
+Cohesion: 0.31
+Nodes (10): addShape(), addUV(), addVertex(), buildLidFaces(), buildSideFaces(), f3(), f4(), getBevelVec() (+2 more)
+
+### Community 164 - ".toShapes"
+Cohesion: 0.29
+Nodes (3): Shape, getInteriorPoint(), pointInPolygon()
 
 ### Community 165 - "write"
 Cohesion: 0.67
@@ -666,23 +715,23 @@ Cohesion: 0.67
 Nodes (3): ___syscall_fcntl64(), ___syscall_openat(), syscallGetVarargI()
 
 ### Community 174 - ".push"
-Cohesion: 0.06
-Nodes (29): BoxGeometry, buildPlane(), generateCap(), generateTorso(), ExtrudeGeometry, addShape(), addUV(), addVertex() (+21 more)
+Cohesion: 0.11
+Nodes (12): ExtrudeGeometry, extractFromCache(), extractFromCache(), serialize(), ShapeGeometry, toJSON(), toJSON$1(), TubeGeometry (+4 more)
 
-### Community 188 - "WebGLLights"
-Cohesion: 0.50
-Nodes (4): ShadowUniformsCache(), UniformsCache(), WebGLLights(), setupView()
+### Community 203 - "ShaderMaterial"
+Cohesion: 0.36
+Nodes (7): RawShaderMaterial, ShaderMaterial, _getBlurShader(), _getCommonVertexShader(), _getCubemapMaterial(), _getEquirectMaterial(), _getGGXShader()
 
 ## Knowledge Gaps
 - **20 isolated node(s):** `RFC-1951`, `RFC-3987`, `FlateErrorCode`, `OBJ + MTL : réécriture des chemins de matériaux`, `Unités ramenées au millimètre` (+15 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1523 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **84 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1529 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **102 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GLTFWriter` connect `GLTFWriter` to `.processImage`, `.writeAsync`, `.processTextureAsync`, `.constructor`, `GLTFExporter.js`?**
-  _High betweenness centrality (0.144) - this node is a cross-community bridge._
+  _High betweenness centrality (0.138) - this node is a cross-community bridge._
 - **Are the 6 inferred relationships involving `get()` (e.g. with `WebGLAttributes()` and `WebGLEnvironments()`) actually correct?**
   _`get()` has 6 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `RFC-1951`, `RFC-3987`, `FlateErrorCode` to the rest of the system?**
@@ -690,8 +739,8 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `three.core.js` be split into smaller, more focused modules?**
   _Cohesion score 0.007692307692307693 - nodes in this community are weakly interconnected._
 - **Why does `object()` connect `.constructor` to `occt-import-js.js`?**
-  _High betweenness centrality (0.116) - this node is a cross-community bridge._
+  _High betweenness centrality (0.125) - this node is a cross-community bridge._
 - **Should `three.module.js` be split into smaller, more focused modules?**
   _Cohesion score 0.007782101167315175 - nodes in this community are weakly interconnected._
-- **Why does `createElementNS()` connect `warn` to `three.core.js`, `three.module.js`, `TextureSource`, `EventDispatcher`?**
-  _High betweenness centrality (0.091) - this node is a cross-community bridge._
+- **Why does `createElementNS()` connect `get` to `three.core.js`, `.getDataURL`, `LoadingManager`, `three.module.js`?**
+  _High betweenness centrality (0.092) - this node is a cross-community bridge._
