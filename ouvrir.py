@@ -122,7 +122,10 @@ def port_web3d():
     return attendre(actif, 120, "WEB_3D")
 
 
-def associer():
+def associer(forcer=True):
+    """Inscrit « Ouvrir avec WEB_3D » pour cet utilisateur. forcer=False (démarrage de web_3D.py) :
+    seulement si l'inscription manque ou pointe ailleurs (dossier déplacé) ; rend alors None si
+    rien n'était à faire, et un choix d'application fait ensuite à la main reste respecté."""
     script = os.path.abspath(__file__)
     if WINDOWS:
         import ctypes
@@ -130,6 +133,12 @@ def associer():
         pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
         commande = '"%s" "%s" "%%1"' % (pyw if os.path.isfile(pyw) else sys.executable, script)
         cles = winreg.HKEY_CURRENT_USER
+        if not forcer:
+            try:
+                if winreg.QueryValue(cles, r"Software\Classes\WEB3D.step\shell\open\command") == commande:
+                    return None
+            except OSError:
+                pass
         winreg.SetValue(cles, r"Software\Classes\WEB3D.step", winreg.REG_SZ, "Modèle STEP (WEB_3D)")
         winreg.SetValue(cles, r"Software\Classes\WEB3D.step\shell\open\command", winreg.REG_SZ, commande)
         for ext in EXTENSIONS:
@@ -139,6 +148,18 @@ def associer():
         return ("Clic droit sur un .step → Ouvrir avec → « Choisir une autre application » → WEB_3D,"
                 " puis « Toujours » pour le double-clic.")
     partage = os.path.join(os.path.expanduser("~"), ".local", "share")
+    guillemets = lambda p: '"%s"' % re.sub(r'(["`$\\])', r"\\\1", p)   # Exec= du format .desktop
+    entree = os.path.join(partage, "applications", "web3d-ouvrir.desktop")
+    contenu = ("[Desktop Entry]\nType=Application\nName=WEB_3D\nComment=Voir le modèle dans WEB_3D\n"
+               "Exec=%s %s %%f\nMimeType=model/step;\nTerminal=false\nNoDisplay=true\n"
+               % (guillemets(sys.executable), guillemets(script)))
+    if not forcer:
+        try:
+            with open(entree, encoding="utf-8") as f:
+                if f.read() == contenu:
+                    return None
+        except OSError:
+            pass
     os.makedirs(os.path.join(partage, "mime", "packages"), exist_ok=True)
     os.makedirs(os.path.join(partage, "applications"), exist_ok=True)
     with open(os.path.join(partage, "mime", "packages", "web3d-step.xml"), "w", encoding="utf-8") as f:
@@ -146,11 +167,8 @@ def associer():
                 '<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">\n'
                 '  <mime-type type="model/step"><comment>Modèle STEP</comment>'
                 '<glob pattern="*.step"/><glob pattern="*.stp"/></mime-type>\n</mime-info>\n')
-    guillemets = lambda p: '"%s"' % re.sub(r'(["`$\\])', r"\\\1", p)   # Exec= du format .desktop
-    with open(os.path.join(partage, "applications", "web3d-ouvrir.desktop"), "w", encoding="utf-8") as f:
-        f.write("[Desktop Entry]\nType=Application\nName=WEB_3D\nComment=Voir le modèle dans WEB_3D\n"
-                "Exec=%s %s %%f\nMimeType=model/step;\nTerminal=false\nNoDisplay=true\n"
-                % (guillemets(sys.executable), guillemets(script)))
+    with open(entree, "w", encoding="utf-8") as f:
+        f.write(contenu)
     for cmd in (["update-mime-database", os.path.join(partage, "mime")],
                 ["update-desktop-database", os.path.join(partage, "applications")],
                 ["xdg-mime", "default", "web3d-ouvrir.desktop", "model/step"]):

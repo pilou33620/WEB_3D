@@ -185,6 +185,16 @@ with tempfile.TemporaryDirectory() as tmp:
     web_3D.appairage.Garde.ce_poste = staticmethod(lambda h: False)
     verifier("ouvrir : refusé à un autre appareil", requete("GET", url)[0], 404)
     web_3D.appairage.Garde.ce_poste = ce_poste
+    if os.name != "nt":   # inscription au démarrage : une fois, puis rien tant que le dossier ne bouge pas
+        env = {k: os.environ.pop(k, None) for k in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME")}
+        os.environ["HOME"] = tmp
+        os.makedirs(os.path.join(tmp, ".config"))
+        verifier("associer : la première fois, puis plus", (bool(ouvrir.associer(forcer=False)),
+                 ouvrir.associer(forcer=False)), (True, None))
+        for k, v in env.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
 
 serveur.shutdown()
 print("%d/%d ok" % (essais - echecs, essais))

@@ -597,8 +597,15 @@ def main() -> int:
         attendre(interactif)
         return 2
 
+    # Double-clic sur un .step : inscrit une fois, puis seulement si le dossier a bougé
+    try:
+        if ouvrir.associer(forcer=False):
+            print("Ouvrir avec : les .step et .stp de ce poste s'ouvrent dans WEB_3D")
+    except Exception as e:   # le serveur démarre quand même
+        print(f"Ouvrir avec : inscription impossible ({e})")
+
     os.chdir(dossier)
-    hote = "127.0.0.1" if args.local else "0.0.0.0"
+    hote ="127.0.0.1" if args.local else "0.0.0.0"
     global GARDE
     GARDE = appairage.Garde("WEB_3D", actif=not args.local)
 
