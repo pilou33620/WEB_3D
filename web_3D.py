@@ -50,14 +50,15 @@ RACINE = os.path.dirname(os.path.abspath(__file__))
 STATIQUE = re.compile(
     r"^/(?:index\.html)?$"
     r"|^/(?:css|js|vendor|exemples)(?:/[\w-][\w.-]*)+$"
-    r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|png|jpe?g)$",
+    r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|png|jpe?g|webp|bmp|gif)$",
     re.IGNORECASE)
 
 # Le dossier des projets (--projets ; WEB_SUITE y passe PROJETS/3D, synchronisé
 # avec GitHub). None : pas de projets, la page cache son bouton.
 PROJETS = None
-# Ce qu'on y lit et y range : des modèles et ce qui accompagne un .obj.
-NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|png|jpe?g)$",
+# Ce qu'on y lit et y range : des modèles et ce qui accompagne un .obj (les annexes
+# de js/02-import.js). La page nettoie le nom avant l'envoi (nomProjet de js/11-projets.js).
+NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|png|jpe?g|webp|bmp|gif)$",
                         re.IGNORECASE)
 MAX_PROJET = 200 * 1024 * 1024
 
@@ -102,6 +103,10 @@ PILOTE = pilote.Pilote()
 
 class Gestionnaire(http.server.SimpleHTTPRequestHandler):
     """Sert le dossier de la visionneuse, avec les types MIME qui manquent."""
+
+    # Délai de chaque lecture du socket : un envoi coupé sans fermeture (Wi-Fi perdu) ne tient
+    # pas un fil et un fichier entamé indéfiniment. Un envoi lent mais vivant n'est pas coupé.
+    timeout = 60
 
     extensions_map = {
         **http.server.SimpleHTTPRequestHandler.extensions_map,
@@ -154,15 +159,15 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         """POST /api/projets?nom=piece.stp : range le fichier reçu dans PROJETS.
 
-        L'en-tête X-Web3D est exigé : une page d'un autre site ne peut pas
-        l'ajouter sans pré-vol CORS, que ce serveur ne valide pas. On n'écrase
-        jamais : un nom déjà pris devient « piece (2).stp »."""
-        if PILOTE.traiter(self):     # refuse lui-même une autre origine : ce serveur n'a pas de garde CSRF
+        L'en-tête X-Web3D est exigé sur tout POST, canal de pilotage compris : une page
+        d'un autre site ne peut pas l'ajouter sans pré-vol CORS, que ce serveur ne valide
+        pas. On n'écrase jamais : un nom déjà pris devient « piece (2).stp »."""
+        if self.headers.get("X-Web3D") != "1":
+            return self._json({"detail": "Requête refusée"}, 403)
+        if PILOTE.traiter(self):     # refuse lui-même une autre origine
             return
         if urllib.parse.urlsplit(self.path).path != "/api/projets" or not PROJETS:
             return self._json({"detail": "Route inconnue"}, 404)
-        if self.headers.get("X-Web3D") != "1":
-            return self._json({"detail": "Requête refusée"}, 403)
         nom = os.path.basename(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
                                .get("nom", [""])[0].replace("\\", "/"))
         try:
@@ -188,16 +193,23 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
                 cible, n = chemin_projet("%s (%d)%s" % (base, n, ext)), n + 1
         if fd is None:
             return self._json({"detail": "Nom refusé"}, 400)
-        reste = taille
-        with os.fdopen(fd, "wb") as f:
-            while reste > 0:
-                bloc = self.rfile.read(min(1 << 20, reste))
-                if not bloc:
-                    break
-                f.write(bloc)
-                reste -= len(bloc)
-        if reste:
-            os.remove(cible)
+        reste, complet = taille, False
+        try:
+            with os.fdopen(fd, "wb") as f:
+                while reste > 0:
+                    bloc = self.rfile.read(min(1 << 20, reste))
+                    if not bloc:
+                        break
+                    f.write(bloc)
+                    reste -= len(bloc)
+            complet = not reste
+        except (ConnectionError, TimeoutError):   # client parti ou muet depuis `timeout` s : personne à qui répondre
+            self.close_connection = True
+            return None
+        finally:
+            if not complet:     # fin prématurée, coupure, disque plein : pas de fichier tronqué dans PROJETS
+                os.remove(cible)
+        if not complet:
             return self._json({"detail": "Envoi interrompu"}, 400)
         # realpath des deux côtés : un chemin court Windows (PIERRE~1) ne se compare pas au long
         return self._json({"chemin": os.path.relpath(cible, os.path.realpath(PROJETS)).replace(os.sep, "/")})
@@ -206,13 +218,12 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         cible = chemin_projet(relatif, dossier)
         if not cible or not os.path.isfile(cible):
             return self.send_error(404, "File not found")
-        with open(cible, "rb") as f:
-            corps = f.read()
-        self.send_response(200)
-        self.send_header("Content-Type", self.guess_type(cible))
-        self.send_header("Content-Length", str(len(corps)))
-        self.end_headers()
-        self.wfile.write(corps)
+        with open(cible, "rb") as f:    # par blocs : un modèle de 200 Mo ne passe pas en mémoire
+            self.send_response(200)
+            self.send_header("Content-Type", self.guess_type(cible))
+            self.send_header("Content-Length", str(os.fstat(f.fileno()).st_size))
+            self.end_headers()
+            shutil.copyfileobj(f, self.wfile)
 
     def _json(self, charge, code=200):
         corps = json.dumps(charge, ensure_ascii=False).encode("utf-8")
@@ -234,6 +245,8 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         # Ignorer favicon.ico et masquer les requêtes réussies ordinaires
         if args and "favicon.ico" in str(args[0]):
+            return
+        if format.startswith("Request timed out"):   # connexion gardée ouverte puis lâchée (timeout) : normal
             return
         if not args or not str(args[0]).startswith(("GET", "HEAD")) or str(args[1]) != "200":
             super().log_message("%s", appairage.masquer(format % args))

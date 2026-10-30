@@ -369,7 +369,9 @@ function racineFichier(objet, modele){
   return o;
 }
 
-/** Volume signé et surface d'un maillage fermé, sommés sur les triangles. */
+/** Volume et surface d'un ensemble de maillages fermés, sommés sur les triangles.
+    Le volume signé se prend en valeur absolue maillage par maillage : une pièce en
+    miroir (échelle négative) a ses triangles retournés et retrancherait le sien. */
 export function mesurerSolide(objet){
   let volume = 0, aire = 0;
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
@@ -378,6 +380,7 @@ export function mesurerSolide(objet){
   objet.traverse(o => {
     if(!o.isMesh || !o.geometry) return;
     o.updateWorldMatrix(true, false);
+    let signe = 0;
     const g = o.geometry;
     const pos = g.attributes.position;
     const idx = g.index;
@@ -391,12 +394,13 @@ export function mesurerSolide(objet){
       c.fromBufferAttribute(pos, i2).applyMatrix4(o.matrixWorld);
       /* Volume : somme des tétraèdres signés formés avec l'origine — exact
          pour un maillage fermé et orienté, ce que produit OpenCascade. */
-      volume += a.dot(n.crossVectors(b, c)) / 6;
+      signe += a.dot(n.crossVectors(b, c)) / 6;
       ab.subVectors(b, a); ac.subVectors(c, a);
       aire += n.crossVectors(ab, ac).length() / 2;
     }
+    volume += Math.abs(signe);
   });
-  return { volume:Math.abs(volume), aire };
+  return { volume, aire };
 }
 
 const fmt = new Intl.NumberFormat("fr-FR");

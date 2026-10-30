@@ -25,8 +25,9 @@ const CASES_MAX = 64;          // par axe : au-delà, la grille coûte plus qu'e
  * fichiers y sont ouverts, on ne compare que des pièces de fichiers différents
  * (une carte contre l'autre) ; avec un seul fichier, toutes ses pièces entre elles.
  * `tol` : en dessous de cette distance (unités du modèle), on parle de contact.
- * Rend [{ a, b, segments, longueur }] : les segments de la courbe où leurs
- * surfaces se croisent (6 coordonnées monde chacun), et sa longueur totale.
+ * Rend [{ a, b, segments, longueur, contenue }] : les segments de la courbe où leurs
+ * surfaces se croisent (6 coordonnées monde chacun), et sa longueur totale ; une pièce
+ * noyée tout entière dans la matière de l'autre n'a pas de courbe (contenue: true).
  */
 export async function chercherCollisions(racine, { tol = 0.1, surProgres, visible = () => true, pauses = true } = {}){
   const pieces = [];
@@ -46,7 +47,7 @@ export async function chercherCollisions(racine, { tol = 0.1, surProgres, visibl
       const A = pieces[i], B = pieces[j];
       if(A.cle === B.cle) continue;
       const zone = A.boite.clone().expandByScalar(tol).intersect(B.boite.clone().expandByScalar(tol));
-      if(!zone.isEmpty()) paires.push([A.m, B.m, zone]);
+      if(!zone.isEmpty()) paires.push([A.m, B.m, zone, A.boite, B.boite]);
     }
   }
 
@@ -55,9 +56,10 @@ export async function chercherCollisions(racine, { tol = 0.1, surProgres, visibl
   const resultats = [];
   let t = performance.now();
   for(let k = 0; k < paires.length; k++){
-    const [a, b, zone] = paires[k];
+    const [a, b, zone, ba, bb] = paires[k];
     const segments = croiser(sommets(a), sommets(b), zone, tol);
     if(segments) resultats.push({ a, b, segments, longueur:longueur(segments) });
+    else if(contenue(a, b, ba, bb, sommets)) resultats.push({ a, b, segments:[], longueur:0, contenue:true });
     /* Rendre la main de temps en temps : le voile d'attente doit vivre. Sauf si l'on
        demande le contraire (onglet caché : chaque pause y coûterait au moins une seconde). */
     if(pauses && performance.now() - t > 40){
@@ -67,6 +69,23 @@ export async function chercherCollisions(racine, { tol = 0.1, surProgres, visibl
     }
   }
   return resultats;
+}
+
+/** Sans traversée, l'une peut être noyée dans la matière de l'autre (boîte dans la boîte) :
+    un de ses sommets y est si un rayon qui en part coupe la peau de l'autre un nombre impair de fois. */
+function contenue(a, b, ba, bb, sommets){
+  const [dedans, dehors] = ba.containsBox(bb) ? [b, a] : bb.containsBox(ba) ? [a, b] : [];
+  if(!dedans) return false;
+  const s = sommets(dehors), p = sommets(dedans);
+  // direction biaisée : un rayon parallèle aux axes passerait pile sur les arêtes d'une pièce usinée
+  const rayon = new THREE.Ray(new THREE.Vector3(p[0], p[1], p[2]), new THREE.Vector3(0.5773, 0.5774, 0.5775).normalize());
+  const u = new THREE.Vector3(), v = new THREE.Vector3(), w = new THREE.Vector3(), x = new THREE.Vector3();
+  let n = 0;
+  for(let t = 0; t < s.length; t += 9){
+    u.fromArray(s, t); v.fromArray(s, t + 3); w.fromArray(s, t + 6);
+    if(rayon.intersectTriangle(u, v, w, false, x)) n++;      // false : les deux faces comptent
+  }
+  return n % 2 === 1;
 }
 
 function longueur(s){

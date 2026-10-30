@@ -70,6 +70,7 @@ export function estAnnexe(nomFichier){
    chaque fichier coûterait une seconde pleine à chaque ouverture.
    --------------------------------------------------------------------------- */
 let travailleur = null;
+const LECTURE_LOURDE = 30 * 1024 * 1024;   // octets : au-delà, le lecteur est jeté après usage
 let fileAttente = Promise.resolve();
 
 function obtenirTravailleur(){
@@ -82,17 +83,27 @@ function obtenirTravailleur(){
 function lireAvecOcct(format, tampon, nom, params, surProgres){
   /* Le noyau ne traite qu'un fichier à la fois ; la file évite d'avoir à
      gérer une correspondance requête/réponse pour un gain nul. */
+  const lourd = tampon.byteLength > LECTURE_LOURDE;      // lu avant le transfert, qui vide le tampon
   const tache = fileAttente.then(() => new Promise((resoudre, rejeter) => {
     const w = obtenirTravailleur();
+    const finir = (garder) => {
+      w.removeEventListener("message", ecouter);
+      w.removeEventListener("error", planter);
+      /* La mémoire WebAssembly ne rétrécit jamais : après un gros fichier ou un échec
+         (mémoire épuisée, noyau dans un état douteux), on jette le lecteur ; le suivant
+         recharge le noyau (une seconde) avec une mémoire neuve. */
+      if(!garder){ w.terminate(); if(travailleur === w) travailleur = null; }
+    };
     const ecouter = (ev) => {
       const d = ev.data;
       if(d.type === "progres"){ surProgres?.(d.etape); return; }
-      w.removeEventListener("message", ecouter);
+      finir(d.type !== "erreur" && !lourd);
       if(d.type === "erreur") rejeter(new Error(d.message));
       else resoudre(d);
     };
+    const planter = (e) => { finir(false); rejeter(new Error("Le lecteur CAO s'est interrompu : " + (e.message || "erreur inconnue"))); };
     w.addEventListener("message", ecouter);
-    w.addEventListener("error", (e) => rejeter(new Error("Le lecteur CAO s'est interrompu : " + e.message)), { once:true });
+    w.addEventListener("error", planter);
     w.postMessage({ format, tampon, nom, params }, [tampon]);
   }));
   fileAttente = tache.catch(() => {});   // une erreur ne doit pas bloquer la file
@@ -130,6 +141,7 @@ export function fabriqueMateriaux(){
 /** Les repères dont le reste de la visionneuse a besoin sur un matériau. */
 function marquerMateriau(m){
   m.userData.opaciteDorigine = m.opacity ?? 1;
+  m.userData.transparentDorigine = m.transparent === true;   // rayons X éteints : la transparence du fichier revient
   /* Une couleur de three.js ne survit pas à `Material.clone()` : le clone
      sérialise userData en JSON et n'en rapporte qu'un objet nu. On garde donc
      la teinte d'origine sous forme de chaîne, lisible partout.
@@ -455,7 +467,7 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
           }
         }
         const reponse = await lireAvecOcct(format, tampon, fichier.name, {
-          linearUnit: prefs.unite,
+          linearUnit: "millimeter",      // toute la visionneuse (cotes, coupe, collisions) compte en mm
           linearDeflectionType: "bounding_box_ratio",
           linearDeflection: prefs.tolLineaire,
           angularDeflection: prefs.tolAngulaire * Math.PI / 180,

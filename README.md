@@ -314,7 +314,9 @@ fichier ouvert :
 | :--- | :--- |
 | Tolérance linéaire | écart maximal entre la surface exacte et la corde, exprimé en fraction de la diagonale de l'encombrement. 0,001 : maillage fin ; 0,01 : rapide mais facetté. |
 | Tolérance angulaire | angle maximal entre deux facettes d'une surface courbe. |
-| Unité de sortie | millimètre par défaut ; le fichier porte sa propre unité, celle-ci est celle du résultat. |
+
+Le fichier porte sa propre unité ; OpenCascade le ramène toujours au millimètre,
+l'unité de toute la visionneuse (cotes, coupe, collisions).
 
 Les **arêtes vives** sont calculées à part, par seuil d'angle (25° par défaut).
 Au-delà de deux millions de triangles, le calcul est ignoré — la barre d'état le

@@ -296,14 +296,15 @@ export class Interface {
       l.innerHTML = `<span class="fm-valeur">Aucune interférence entre les pièces visibles.</span>`;
       corps.appendChild(l);
     }
-    for(const { a, b, longueur } of resultats){
+    for(const { a, b, longueur, contenue } of resultats){
       const l = document.createElement("div");
       l.className = "fm-ligne";
       const cle = document.createElement("span"), val = document.createElement("span");
       cle.className = "fm-cle"; val.className = "fm-valeur";
       cle.textContent = `${a.name} ↔ ${b.name}`;
-      val.textContent = mm(longueur);
-      l.title = `Sélectionner et cadrer « ${a.name} »\nLongueur de la courbe d'interférence : ${mm(longueur)}`;
+      val.textContent = contenue ? "contenue" : mm(longueur);
+      l.title = `Sélectionner et cadrer « ${a.name} »\n` + (contenue ? "Une pièce est noyée dans l'autre"
+        : `Longueur de la courbe d'interférence : ${mm(longueur)}`);
       l.append(cle, val);
       l.onclick = () => { this.arbre.selectionner(a); this.vue.ajusterVue(a); };
       corps.appendChild(l);
@@ -654,7 +655,7 @@ export class Interface {
       const item = document.createElement("div");
       item.className = "item-export";
       item.dataset.visible = String(visible);
-      const col = objet.userData?.matSauve?.color || objet.material?.color;
+      const col = [].concat(objet.userData?.matSauve || objet.material || [])[0]?.color;
       const coulHex = col ? "#" + col.getHexString() : "#888888";
       item.innerHTML = `
         <input type="checkbox" id="cbExp_${idx}" ${visible ? "checked" : ""}>
@@ -969,7 +970,6 @@ export class Interface {
 
     lier("rgLin", "tolLineaire", parseFloat);
     lier("rgAng", "tolAngulaire", parseFloat);
-    lier("selUnite", "unite", (v) => v);
     lier("cbAretesLourd", "aretesSurGrosModeles", Boolean);
 
     $("bResetPrefs").onclick = () => {
@@ -1032,7 +1032,6 @@ export class Interface {
     if($("selTheme")) $("selTheme").value = prefs.theme;
     $("rgLin").value = prefs.tolLineaire;
     $("rgAng").value = prefs.tolAngulaire;
-    $("selUnite").value = prefs.unite;
     $("cbAretesLourd").checked = prefs.aretesSurGrosModeles;
     this.majSorties();
     this.majTableGestes();

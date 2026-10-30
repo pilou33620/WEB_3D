@@ -345,7 +345,7 @@ export class Vue3D {
       o.castShadow = o.receiveShadow = !!actif;
       /* Activer la carte d'ombre change le programme des matériaux : sans ce
          drapeau, les pièces déjà à l'écran resteraient sans ombre. */
-      if(o.material) o.material.needsUpdate = true;
+      for(const m of [].concat(o.material || [])) m.needsUpdate = true;
     });
     this.invalider();
   }
@@ -391,7 +391,8 @@ export class Vue3D {
      ========================================================================== */
   recenserMateriaux(){
     this.materiaux.clear();
-    this.modele.traverse(o => { if(o.isMesh && o.material) this.materiaux.add(o.material); });
+    // Une pièce STEP à couleurs par face porte un tableau de matériaux (appliquerCouleursFaces)
+    this.modele.traverse(o => { if(o.isMesh && o.material) for(const m of [].concat(o.material)) this.materiaux.add(m); });
   }
 
   definirFilaire(actif){

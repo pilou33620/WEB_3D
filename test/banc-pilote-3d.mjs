@@ -47,7 +47,7 @@ function lireExemple(nom){
   const texte = readFileSync(path.join(RACINE, "exemples", nom));
   // Les réglages de maillage de la page (02-import.js) : une autre finesse donne d'autres
   // collisions sur des vis serrées dans leurs perçages (22 au lieu de 2 sur l'exemple)
-  const r = occt.ReadStepFile(new Uint8Array(texte), { linearUnit: prefs.unite,
+  const r = occt.ReadStepFile(new Uint8Array(texte), { linearUnit: "millimeter",
     linearDeflectionType: "bounding_box_ratio", linearDeflection: prefs.tolLineaire,
     angularDeflection: prefs.tolAngulaire * Math.PI / 180 });
   assert.ok(r.success, "OpenCascade n'a pas lu " + nom);
@@ -148,6 +148,13 @@ await verifier("dimensions d'une pièce : volume et surface positifs, une seule 
   assert.equal(d.pieces, 1);
 });
 
+await verifier("volume d'un ensemble avec une pièce en miroir : la somme des volumes, pas leur différence", () => {
+  const bolt = parNom("bolt")[0], seul = P3.dimensions(bolt).volume;
+  const miroir = bolt.clone(); miroir.scale.x *= -1;
+  const ensemble = new THREE.Group().add(bolt.clone(), miroir);
+  assert.ok(proche(P3.dimensions(ensemble).volume, 2 * seul, 0.01 * seul), `${P3.dimensions(ensemble).volume} ≠ 2 × ${seul}`);
+});
+
 await verifier("distance entre pièces : celle de mesurerEntites, contact quand elles s'interpénètrent", () => {
   const bolts = parNom("bolt"), equerres = parNom("l-bracket");
   assert.ok(bolts.length && equerres.length, "bolt et l-bracket dans l'exemple");
@@ -221,7 +228,20 @@ await verifier("une pièce masquée n'entre pas dans les collisions", async () =
   }finally{ cachee.visible = true; }
 });
 
-/* --- T5 : déplacement, contrainte, matrices ---------------------------------- */
+await verifier("une pièce noyée dans une autre est une collision « contenue », pas une pièce dans un trou", async () => {
+  const piece = (geo) => Object.assign(new THREE.Mesh(geo), { userData: { estPiece: true } });
+  const fichier = (m) => new THREE.Group().add(m);
+  const noyee = new THREE.Group().add(fichier(piece(new THREE.BoxGeometry(100, 100, 100))),
+                                       fichier(piece(new THREE.BoxGeometry(10, 10, 10))));
+  const r = await chercherCollisions(noyee, { pauses: false });
+  assert.deepEqual(r.map(c => [c.contenue, c.longueur]), [[true, 0]]);
+  // dans le trou d'un tore : sa boîte contient le cube, sa matière non
+  const trou = new THREE.Group().add(fichier(piece(new THREE.TorusGeometry(50, 10, 16, 48))),
+                                     fichier(piece(new THREE.BoxGeometry(10, 10, 10))));
+  assert.deepEqual(await chercherCollisions(trou, { pauses: false }), []);
+});
+
+/* --- T5: déplacement, contrainte, matrices ---------------------------------- */
 const deux = new THREE.Group();          // l'exemple ouvert deux fois : deux fichiers à assembler
 deux.add(lireExemple("assemblage-as1.stp"), lireExemple("assemblage-as1.stp"));
 deux.updateMatrixWorld(true);
@@ -588,6 +608,35 @@ await verifier("STL illisible : un message de la page, pas l'erreur brute du lec
     assert.throws(() => lireStl(tampon, "casse.stl", mat), /^Error: Ce fichier STL est illisible/);
   const bon = readFileSync(path.join(RACINE, "exemples", "tetraedre.stl"));
   assert.equal(lireStl(new Uint8Array(bon).buffer, "tetraedre.stl", mat).children[0].geometry.attributes.position.count, 12);
+});
+
+await verifier("noms rangés dans PROJETS : nettoyés comme nom_sur() d'ouvrir.py", async () => {
+  const { nomProjet } = await import("../js/11-projets.js");
+  assert.deepEqual(["l'équerre.step", "carte #2.STP", "a,b.stl", ".cache.stp", "été 1+1.stp"].map(nomProjet),
+                   ["l_équerre.step", "carte _2.stp", "a_b.stl", "_.cache.stp", "été 1+1.stp"]);
+});
+
+await verifier("lecteur CAO planté : tâche rejetée, lecteur jeté, le suivant répond ; un gros fichier ne garde pas le sien", async () => {
+  const { ouvrirFichiers } = await import("../js/02-import.js");
+  const crees = [], vrai = globalThis.Worker;
+  globalThis.Worker = class extends EventTarget {
+    constructor(){ super(); this.ecouteurs = 0; this.jete = false; crees.push(this); }
+    terminate(){ this.jete = true; }
+    addEventListener(...a){ this.ecouteurs++; super.addEventListener(...a); }
+    removeEventListener(...a){ this.ecouteurs--; super.removeEventListener(...a); }
+    postMessage(m){ setTimeout(() => this.dispatchEvent(crees.length === 1
+      ? Object.assign(new Event("error"), { message: "plantage" })
+      : new MessageEvent("message", { data: { type: "ok", racine: { name: m.nom, meshes: [], children: [] }, maillages: [] } }))); }
+  };
+  try{
+    const step = (octets = 10) => new File([new Uint8Array(octets)], "x.step");
+    await assert.rejects(ouvrirFichiers([step()]), /interrompu : plantage/);
+    assert.ok(crees[0].jete);
+    await ouvrirFichiers([step()]); await ouvrirFichiers([step()]);
+    assert.deepEqual(crees.map(w => [w.ecouteurs, w.jete]), [[0, true], [0, false]]);   // un seul lecteur réutilisé, sans écouteur en trop
+    await ouvrirFichiers([step(31 << 20)]);
+    assert.ok(crees[1].jete);
+  }finally{ globalThis.Worker = vrai; }
 });
 
 await verifier("aucune commande n'écrit dans les préférences (localStorage)", () => {

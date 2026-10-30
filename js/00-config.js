@@ -151,7 +151,6 @@ export const PREFS_DEFAUT = {
   /* qualité du maillage demandé à OpenCascade */
   tolLineaire:0.002,       // fraction de la diagonale de l'encombrement
   tolAngulaire:15,         // degrés
-  unite:"millimeter",
   aretesSurGrosModeles:false,
 
   /* mesure */

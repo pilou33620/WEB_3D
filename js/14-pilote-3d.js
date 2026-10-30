@@ -14,7 +14,7 @@
 import * as THREE from "three";
 import { formatDe, LISTE_FORMATS, liberer } from "./02-import.js";
 import { mesurerSolide } from "./05-arbre.js";
-import { compagnons, lireFichiersProjets } from "./11-projets.js";
+import { compagnons, lireFichiersProjets, nomProjet } from "./11-projets.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
 import { StepExtractor, sanitiserNomFichier } from "./10-export-step.js";
 import { chercherCollisions, maillageCollisions } from "./12-collisions.js";
@@ -61,7 +61,7 @@ function fichierDe(modele, objet){
 
 /* La sélection remplace le matériau par un clone surligné : la vraie couleur est dans matSauve. */
 function couleurDe(piece){
-  const m = piece.userData.matSauve || piece.material;
+  const m = [].concat(piece.userData.matSauve || piece.material || [])[0];
   return (m && m.userData && m.userData.couleurHex) || null;
 }
 
@@ -203,7 +203,7 @@ export async function calculerCollisions(modele, { tolerance = 0.1, pauses = tru
   const brut = await chercherCollisions(modele, { tol:tolerance, visible:o => visibleEnTout(o, modele), pauses });
   return { brut, resume:{
     nombre:brut.length, tolerance, duree_s:arrondir((performance.now() - debut) / 1000),
-    collisions:brut.map(c => ({ a:decrire(modele, c.a), b:decrire(modele, c.b), longueur:arrondir(c.longueur) })),
+    collisions:brut.map(c => ({ a:decrire(modele, c.a), b:decrire(modele, c.b), longueur:arrondir(c.longueur), contenue:!!c.contenue })),
   } };
 }
 
@@ -569,8 +569,7 @@ export function brancherPilote3d(W3D, Pilote){
     irreversible:"Crée un nouveau fichier dans PROJETS/3D (jamais d'écrasement : un nom pris devient « x (2) ») ; non annulable ici.",
     proposer:a => {
       const r = extraireStep(modele, [a.piece]);
-      let nom = sanitiserNomFichier(a.nom || r.produits[0]).slice(-100);
-      if(!/^[\w(]/.test(nom)) nom = "piece_" + nom;       // le serveur exige une lettre, un chiffre ou « ( » en tête
+      const nom = nomProjet(sanitiserNomFichier(a.nom || r.produits[0]).slice(-100));   // la regex du serveur
       return { titre:`Ranger « ${nomSur(nom)} » dans PROJETS/3D`, nom, texte:r.texte,
                details:`Pièce « ${nomSur(r.produits[0])} », ${Math.round(r.octets / 1024)} ko. ${r.note}` };
     },

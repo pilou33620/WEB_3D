@@ -11,6 +11,8 @@
    ============================================================================= */
 "use strict";
 
+import { estAnnexe } from "./02-import.js";
+
 const $ = (id) => document.getElementById(id);
 
 const taille = (o) => o < 1e6 ? `${Math.max(1, Math.round(o / 1e3))} ko` : `${(o / 1e6).toFixed(1).replace(".", ",")} Mo`;
@@ -20,6 +22,15 @@ async function liste(){
   const r = await fetch("api/projets", { cache:"no-store" });
   if(!r.ok) throw new Error(`liste des projets : ${r.status}`);
   return r.json();
+}
+
+/** Le nom que le serveur accepte (NOM_PROJET de web_3D.py), nettoyé comme nom_sur() d'ouvrir.py :
+    « l'équerre.step » devient « l_équerre.step ». NFC : un nom macOS décomposé (e + accent) passerait mal. */
+export function nomProjet(nom){
+  nom = String(nom).normalize("NFC");
+  const i = nom.lastIndexOf(".");
+  const base = (i > 0 ? nom.slice(0, i) : nom).replace(/[^\p{L}\p{N}_ .()+-]/gu, "_").trim() || "modele";
+  return (/^[\p{L}\p{N}_(]/u.test(base) ? "" : "_") + base + (i > 0 ? nom.slice(i).toLowerCase() : "");
 }
 
 /** Un .obj s'ouvre avec ses matériaux : le .mtl de même nom, s'il est rangé à côté. */
@@ -58,7 +69,7 @@ async function remplir(ui){
     ? "Cliquez un modèle pour l'ouvrir. Le dossier est envoyé sur GitHub par WEB·SUITE à l'arrêt de l'outil."
     : "Aucun modèle rangé pour l'instant : ouvrez-en un, puis « Ranger le modèle ouvert ici ».";
   for(const f of donnees.fichiers){
-    if(/\.(mtl|png|jpe?g)$/i.test(f.chemin)) continue;      // annexes : elles suivent leur .obj
+    if(estAnnexe(f.chemin)) continue;                       // annexes : elles suivent leur .obj
     const tr = table.insertRow();
     tr.insertCell().textContent = f.chemin;                 // textContent : le nom vient du disque
     tr.insertCell().textContent = taille(f.taille);
@@ -73,7 +84,7 @@ async function ranger(ui){
   const ranges = [];
   try{
     for(const f of ui.derniersFichiers || []){
-      const r = await fetch("api/projets?nom=" + encodeURIComponent(f.name), {
+      const r = await fetch("api/projets?nom=" + encodeURIComponent(nomProjet(f.name)), {
         method:"POST", headers:{ "X-Web3D":"1", "Content-Type":"application/octet-stream" }, body:f,
       });
       const j = await r.json().catch(() => ({}));

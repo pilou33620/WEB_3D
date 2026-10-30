@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="css/pilote.css">
 <link rel="stylesheet" href="css/telephone.css">
 <script>
+const ENTETE_WEB = { "X-Web3D": "1" };   // en-tête maison exigé sur tout POST (web_3D.py), lu par js/pilote.js
 try{
   const p = JSON.parse(localStorage.getItem("web3d.prefs") || "{}");
   if(p.theme === "clair") document.documentElement.setAttribute("data-theme", "clair");
@@ -261,16 +262,6 @@ try{
          un maillage fin, 0,01 un maillage rapide mais facetté.</p>
       <div class="lg"><label for="rgAng">Tolérance angulaire <output id="outAng"></output></label>
         <input type="range" id="rgAng" min="5" max="45" step="1"></div>
-      <div class="lg">
-        <label for="selUnite">Unité de sortie du fichier</label>
-        <select id="selUnite">
-          <option value="millimeter">Millimètre</option>
-          <option value="centimeter">Centimètre</option>
-          <option value="meter">Mètre</option>
-          <option value="inch">Pouce</option>
-          <option value="foot">Pied</option>
-        </select>
-      </div>
       <div class="lg"><label for="cbAretesLourd">Calculer les arêtes même sur les gros modèles (&gt; 2 M triangles)</label>
         <input type="checkbox" id="cbAretesLourd"></div>
     </div>

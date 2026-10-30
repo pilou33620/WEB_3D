@@ -140,13 +140,50 @@ with tempfile.TemporaryDirectory() as tmp:
     verifier("course : deux réponses 200, deux noms", (len(chemins), len(set(chemins.values()))), (2, 2))
     verifier("course : chaque fichier a son propre contenu",
              all(open(os.path.join(tmp, c), "rb").read() == corps_ab[k] for k, c in chemins.items()), True)
+
+    verifier("annexes de la page (.webp, .bmp, .gif) rangées", [ranger("t." + e)[0] for e in ("webp", "bmp", "gif")],
+             [200, 200, 200])
+
+    # Envoi coupé : fin prématurée (le client ferme) ou client muet au-delà du délai : aucun fichier tronqué
+    import socket as _s  # noqa: E402
+    import time as _tm   # noqa: E402
+
+    def envoi_partiel(nom, fermer):
+        s = _s.create_connection(("127.0.0.1", PORT), timeout=10)
+        s.sendall(("POST /api/projets?nom=%s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nX-Web3D: 1\r\n"
+                   "Content-Length: 100000\r\n\r\n" % (nom, PORT)).encode() + b"x" * 10)
+        if fermer:
+            s.shutdown(_s.SHUT_WR)
+            reponse = s.recv(100)
+        else:   # le fichier entamé apparaît, puis disparaît au bout du délai
+            fin, existe = _tm.monotonic() + 5, lambda: os.path.exists(os.path.join(tmp, nom))
+            while not existe() and _tm.monotonic() < fin:
+                _tm.sleep(0.02)
+            reponse = b"entame" if existe() else b""
+            while existe() and _tm.monotonic() < fin:
+                _tm.sleep(0.05)
+        s.close()
+        return reponse, os.path.exists(os.path.join(tmp, nom))
+
+    verifier("envoi coupé : 400 et fichier retiré", envoi_partiel("coupe.stl", True)[0][9:12] + b"/" +
+             str(os.path.exists(os.path.join(tmp, "coupe.stl"))).encode(), b"400/False")
+    delai = web_3D.Gestionnaire.timeout
+    web_3D.Gestionnaire.timeout = 0.5
+    try:
+        verifier("client muet au-delà du délai : fichier retiré", envoi_partiel("muet.stl", False), (b"entame", False))
+    finally:
+        web_3D.Gestionnaire.timeout = delai
     web_3D.PROJETS = None
 
-# Canal de pilotage (pilote.py, MCP de web_suite) : WEB_3D n'a pas de garde CSRF, c'est
-# pilote.py qui refuse une autre origine ; la page bat, le MCP de ce poste voit l'onglet
+# Canal de pilotage (pilote.py, MCP de web_suite) : X-Web3D exigé sur tout POST, pilote.py
+# refuse en plus une autre origine ; la page bat, le MCP de ce poste voit l'onglet
 import json  # noqa: E402
 battement = json.dumps({"navigateur": "n1", "onglets": [{"id": "o1", "page": "3d", "projet": "", "focus_il_y_a": 0}]})
-json_ = {"Content-Type": "application/json"}
+verifier("pilote : sans X-Web3D, battement refusé", requete("POST", "/api/pilote/battement", battement,
+                                                           {"Content-Type": "application/json"})[0], 403)
+verifier("pilote : sans X-Web3D, aucun onglet noté",
+         json.loads(requete("GET", "/api/pilote/onglets")[1])["onglets"], [])
+json_ = {"Content-Type": "application/json", "X-Web3D": "1"}
 verifier("pilote : autre origine refusée", requete("POST", "/api/pilote/battement", battement,
                                                    dict(json_, Origin="http://evil.example"))[0], 403)
 verifier("pilote : battement de la page", requete("POST", "/api/pilote/battement", battement,
