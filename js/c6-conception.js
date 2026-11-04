@@ -23,7 +23,8 @@ import { fabriqueMateriaux, construireNoeud, recenser, liberer } from "./02-impo
 import { Navigation } from "./03-navigation.js";
 import { CubeVue } from "./04-cube-vue.js";
 import { Arbre, echapper } from "./05-arbre.js";
-import { faceSous } from "./06-topologie.js";
+import { faceSous, contourFace, geometrieFace } from "./06-topologie.js";
+import { demanderTexte, confirmer, avertir } from "./c0-dialogues.js";
 import { Mesure } from "./07-mesure.js";
 import { CoupeManager } from "./07b-coupe.js";
 import { Interface, pieceSous } from "./08-interface.js";
@@ -31,7 +32,7 @@ import { telechargerFichier } from "./10-export-step.js";
 import { nomProjet } from "./11-projets.js";
 import { evaluerParametres, evaluateur, evaluer, NOM_PARAMETRE, appliquerConfiguration, lireParametresCsv } from "./c1-expressions.js";
 import { nouvelleEsquisse, nouvelId as nouvelIdEsquisse, resoudre, axePerpendiculaire, ajouterPrimitives, lireDxf, lireSvg, repere, indexer, profils, cercle3Points, planConstruction } from "./c2-esquisse.js";
-import { TYPES, TROUS } from "./c3-operations.js";
+import { TYPES, nomHistorique, TROUS } from "./c3-operations.js";
 import { EditeurEsquisse } from "./c5-esquisse-ui.js";
 import { Frise, deplacementRefuse, deplacer, creerDossier, normaliserDossiers, dependances } from "./c7-frise.js";
 import { ANALYSES, appliquerAnalyse } from "./c8-analyses.js";
@@ -262,12 +263,16 @@ class Conception {
     this.marques = new THREE.Group();
     this.origine = this.construireOrigine();
     this.esquissesVues = new THREE.Group();
-    vue.annotations.add(this.marques, this.origine, this.esquissesVues);
+    this.survol = new THREE.Group();
+    this.faceVue = new THREE.Group();
+    this.faceChoisie = null;
+    this.traits = new Map();          // le tracé de chaque désignation, gardé quand la pièce montrée ne l'a plus
+    vue.annotations.add(this.marques, this.survol, this.faceVue, this.origine, this.esquissesVues);
     this.frise = new Frise(this, $("frisePiste"));
     this.onglets = [null];            // les autres pièces ouvertes ; celle qu'on édite vit dans this.doc…
     this.ongletActif = 0;
     this.analyse = null;
-    this.filtre = { corps:true, references:true };
+    this.filtre = { corps:true, faces:true, references:true };
     this.premiereVue = true;
     this.idRequete = 0;
     this.attentes = new Map();
@@ -550,17 +555,20 @@ class Conception {
   }
 
   /** Une pièce de plus, dans un nouvel onglet. */
-  ouvrirOnglet(doc, chemin, modifie){
+  async ouvrirOnglet(doc, chemin, modifie){
+    verifierPiece(doc);
     this.finirEditions();
     this.sauverOnglet();
     this.onglets.push({ doc, chemin, modifie, pileAnnuler:[], pileRefaire:[], selOps:new Set() });
     return this.chargerOnglet(this.onglets.length - 1);
   }
 
-  fermerOnglet(i){
+  async fermerOnglet(i){
     this.sauverOnglet();
     const o = this.onglets[i];
-    if(o.modifie && !confirm(`« ${o.doc.nom} » n'est pas enregistrée. La fermer quand même ?`)) return;
+    if(o.modifie && !await confirmer(`« ${o.doc.nom} » n'est pas enregistrée. La fermer quand même ?`, "Fermer sans enregistrer")) return;
+    i = this.onglets.indexOf(o);               // la boîte a laissé la page vivre : un autre onglet a pu se fermer
+    if(i < 0) return;
     if(i !== this.ongletActif){               // en arrière-plan : la pièce active et sa vue ne bougent pas
       this.onglets.splice(i, 1);
       if(i < this.ongletActif) this.ongletActif--;
@@ -604,7 +612,7 @@ class Conception {
           className:"date", textContent:new Date(f.date * 1000).toLocaleDateString("fr-FR") }));
         b.onclick = async () => {
           hote.hidden = true;
-          try{ await this.ouvrirProjet(f.chemin); }catch(e){ alert(`Impossible d'ouvrir : ${e.message}`); }
+          try{ await this.ouvrirProjet(f.chemin); }catch(e){ avertir(`Impossible d'ouvrir : ${e.message}`); }
         };
         return b;
       }));
@@ -650,6 +658,7 @@ class Conception {
     $("etatSel").textContent = `⚠ ${raison}${nom}`;
     this.majHistorique();
     if(this.pannes < 2) setTimeout(() => this.reconstruire());
+    else this.echecConstruction(raison);
   }
 
   /**
@@ -683,7 +692,9 @@ class Conception {
     const id = ++this.idRequete;
     return new Promise((ok, ko) => {
       this.attentes.set(id, { ok, ko });
-      this.travailleur.postMessage({ ...message, id }, transferts);
+      /* Refusé au départ (pièce non transmissible) : pas de réponse à attendre, sinon le noyau paraît occupé pour toujours. */
+      try{ this.travailleur.postMessage({ ...message, id }, transferts); }
+      catch(e){ this.attentes.delete(id); ko(e); }
     });
   }
 
@@ -738,10 +749,8 @@ class Conception {
     this.opEnCalcul = null;
     this.docEnCalcul = this.doc;
     try{
-      const diag = this.vue.rayonModele ? this.vue.rayonModele * 2 : 100;
       const doc = this.doc;
-      const res = await this.envoyer({ type:"construire", doc:this.docPourNoyau(), plat:!!this.plat,
-        tolerance:Math.min(1, Math.max(0.005, prefs.tolLineaire * diag)) });
+      const res = await this.envoyer({ type:"construire", doc:this.docPourNoyau(), plat:!!this.plat, finesse:prefs.tolLineaire });
       /* Changé de pièce (ou annulé) pendant le calcul : ce résultat ne vaut plus pour ce document. */
       this.surveillerTas(res.tas);
       if(doc === this.doc) this.afficher(res, performance.now() - t0);
@@ -750,7 +759,7 @@ class Conception {
     }catch(e){
       /* L'identifiant d'une opération ne vaut que pour sa pièce : on a pu changer d'onglet pendant le calcul. */
       if(e.fatale){ this.enCours = false; this.relancerNoyau("Le noyau a manqué de mémoire ou s'est planté : il a été relancé.", this.docEnCalcul === this.doc ? e.opId ?? this.opEnCalcul : null); }
-      else if(!e.abandon) this.statutErreur(e.message);
+      else if(!e.abandon) this.echecConstruction(e.message);
     }finally{
       clearTimeout(this._tSurveille);
       $("bArreterCalcul").hidden = true;
@@ -760,9 +769,20 @@ class Conception {
     }
   }
 
+  /** La pièce n'a pas pu être construite : on ne laisse pas celle d'avant à l'écran comme si de rien n'était. */
+  echecConstruction(message){
+    if(this.docAffiche !== this.doc) this.afficher({ maillages:[], etats:{}, erreursParametres:{} }, 0);
+    this.statutErreur(message);
+    const b = $("vueErreur");
+    b.textContent = `⚠ La pièce n'a pas pu être construite : ${message}`;
+    b.hidden = false;
+  }
+
   afficher(res, duree){
     const { vue, arbre, ui } = this;
     this.resultat = res;
+    this.docAffiche = this.doc;
+    $("vueErreur").hidden = true;
     /* Une esquisse posée sur une face : le noyau dit où la face est partie. */
     for(const [id, n] of Object.entries(res.etats)){
       const op = (n.plan || n.corpsNom || n.refs) && this.doc.operations.find(o => o.id === id);
@@ -770,8 +790,9 @@ class Conception {
       if(op && n.plan) op.plan = n.plan;
       if(op && n.corpsNom) op.corpsNom = n.corpsNom;
     }
-    const selNom = arbre.selection?.name;
+    const selNom = arbre.selection?.name, discret = !!this.faceChoisie;
     arbre.selectionner(null);
+    this.montrerFace(null);           // ses triangles partent avec la pièce d'avant
     ui.mesure.annuler();
     if(this.analyse) appliquerAnalyse(vue, null);     // rend aux corps leur matériau, que liberer() va jeter
     for(const g of [...vue.modele.children]){ liberer(g); vue.modele.remove(g); }
@@ -785,6 +806,7 @@ class Conception {
       groupe.children.forEach((m, i) => {
         const src = valides[i];
         CORPS.set(m, src);
+        m.geometry.userData.surfaces = src.surfaces;
         if(src.reference){
           m.material = m.material.clone();
           Object.assign(m.material, { transparent:true, opacity:0.35, depthWrite:false });
@@ -820,7 +842,7 @@ class Conception {
     this.dessinerEsquisses();
     if(this.eclate) appliquerEclate(this);
     const retrouve = selNom && vue.modele.getObjectByName(selNom);
-    if(retrouve?.userData.estPiece) arbre.selectionner(retrouve, { defiler:false });
+    if(retrouve?.userData.estPiece) arbre.selectionner(retrouve, { defiler:false, discret });
     else if(!this.editeur.ouvert) this.afficherProprietes(null);
     if(this.editeur.ouvert) this.editeur.remplirListe($("props"));     // l'arbre vient d'écrire sa fiche par-dessus
 
@@ -860,11 +882,11 @@ class Conception {
     this.reconstruire();
   }
 
-  supprimerOperation(op){
+  async supprimerOperation(op){
     if(this.edition || this.editeur.ouvert) return;
     if(!this.doc.operations.includes(op)) return;       // menu resté ouvert sur une opération annulée depuis
     const dependants = this.doc.operations.filter(o => o !== op && dependances(o, this.doc.operations).includes(op.id));
-    if(dependants.length && !confirm(`« ${op.nom} » sert à : ${dependants.map(o => o.nom).join(", ")}.\nSupprimer quand même ? (Ces opérations seront en erreur.)`)) return;
+    if(dependants.length && !await confirmer(`« ${op.nom} » sert à : ${dependants.map(o => o.nom).join(", ")}. Supprimer quand même ? (Ces opérations seront en erreur.)`, "Supprimer")) return;
     this.modifierDoc(() => {
       const i = this.doc.operations.indexOf(op);
       this.doc.operations.splice(i, 1);
@@ -989,6 +1011,7 @@ class Conception {
     };
     const filtre = (id, cle) => { $(id).onclick = () => { this.filtre[cle] = !this.filtre[cle]; $(id).classList.toggle("on", this.filtre[cle]); }; };
     filtre("bFiltreCorps", "corps");
+    filtre("bFiltreFace", "faces");
     filtre("bFiltreRef", "references");
     /* Les panneaux se déplacent par leur titre ; leur place est gardée dans ce navigateur */
     deplacable(document.querySelector("#navigateur > h3"), $("navigateur"), "navigateur");
@@ -1016,8 +1039,8 @@ class Conception {
     $("etatSel").textContent = this.analyse ? ANALYSES[this.analyse].aide : "";
   }
 
-  enregistrerVue(){
-    const nom = prompt("Nom de la vue :", `Vue ${(this.doc.vues || []).length + 1}`);
+  async enregistrerVue(){
+    const nom = await demanderTexte("Enregistrer la vue", "Nom", `Vue ${(this.doc.vues || []).length + 1}`);
     if(!nom?.trim()) return;
     const c = this.vue.camera();
     this.memoriser();
@@ -1147,8 +1170,8 @@ class Conception {
     this.reconstruire();
   }
 
-  nouveauDossier(ids){
-    const nom = prompt("Nom du dossier :", `Dossier ${(this.doc.dossiers || []).length + 1}`);
+  async nouveauDossier(ids){
+    const nom = await demanderTexte("Nouveau dossier", "Nom", `Dossier ${(this.doc.dossiers || []).length + 1}`);
     if(!nom?.trim()) return;
     let refus = null;
     this.modifierDoc(() => { refus = creerDossier(this.doc, ids, nom.trim()); });
@@ -1177,7 +1200,7 @@ class Conception {
       d.classList.toggle("sel", this.selOps.has(op.id));
       d.classList.toggle("erreur", !!etats[op.id]?.erreur);
       d.classList.toggle("suspendue", !!op.suspendue);
-      d.title = etats[op.id]?.erreur ? `⚠ ${etats[op.id].erreur}` : `${op.nom} — double-clic pour modifier`;
+      d.title = etats[op.id]?.erreur ? `⚠ ${etats[op.id].erreur}` : `${nomHistorique(op)} — double-clic pour modifier`;
       d.innerHTML = '<span class="fl"></span>';
       if(oeil){
         const o = document.createElement("span");
@@ -1187,7 +1210,7 @@ class Conception {
         d.appendChild(o);
       }
       d.append(Object.assign(document.createElement("span"), { className:"ic", textContent:TYPES[op.type]?.icone || "?" }),
-               Object.assign(document.createElement("span"), { className:"lbl", textContent:op.nom }));
+               Object.assign(document.createElement("span"), { className:"lbl", textContent:oeil ? op.nom : nomHistorique(op) }));   // le dossier « Esquisses » dit déjà la fonction
       d.onclick = (e) => this.choisirOperation(op.id, e.shiftKey || e.ctrlKey || e.metaKey);
       d.ondblclick = () => this.editer(op);
       d.oncontextmenu = (e) => {
@@ -1208,7 +1231,7 @@ class Conception {
         e.preventDefault();
         const changer = (f) => { this.memoriser(); f(); this.marquerModifie(); this.majNavigateur(); };
         this.menu([
-          { texte:"Renommer…", action:() => { const n = prompt("Nom de la vue :", v.nom); if(n?.trim()) changer(() => { v.nom = n.trim(); }); } },
+          { texte:"Renommer…", action:async () => { const n = await demanderTexte("Renommer la vue", "Nom", v.nom); if(n?.trim()) changer(() => { v.nom = n.trim(); }); } },
           { texte:"Remplacer par la vue courante", action:() => changer(() => {
             const c = this.vue.camera();
             Object.assign(v, { position:c.position.toArray(), cible:this.vue.cible.toArray(), haut:c.up.toArray() });
@@ -1350,7 +1373,9 @@ class Conception {
     const fin = this.doc.curseur ?? this.doc.operations.length;
     this.doc.operations.splice(fin, 0, op);
     if(this.doc.curseur !== undefined) this.doc.curseur++;
+    const face = this.faceChoisie;
     this.ouvrirPanneau(op, avant, true);
+    if(type === "esquisse" && face?.type === "plan") this.poserSurFace(op, face);
   }
 
   editer(op){
@@ -1378,7 +1403,7 @@ class Conception {
 
   construirePanneau(){
     const { op } = this.edition;
-    $("titreOperation").textContent = `${TYPES[op.type].icone} ${op.nom}`;
+    $("titreOperation").textContent = `${TYPES[op.type].icone} ${nomHistorique(op)}`;
     const hote = $("champsOperation");
     hote.replaceChildren();
     for(const ch of CHAMPS[op.type] || []){
@@ -1412,7 +1437,7 @@ class Conception {
     switch(ch.type){
       case "texte": {
         const t = document.createElement("input"); t.type = "text"; t.value = lire() || "";
-        t.onchange = () => { ecrire(t.value.trim() || op.nom); $("titreOperation").textContent = `${TYPES[op.type].icone} ${op.nom}`; this.majHistorique(); };
+        t.onchange = () => { ecrire(t.value.trim() || op.nom); $("titreOperation").textContent = `${TYPES[op.type].icone} ${nomHistorique(op)}`; this.majHistorique(); };
         val.appendChild(t);
         break;
       }
@@ -1426,13 +1451,17 @@ class Conception {
           catch(e){ t.classList.add("faux"); t.title = e.message; sortie.textContent = ""; return false; }
         };
         verifier();
-        t.oninput = () => { if(verifier()) ecrire(t.value.trim()); };
+        t.oninput = t.onchange = () => { if(verifier()) ecrire(t.value.trim()); };
         val.append(t, sortie);
         break;
       }
       case "choix": {
         const s = select(Object.entries(typeof ch.options === "function" ? ch.options(this, op) : ch.options), lire());
-        s.onchange = () => { ecrire(s.value); this.construirePanneau(); if(ch.cle === "plan" && s.value === "face") this.designer("facePlan"); };
+        s.onchange = () => {
+          ecrire(s.value);
+          this.construirePanneau();
+          if(ch.cle === "plan"){ this.montrerFace(null); if(s.value === "face") this.designer("facePlan"); }
+        };
         val.appendChild(s);
         break;
       }
@@ -1500,7 +1529,7 @@ class Conception {
           cl.textContent = this.designation === "contourClic" ? "Clic dans la vue… (Échap)" : "Cliquer dans la vue";
           cl.onclick = (e) => { e.preventDefault(); this.designer(this.designation === "contourClic" ? null : "contourClic"); };
           boite.appendChild(cl);
-        }else boite.textContent = "Aucun contour fermé dans cette esquisse.";
+        }else boite.textContent = esq?.elements.some(e => e.type === "texte") ? "Le texte de l'esquisse sera utilisé." : "Aucun contour fermé dans cette esquisse.";
         ligne.classList.add("fm-note");
         val.appendChild(boite);
         break;
@@ -1543,12 +1572,16 @@ class Conception {
     this.majMarques();
     clearTimeout(this._tApercu);
     if(this.edition?.op.type === "esquisse") return;
+    /* « Aperçu à jour » ne se dira qu'une fois la pièce reconstruite. */
+    if(this.edition && !this.designation){ $("msgOperation").classList.add("ok"); $("msgOperation").textContent = "Aperçu en cours…"; }
     this._tApercu = setTimeout(() => this.reconstruire(), 250);
   }
 
   majMessageOperation(){
     const m = $("msgOperation");
     if(!this.edition){ m.textContent = ""; return; }
+    /* On désigne sur la pièce d'avant l'opération : son dernier résultat ne vaut plus, elle sera recalculée à la fin. */
+    if(this.designation){ m.classList.add("ok"); m.textContent = "Désignation en cours : cliquez dans la vue, Échap pour finir."; return; }
     const err = this.resultat?.etats?.[this.edition.op.id]?.erreur;
     const erreursP = Object.entries(this.resultat?.erreursParametres || {});
     m.classList.toggle("ok", !err && !erreursP.length);
@@ -1601,6 +1634,8 @@ class Conception {
 
   fermerPanneau(){
     this.edition = null;
+    this.traits.clear();
+    this.montrerFace(null);
     $("fenetreOperation").hidden = true;
     this.majMarques();
     this.majRuban();
@@ -1618,6 +1653,7 @@ class Conception {
     }
     this.designation = quoi;
     this.rangSommet = 0;
+    this.montrerSurvol(null);
     this.vue.canvas.classList.toggle("mesure", !!quoi);
     $("etatSel").textContent = quoi === "aretes" ? "Cliquez les arêtes (un second clic retire), Échap pour finir."
       : quoi === "faces" ? "Cliquez les faces à retirer, Échap pour finir."
@@ -1636,6 +1672,15 @@ class Conception {
       return true;
     }
     const op = this.edition?.op;
+    /* Le panneau d'une esquisse ouvert : une face plane cliquée devient son plan, sans passer par la liste. */
+    if(!this.designation && op?.type === "esquisse"){
+      const touche = this.vue.lancerRayon(ev, this.selectionnables())[0];
+      if(!touche) return false;
+      const f = faceSous(this.vue, touche);
+      if(f?.type === "plan") this.poserSurFace(op, f);
+      else $("etatSel").textContent = "Cette face n'est pas plane : choisissez-en une autre.";
+      return true;
+    }
     if(!this.designation || !op) return false;
     if(this.designation === "aretes"){
       const t = this.toucherArete(ev), p = this.areteSous(ev);
@@ -1643,21 +1688,26 @@ class Conception {
       if("corps" in op && !op.corps) op.corps = t.objet.parent.name;       // la pièce a plusieurs corps : celui de l'arête cliquée
       const liste = op.aretes || (op.aretes = []);
       const i = liste.findIndex(q => Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) < 1e-3);
-      if(i >= 0) liste.splice(i, 1); else liste.push(p);
+      if(i >= 0) liste.splice(i, 1); else{ liste.push(p); this.traits.set(String(p), this.traitDe(t)); }
     }else{
       const touche = this.vue.lancerRayon(ev, this.selectionnables())[0];
       if(!touche) return true;
       if(this.designation === "faces"){
-        (op.faces || (op.faces = [])).push(touche.point.toArray().map(c => +c.toFixed(5)));
+        const pf = touche.point.toArray().map(c => +c.toFixed(5));
+        (op.faces || (op.faces = [])).push(pf);
+        this.traits.set(String(pf), this.traitFace(touche));
         if("corps" in op && !op.corps) op.corps = touche.object.name;
       }else{
         const f = faceSous(this.vue, touche);
         if(!f || f.type !== "plan"){ $("etatSel").textContent = "Cette face n'est pas plane : choisissez-en une autre."; return true; }
         const n = f.normale.toArray().map(c => +c.toFixed(6));
         if(this.designation === "facePlan"){
-          op.plan = { origine:f.centre.toArray().map(c => +c.toFixed(5)), normale:n, xdir:axePerpendiculaire(n), suivre:true };
+          this.designation = null;
+          this.poserSurFace(op, f);
         }else{
-          op[this.designation === "faceLimite" ? "faceLimite" : "face"] = { point:touche.point.toArray().map(c => +c.toFixed(5)), normale:n };
+          const pf = touche.point.toArray().map(c => +c.toFixed(5));
+          op[this.designation === "faceLimite" ? "faceLimite" : "face"] = { point:pf, normale:n };
+          this.traits.set(String(pf), this.traitFace(touche));
           if(this.designation === "faceTiree") op.corps = touche.object.name;   // sinon « dernier corps » viserait un autre corps
         }
         this.designer(null);
@@ -1668,6 +1718,55 @@ class Conception {
     return true;
   }
 
+  /** L'esquisse posée sur cette face plane, qui reste teintée tant que le panneau est ouvert. */
+  poserSurFace(op, f){
+    const n = f.normale.toArray().map(c => +c.toFixed(6));
+    op.plan = { origine:f.centre.toArray().map(c => +c.toFixed(5)), normale:n, xdir:axePerpendiculaire(n), suivre:true };
+    this.construirePanneau();
+    this.montrerFace(f);
+    $("etatSel").textContent = "Esquisse sur cette face : OK pour l'ouvrir.";
+  }
+
+  /** Un clic dans la vue, sans outil : la face sous la souris, ou le corps si le filtre ne prend pas les faces. */
+  clicVue(ev){
+    const touche = this.vue.lancerRayon(ev, this.selectionnables())[0];
+    const f = touche && this.filtre.faces ? faceSous(this.vue, touche) : null;
+    this.arbre.selectionner(null);
+    if(!f){ this.arbre.selectionner(touche?.object || null); return; }
+    this.arbre.selectionner(touche.object, { discret:true });
+    this.montrerFace(f);
+    this.ficheFace(f);
+    $("etatSel").textContent = `Sélection : une face de ${touche.object.name}`;
+  }
+
+  /** La face choisie : teintée, avec son contour. */
+  montrerFace(f){
+    for(const o of [...this.faceVue.children]){ o.geometry.dispose(); o.material.dispose(); this.faceVue.remove(o); }
+    this.faceChoisie = f;
+    if(f){
+      const nappe = new THREE.Mesh(geometrieFace(f), new THREE.MeshBasicMaterial({ color:0x3fa0ea, transparent:true, opacity:0.4, side:THREE.DoubleSide,
+        depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2 }));
+      nappe.renderOrder = 11;
+      nappe.raycast = () => {};
+      this.faceVue.add(nappe, traitEpais(Array.from(contourFace(f).attributes.position.array), 0x3fa0ea));
+    }
+    this.vue.invalider();
+  }
+
+  /** Ce qu'on sait de la face choisie, en tête des propriétés. L'aire vient du maillage : approchée dès qu'un bord est courbe. */
+  ficheFace(f){
+    const u = this.doc.unite || "mm", k = UNITES[u] ?? 1;
+    const n = (v, d = 3) => new Intl.NumberFormat("fr-FR", { maximumFractionDigits:d }).format(v);
+    const lignes = [["Aire", `≈ ${n(f.aire * k ** 2, 1)} ${u}²`]];
+    if(f.type === "plan") lignes.push(["Normale", f.normale.toArray().map(c => n(c)).join(" · ")]);
+    if(f.type === "cylindre") lignes.push(["Diamètre", `${n(2 * f.rayon * k)} ${u}`], ["Hauteur", `${n(f.hauteur * k)} ${u}`]);
+    const bloc = document.createElement("div");
+    bloc.className = "fiche-face";
+    const noms = { plan:"Face plane", cylindre:"Face cylindrique" };
+    bloc.innerHTML = `<h4>${noms[f.type] || "Face courbe"}</h4><table>${lignes.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}</table>`;
+    $("props").prepend(bloc);
+  }
+
   /** L'arête exacte sous la souris : son objet et ses segments ; null si rien. */
   toucherArete(ev){
     const rc = new THREE.Raycaster();
@@ -1676,8 +1775,15 @@ class Conception {
     for(const m of this.selectionnables()) if(m.visible && m.userData.arete) lignes.push(m.userData.arete);
     const a = this.vue.versEcran(this.vue.cible), b = this.vue.versEcran(this.vue.cible.clone().add(
       new THREE.Vector3().setFromMatrixColumn(this.vue.camera().matrixWorld, 0)));
-    rc.params.Line.threshold = 8 / Math.max(1e-6, Math.hypot(b.x - a.x, b.y - a.y));   // 8 px en mm, au point visé
-    const t = rc.intersectObjects(lignes, false)[0];
+    const mmParPx = 1 / Math.max(1e-6, Math.hypot(b.x - a.x, b.y - a.y));
+    rc.params.Line.threshold = 3 * RAYON_PRISE * mmParPx;    // large : la perspective change l'échelle, le tri ci-dessous décide
+    /* La plus proche du curseur, pas de la caméra : sinon une arête voisine passant devant prend le clic.
+       Une arête cachée par la matière ne se prend pas : on ne voit pas ce qu'on désignerait. */
+    const ecran = (p) => this.vue.versEcran(p), r = this.vue.canvas.getBoundingClientRect();
+    const candidats = rc.intersectObjects(lignes, false)
+      .map(c => { const e = ecran(c.point); return { c, d:Math.hypot(e.x - (ev.clientX - r.left), e.y - (ev.clientY - r.top)) }; })
+      .filter(x => x.d <= RAYON_PRISE).sort((x, y) => x.d - y.d);
+    const t = candidats.find(x => !this.cachee(x.c.point, mmParPx))?.c;
     if(!t) return null;
     const idx = t.object.userData.areteIndex, seg = Math.floor(t.index / 2), arete = idx[seg];
     const segs = [];
@@ -1685,11 +1791,22 @@ class Conception {
     return { pos:t.object.geometry.attributes.position, segs, objet:t.object };
   }
 
+  /** Ce point est-il derrière la matière, vu de la caméra ? (Sans objet en filaire ou en transparence.) */
+  cachee(p, mmParPx){
+    if(this.vue.modeFilaire || this.vue.modeTransparent) return false;
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2().copy(p.clone().project(this.vue.camera())), this.vue.camera());
+    const devant = rc.intersectObjects(this.selectionnables().filter(m => m.visible), false)[0];
+    return !!devant && devant.distance < rc.ray.origin.distanceTo(p) - Math.max(2 * mmParPx, 0.006 * (this.vue.rayonModele || 1));
+  }
+
   /** Le point désigné d'une arête, posé sur la courbe exacte. */
   areteSous(ev){
     const t = this.toucherArete(ev);
-    if(!t) return null;
-    const { pos, segs } = t;
+    return t && this.pointArete(t);
+  }
+
+  pointArete({ pos, segs }){
     const s = segs[Math.floor(segs.length / 2)];
     /* Courbe : le début du segment central est un sommet intérieur, posé sur l'arête exacte.
        Droite (un seul segment) : son milieu, exact lui aussi, et loin des arêtes voisines. */
@@ -1728,12 +1845,75 @@ class Conception {
     this.marquerModifie();
   }
 
-  /** Les arêtes et faces désignées, en points jaunes, tant que le panneau est ouvert. */
+  /** Les segments d'une arête touchée, tels qu'à l'écran. */
+  traitDe({ pos, segs }){
+    const sortie = [];
+    for(const s of segs) for(const i of [2 * s, 2 * s + 1]) sortie.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+    return sortie;
+  }
+
+  /** Le contour de la face sous un rayon. */
+  traitFace(touche){
+    const f = faceSous(this.vue, touche);
+    return f ? Array.from(contourFace(f).attributes.position.array) : null;
+  }
+
+  /** L'arête affichée qui passe par ce point désigné ; null si la pièce montrée ne l'a plus (déjà arrondie). */
+  traitAuPoint(p){
+    for(const m of this.selectionnables()){
+      const l = m.userData.arete;
+      if(!l) continue;
+      const pos = l.geometry.attributes.position, idx = l.userData.areteIndex;
+      const proche = (x, y, z) => Math.hypot(x - p[0], y - p[1], z - p[2]) < 1e-3;
+      for(let s = 0; s < idx.length; s++){
+        const [a, b] = [2 * s, 2 * s + 1];
+        const ax = pos.getX(a), ay = pos.getY(a), az = pos.getZ(a);
+        if(proche(ax, ay, az) || proche((ax + pos.getX(b)) / 2, (ay + pos.getY(b)) / 2, (az + pos.getZ(b)) / 2)){
+          const segs = [];
+          for(let i = 0; i < idx.length; i++) if(idx[i] === idx[s]) segs.push(i);
+          return this.traitDe({ pos, segs });
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Ce qu'un clic prendrait, surligné avant de cliquer. Rend vrai pendant une désignation. */
+  survolDesignation(ev){
+    const q = this.designation;
+    if(!q) return false;
+    if(q === "aretes" || q === "projeter" || q === "arete"){
+      const t = this.toucherArete(ev);
+      this.montrerSurvol(t && this.traitDe(t));
+    }else if(q !== "sommets" && q !== "contourClic"){
+      const touche = this.vue.lancerRayon(ev, this.selectionnables())[0];
+      this.montrerSurvol(touche ? this.traitFace(touche) : null);
+    }
+    return true;
+  }
+
+  montrerSurvol(trait){
+    for(const o of [...this.survol.children]){ o.geometry.dispose(); o.material.dispose(); this.survol.remove(o); }
+    if(trait?.length) this.survol.add(traitEpais(trait, 0x3fa0ea));
+    this.vue.invalider();
+  }
+
+  /** Les arêtes et faces désignées, tracées en entier, tant que le panneau est ouvert. */
   majMarques(){
     for(const o of [...this.marques.children]){ o.geometry.dispose(); o.material.dispose(); this.marques.remove(o); }
     const op = this.edition?.op;
-    const pts = op ? [...(op.toutes ? [] : op.aretes || []), ...(op.faces || []),
-      ...(op.faceLimite ? [op.faceLimite.point] : []), ...(op.face ? [op.face.point] : [])] : [];
+    const pts = [];
+    const tracer = (p, garderPoint) => {
+      let t = this.traits.get(String(p));
+      if(!t && !garderPoint && (t = this.traitAuPoint(p))) this.traits.set(String(p), t);
+      if(t) this.marques.add(traitEpais(t, 0xf2c744));
+      if(!t || garderPoint) pts.push(p);
+    };
+    if(op){
+      if(!op.toutes) for(const p of op.aretes || []) tracer(p, false);
+      if(op.arete) tracer(op.arete, false);
+      for(const p of [...(op.faces || []), ...(op.faceLimite ? [op.faceLimite.point] : []), ...(op.face ? [op.face.point] : [])]) tracer(p, true);
+    }
     if(pts.length){
       const p = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(pts.flat(), 3)),
         new THREE.PointsMaterial({ color:0xf2c744, size:10, sizeAttenuation:false, depthTest:false }));
@@ -1869,7 +2049,7 @@ class Conception {
   /** Renommer un paramètre réécrit les expressions qui le citent (cotes, opérations, paramètres). */
   renommerParametre(ancien, nouveau){
     if(!nouveau || nouveau === ancien) return;
-    if(!NOM_PARAMETRE.test(nouveau) || this.doc.parametres.some(p => p.nom === nouveau)){ alert(`Nom refusé : « ${nouveau} »`); return; }
+    if(!NOM_PARAMETRE.test(nouveau) || this.doc.parametres.some(p => p.nom === nouveau)){ avertir(`Nom refusé : « ${nouveau} »`); return; }
     const re = new RegExp(`(^|[^\\wÀ-ÿ])${ancien}(?![\\wÀ-ÿ(])`, "g");      // NOM_PARAMETRE : aucun caractère spécial
     const remplace = (s) => typeof s === "string" ? s.replace(re, `$1${nouveau}`) : s;
     for(const p of this.doc.parametres){ if(p.nom === ancien) p.nom = nouveau; p.expr = remplace(p.expr); }
@@ -1909,7 +2089,7 @@ class Conception {
         else if(ext === "dxf" || ext === "svg") await this.importerEsquisse(f, ext);
         else throw new Error(`format non pris en charge ici : .${ext} (la visionneuse ouvre les autres)`);
       }catch(e){
-        alert(`Impossible d'ouvrir ${f.name} : ${e.message}`);
+        avertir(`Impossible d'ouvrir ${f.name} : ${e.message}`);
       }
     }
     this.intention = null;
@@ -1917,10 +2097,9 @@ class Conception {
 
   /** Un document lu sur disque : on vérifie sa forme avant de s'en servir. */
   async ouvrirDocument(doc, chemin, { brouillon = false } = {}){
-    if(!doc || doc.format !== FORMAT || !Array.isArray(doc.operations) || !Array.isArray(doc.parametres || [])){
-      throw new Error("ce fichier n'est pas une pièce du mode conception");
-    }
-    const propre = { ...this.docVide(), ...doc, parametres:doc.parametres || [], dossiers:Array.isArray(doc.dossiers) ? doc.dossiers : [],
+    verifierPiece(doc);
+    /* Le nom d'une pièce enregistrée est celui de son fichier : « Enregistrer sous » l'a peut-être changé. */
+    const propre = { ...this.docVide(), ...doc, ...(chemin ? { nom:chemin.split("/").pop().replace(/\.json$/i, "") } : {}), parametres:doc.parametres || [], dossiers:Array.isArray(doc.dossiers) ? doc.dossiers : [],
       vues:Array.isArray(doc.vues) ? doc.vues : [], configurations:Array.isArray(doc.configurations) ? doc.configurations : [] };
     normaliserDossiers(propre);
     $("accueil").hidden = true;
@@ -1983,7 +2162,8 @@ class Conception {
     this.ouvrirEsquisse(op, avant, true);
   }
 
-  async enregistrer(sous){
+  /** `nom` : celui de la pièce sans le demander (pour un script). */
+  async enregistrer(sous, nom = null){
     const texte = JSON.stringify(this.doc);
     if(!this.projetsDispo){
       telechargerFichier(texte, nomProjet(this.doc.nom + ".json"), "application/json");
@@ -1993,7 +2173,7 @@ class Conception {
     }
     let chemin = this.cheminProjet, remplacer = !sous && !!chemin;
     if(!remplacer){
-      const nom = prompt("Nom de la pièce (dossier des projets) :", this.doc.nom || "piece");
+      nom ??= await demanderTexte("Enregistrer la pièce", "Nom (dossier des projets)", this.doc.nom || "piece");
       if(!nom) return;
       chemin = nomProjet(nom.replace(/\.json$/i, "") + ".json");
     }
@@ -2007,10 +2187,12 @@ class Conception {
       this.doc.nom = j.chemin.split("/").pop().replace(/\.json$/i, "");
       this.modifie = false;
       this.majTitre();
+      this.majNavigateur();
+      if(!this.editeur.ouvert) this.afficherProprietes(this.arbre.selection);
       $("etatSel").textContent = `Enregistré : ${j.chemin}` + (!remplacer && j.chemin !== chemin ? " (nom déjà pris, renommé)" : "");
       this.sauverBrouillon();
     }catch(e){
-      alert(`Enregistrement impossible : ${e.message}`);
+      avertir(`Enregistrement impossible : ${e.message}`);
     }
   }
 
@@ -2037,11 +2219,57 @@ class Conception {
         tr.insertCell().textContent = new Date(f.date * 1000).toLocaleDateString("fr-FR");
         tr.onclick = async () => {
           $("dlgProjets").close();
-          try{ await this.ouvrirProjet(f.chemin); }catch(e){ alert(`Impossible d'ouvrir : ${e.message}`); }
+          try{ await this.ouvrirProjet(f.chemin); }catch(e){ avertir(`Impossible d'ouvrir : ${e.message}`); }
         };
       }
     }catch(e){ $("projetsEtat").textContent = e.message; }
     $("dlgProjets").showModal();
+  }
+
+  /* ==========================================================================
+     Pour écrire une pièce par script (voir le README)
+     ========================================================================== */
+
+  /** Ce qu'il faut savoir pour écrire une opération : ses champs et ses valeurs par défaut. */
+  schema(type){
+    const compteur = this.doc.compteur;     // nouvelleOperation consomme un identifiant : ici, ce n'est qu'un exemple
+    const exemple = nouvelleOperation(type, this);
+    this.doc.compteur = compteur;
+    return { nom:TYPES[type].nom, exemple, champs:(CHAMPS[type] || []).map(ch => ({
+      cle:ch.cle, nom:ch.nom, type:ch.type, quoi:ch.quoi, conditionnel:!!ch.si,
+      options:typeof ch.options === "function" ? ch.options(this, exemple) : ch.options })) };
+  }
+
+  /** Les arêtes de la pièce montrée ; `point` est ce qu'on met dans op.aretes. */
+  aretes(){
+    const sortie = [];
+    for(const m of this.vue.modele.children){
+      const l = m.userData.arete;
+      if(!l) continue;
+      const pos = l.geometry.attributes.position, parArete = new Map();
+      l.userData.areteIndex.forEach((a, s) => { if(parArete.has(a)) parArete.get(a).push(s); else parArete.set(a, [s]); });
+      for(const segs of parArete.values()){
+        const P = (i) => new THREE.Vector3().fromBufferAttribute(pos, i);
+        sortie.push({ corps:m.name, point:this.pointArete({ pos, segs }), debut:P(2 * segs[0]).toArray(), fin:P(2 * segs[segs.length - 1] + 1).toArray(),
+          longueur:segs.reduce((n, s) => n + P(2 * s).distanceTo(P(2 * s + 1)), 0) });
+      }
+    }
+    return sortie;
+  }
+
+  /** Les faces de la pièce montrée ; `point` (sur la face) est ce qu'on met dans op.faces. */
+  faces(){
+    const sortie = [];
+    for(const m of this.vue.modele.children){
+      const src = CORPS.get(m);
+      for(const f of src?.faces || []){
+        const s = (src.surfaces || []).find(g => g.premier === f.premier);
+        const point = [0, 1, 2].map(c => [0, 1, 2].reduce((n, k) => n + src.position[3 * src.index[3 * f.premier + k] + c] / 3, 0));
+        const { premier:_a, dernier:_b, ...surface } = s || { type:"autre" };
+        sortie.push({ corps:m.name, point:point.map(c => +c.toFixed(5)), ...surface });
+      }
+    }
+    return sortie;
   }
 
   async ouvrirProjet(chemin){
@@ -2053,18 +2281,63 @@ class Conception {
   async exporter(format){
     const noms = [];
     this.vue.modele.traverse(o => { if(o.userData.estPiece && o.visible && !CORPS.get(o)?.reference) noms.push(o.name); });
-    if(!noms.length){ alert("Aucun corps visible à exporter (les références STEP ne sont pas exportées)."); return; }
+    if(!noms.length){ avertir("Aucun corps visible à exporter (les références STEP ne sont pas exportées)."); return; }
     this.ui.attendre(true, `Export ${format.toUpperCase()}…`, "Le noyau écrit la géométrie exacte.");
     try{
       const r = await this.envoyer({ type:"exporter", doc:this.docPourNoyau(), format, corps:noms });
       telechargerFichier(await r.blob.arrayBuffer(), `${nomProjet(this.doc.nom)}.${format === "stl" ? "stl" : "stp"}`);
     }catch(e){
       if(e.fatale) this.relancerNoyau("Le noyau s'est planté pendant l'export : il a été relancé.");
-      else if(!e.abandon) alert(`Export impossible : ${e.message}`);
+      else if(!e.abandon) avertir(`Export impossible : ${e.message}`);
     }finally{
       this.ui.attendre(false);
     }
   }
+}
+
+/** Une pièce lue ou reçue : de la bonne forme, et transmissible au noyau (ni fonction, ni objet vivant). */
+function verifierPiece(doc){
+  if(!doc || doc.format !== FORMAT || !Array.isArray(doc.operations) || !Array.isArray(doc.parametres || [])){
+    throw new Error("ce fichier n'est pas une pièce du mode conception");
+  }
+  try{ structuredClone(doc); }
+  catch(e){ throw new Error(`cette pièce ne peut pas être transmise au noyau : ${e.message}`); }
+}
+
+const RAYON_PRISE = 8;       // pixels autour du curseur pour prendre une arête
+
+const TRAIT_SOMMETS = `uniform vec2 ecran; uniform float large; attribute vec3 b; attribute vec2 c;
+void main(){
+  vec4 A = projectionMatrix * modelViewMatrix * vec4(position, 1.), B = projectionMatrix * modelViewMatrix * vec4(b, 1.);
+  vec2 d = (B.xy / B.w - A.xy / A.w) * ecran;
+  vec2 n = length(d) > 1e-6 ? normalize(vec2(-d.y, d.x)) : vec2(0., 1.);
+  vec4 P = c.x < .5 ? A : B;
+  P.xy += n * c.y * large / ecran * P.w;
+  gl_Position = P;
+}`;
+
+/**
+ * Un trait épais (les lignes WebGL n'ont qu'un pixel) : `segments` à plat, [x, y, z, x, y, z…] par paires.
+ * shortcut: un segment qui passe derrière la caméra est mal tracé, gênant seulement de très près en perspective.
+ */
+function traitEpais(segments, couleur, largeur = 3){
+  const a = [], b = [], c = [];
+  for(let i = 0; i + 5 < segments.length; i += 6){
+    const A = segments.slice(i, i + 3), B = segments.slice(i + 3, i + 6);
+    for(const [t, s] of [[0, -1], [0, 1], [1, 1], [0, -1], [1, 1], [1, -1]]){ a.push(...A); b.push(...B); c.push(t, s); }
+  }
+  const geo = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(a, 3))
+    .setAttribute("b", new THREE.Float32BufferAttribute(b, 3)).setAttribute("c", new THREE.Float32BufferAttribute(c, 2));
+  const mat = new THREE.ShaderMaterial({ vertexShader:TRAIT_SOMMETS, fragmentShader:`uniform vec3 teinte; void main(){ gl_FragColor = vec4(teinte, 1.);
+#include <colorspace_fragment>
+}`,
+    uniforms:{ ecran:{ value:new THREE.Vector2(1, 1) }, large:{ value:largeur }, teinte:{ value:new THREE.Color(couleur) } }, depthTest:false, transparent:true, side:THREE.DoubleSide });
+  const m = new THREE.Mesh(geo, mat);
+  m.frustumCulled = false;
+  m.renderOrder = 12;
+  m.raycast = () => {};
+  m.onBeforeRender = (r) => { r.getDrawingBufferSize(mat.uniforms.ecran.value); mat.uniforms.large.value = largeur * r.getPixelRatio(); };
+  return m;
 }
 
 /** Un panneau flottant suit sa poignée ; sa place est gardée dans ce navigateur. */
@@ -2134,10 +2407,11 @@ async function demarrer(){
       if(coupe?.actif && coupe.enChoixFace && coupe.cliquer(ev)) return;
       if(mesure.actif && mesure.cliquer(ev)) return;
       /* Le filtre de sélection décide de ce qui réagit au clic ; sans contrôleur, tout réagit. */
-      const t = conception ? vue.lancerRayon(ev, conception.selectionnables())[0]?.object : pieceSous(vue, ev);
-      arbre.selectionner(t || null);
+      if(conception) conception.clicVue(ev);
+      else arbre.selectionner(pieceSous(vue, ev) || null);
     },
     surSurvol:(ev) => {
+      if(conception?.survolDesignation(ev)) return;
       if(conception?.editeur.ouvert){ conception.editeur.survoler(ev); return; }
       if(coupe?.actif && coupe.enChoixFace) coupe.survoler(ev);
       else mesure.survoler(ev);
@@ -2171,6 +2445,7 @@ async function demarrer(){
   ui.conception = conception;
   arbre.surSelection = (objet) => {
     $("etatSel").textContent = objet ? `Sélection : ${objet.name}` : "";
+    conception.montrerFace(null);
     conception.afficherProprietes(objet);
   };
   await conception.brancherProjets();

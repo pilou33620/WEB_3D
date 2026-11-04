@@ -315,6 +315,7 @@ try{
         </div><h5>Vues</h5></section>
       <section><div class="btns">
           <button id="bFiltreCorps" class="on" title="Les corps réagissent aux clics dans la vue"><i>◼</i>Corps</button>
+          <button id="bFiltreFace" class="on" title="Un clic dans la vue prend la face : décochez pour prendre le corps entier"><i>▰</i>Faces</button>
           <button id="bFiltreRef" class="on" title="Les références STEP réagissent aux clics : décochez pour cliquer à travers"><i>◻</i>Références</button>
         </div><h5>Filtre de sélection</h5></section>
     </div>
@@ -353,6 +354,7 @@ try{
 
 <main>
   <div class="ctr" id="ctr">
+    <div class="vue-erreur" id="vueErreur" role="alert" hidden></div>
     <canvas id="vue3d"></canvas>
 
     <!-- Navigateur flottant, comme celui de solidcraft -->

@@ -21,6 +21,7 @@ import * as THREE from "three";
 /* Fraction du demi-côté au-delà de laquelle un clic appartient au bord.
    0,35 donne des faces larges et des coins encore attrapables à la souris. */
 const BORD = 0.35;
+const RAYON_COIN = 12;       // pixels
 
 /**
  * Les six faces, dans la convention de la scène. En CAO la verticale est Z et
@@ -278,6 +279,16 @@ export class CubeVue {
     const r = this.canvas.getBoundingClientRect();
     this.souris.set(((ev.clientX - r.left) / r.width) * 2 - 1,
                     -((ev.clientY - r.top) / r.height) * 2 + 1);
+    /* Un coin ne fait que 7 px à l'écran : on l'attrape largement autour, même juste à côté du cube. */
+    const dir = this.camera.position, marge = RAYON_COIN / (r.width / 2);
+    let coin = null, dMin = marge;
+    for(const x of [-1, 1]) for(const y of [-1, 1]) for(const z of [-1, 1]){
+      if(x * dir.x <= 1e-3 && y * dir.y <= 1e-3 && z * dir.z <= 1e-3) continue;     // caché par le cube
+      const p = new THREE.Vector3(x / 2, y / 2, z / 2).project(this.camera);
+      const d = Math.hypot(p.x - this.souris.x, p.y - this.souris.y);
+      if(d < dMin){ dMin = d; coin = new THREE.Vector3(x, y, z); }
+    }
+    if(coin) return coin;
     this.rc.setFromCamera(this.souris, this.camera);
     const t = this.rc.intersectObject(this.corps, false);
     return t.length ? this.zoneDepuisPoint(t[0].point) : null;

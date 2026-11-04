@@ -13,7 +13,8 @@
    ============================================================================= */
 "use strict";
 
-import { TYPES } from "./c3-operations.js";
+import { TYPES, nomHistorique } from "./c3-operations.js";
+import { demanderTexte } from "./c0-dialogues.js";
 
 const TYPE_GLISSE = "application/x-web3d-operation";      // un fichier glissé sur la frise n'est pas une opération
 
@@ -165,7 +166,7 @@ export class Frise {
     b.classList.toggle("erreur", !!erreur);
     b.textContent = TYPES[op.type]?.icone || "?";
     const ms = ctrl.resultat?.etats?.[op.id]?.ms;
-    b.title = `${op.nom}${ms >= 100 ? `\n${(ms / 1000).toFixed(1).replace(".", ",")} s de calcul` : ""}${erreur ? `\n⚠ ${erreur}` : ""}${op.suspendue ? "\n(suspendue)" : ""}${apres ? "\n(après le marqueur : non construite)" : ""}\nDouble-clic : modifier · clic droit : menu · glisser : réordonner`;
+    b.title = `${nomHistorique(op)}${ms >= 100 ? `\n${(ms / 1000).toFixed(1).replace(".", ",")} s de calcul` : ""}${erreur ? `\n⚠ ${erreur}` : ""}${op.suspendue ? "\n(suspendue)" : ""}${apres ? "\n(après le marqueur : non construite)" : ""}\nDouble-clic : modifier · clic droit : menu · glisser : réordonner`;
     b.dataset.index = i;
     b.onclick = (e) => ctrl.choisirOperation(op.id, e.shiftKey || e.ctrlKey || e.metaKey);
     b.ondblclick = () => ctrl.editer(op);
@@ -212,8 +213,8 @@ export class Frise {
       e.preventDefault();
       ctrl.menu([
         { texte:d.replie ? "Déplier" : "Replier", action:() => ctrl.changerDossier(d.id, (x) => { x.replie = !x.replie; }, false) },
-        { texte:"Renommer le dossier…", action:() => {
-          const nom = prompt("Nom du dossier :", d.nom);
+        { texte:"Renommer le dossier…", action:async () => {
+          const nom = await demanderTexte("Renommer le dossier", "Nom", d.nom);
           if(nom?.trim()) ctrl.changerDossier(d.id, (x) => { x.nom = nom.trim(); });
         } },
         { texte:"Supprimer le dossier (garder les opérations)", action:() => ctrl.supprimerDossier(d.id) },
@@ -228,8 +229,8 @@ export class Frise {
     const choisis = ctrl.selOps.size > 1 ? [...ctrl.selOps] : [op.id];
     ctrl.menu([
       { texte:"Modifier", action:() => ctrl.editer(op) },
-      { texte:"Renommer…", action:() => {
-        const nom = prompt("Nom de l'opération :", op.nom);
+      { texte:"Renommer…", action:async () => {
+        const nom = await demanderTexte("Renommer l'opération", "Nom", op.nom);
         if(nom?.trim()) ctrl.modifierDoc(() => { op.nom = nom.trim(); });
       } },
       { texte:op.suspendue ? "Réactiver" : "Suspendre", action:() => ctrl.modifierDoc(() => { op.suspendue = !op.suspendue; }) },

@@ -17,6 +17,7 @@ import { nomProjet } from "./11-projets.js";
 import { perimerCaches } from "./13-deplacement.js";
 import { repere, profils, dedans, axeConstruction } from "./c2-esquisse.js";
 import { VISSERIE } from "./c3b-ateliers.js";
+import { demanderTexte, avertir } from "./c0-dialogues.js";
 
 const $ = (id) => document.getElementById(id);
 const estNombre = (t) => /^\s*-?\d+(?:[.,]\d+)?\s*$/.test(String(t));
@@ -499,7 +500,7 @@ async function menuStep(c, ev){
       const rep = await fetch("projets/" + f.chemin.split("/").map(encodeURIComponent).join("/"), { cache:"no-store" });
       if(!rep.ok) throw new Error(String(rep.status));
       await c.insererStep(new File([await rep.blob()], f.chemin.split("/").pop()), lienDe(f));
-    }catch(e){ alert(`Impossible d'insérer : ${e.message}`); }
+    }catch(e){ avertir(`Impossible d'insérer : ${e.message}`); }
   } })), ...(steps.length ? ["-"] : []), parFichier], r.left, r.bottom + 2);
 }
 
@@ -518,7 +519,7 @@ async function menuComposant(c, ev){
       if(!rep.ok) throw new Error(String(rep.status));
       c.intention = "composant";
       await fichierAtelier(c, new File([await rep.blob()], f.chemin.split("/").pop()), "json", lienDe(f));
-    }catch(e){ alert(`Impossible d'insérer : ${e.message}`); }
+    }catch(e){ avertir(`Impossible d'insérer : ${e.message}`); }
   } })), ...(pieces.length ? ["-"] : []), parFichier], r.left, r.bottom + 2);
 }
 
@@ -575,8 +576,8 @@ export function brancherAteliers(c){
     const r = e.currentTarget.getBoundingClientRect();
     const liaisons = c.doc.operations.filter(o => o.type === "liaison" && o.mode !== "rigide");
     if(!liaisons.length){ $("etatSel").textContent = "Aucune liaison pivot ou glissière à animer."; return; }
-    c.menu(liaisons.map(o => ({ texte:o.nom, action:() => {
-      const t = prompt("Valeur de départ, d'arrivée, nombre de pas :", o.mode === "pivot" ? "0, 360, 24" : "0, 50, 20");
+    c.menu(liaisons.map(o => ({ texte:o.nom, action:async () => {
+      const t = await demanderTexte("Animer la liaison", "Valeur de départ, d'arrivée, nombre de pas", o.mode === "pivot" ? "0, 360, 24" : "0, 50, 20");
       const n = (t || "").split(",").map(Number);
       if(n.length === 3 && n.every(Number.isFinite) && n[2] >= 1) animer(c, o, n[0], n[1], Math.min(Math.round(n[2]), 200));
     } })), r.left, r.bottom + 2);
@@ -600,12 +601,12 @@ export function brancherAteliers(c){
     try{
       const r = await c.envoyer({ type:"developpe", doc:c.docPourNoyau() });
       telechargerFichier(r.dxf, nomProjet(c.doc.nom) + "-developpe.dxf", "application/dxf");
-      if(r.enErreur.length || r.apres.length) alert("Développé exporté, à vérifier :"
+      if(r.enErreur.length || r.apres.length) avertir("Développé exporté, à vérifier :"
         + (r.enErreur.length ? `\n· en erreur à plat, absentes du DXF : ${r.enErreur.join(", ")}` : "")
         + (r.apres.length ? `\n· faites après un pli, peut-être absentes du DXF : ${r.apres.join(", ")}` : ""));
     }catch(e){
       if(e.fatale) c.relancerNoyau("Le noyau s'est planté pendant le développé : il a été relancé.");
-      else if(!e.abandon) alert(`Développé impossible : ${e.message}`);
+      else if(!e.abandon) avertir(`Développé impossible : ${e.message}`);
     }
     finally{ c.ui.attendre(false); }
   };

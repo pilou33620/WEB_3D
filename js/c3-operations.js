@@ -58,6 +58,14 @@ const AXES = { X:[1, 0, 0], Y:[0, 1, 0], Z:[0, 0, 1] };
 
 /* Trous métriques ISO : taraudage (pas gros), passage moyen (ISO 273), puis valeurs d'atelier
    usuelles pour le lamage d'une vis CHC (ISO 4762) et la fraisure d'une vis FHC (ISO 10642). */
+const sansAccent = (t) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/** Le nom montré dans l'historique : la fonction, puis le nom donné (« Boîte-Cabine »). Un nom qui la dit déjà (« Boîte 1 ») reste tel quel. */
+export function nomHistorique(op){
+  const f = TYPES[op.type]?.nom;
+  return !f || sansAccent(op.nom).startsWith(sansAccent(f)) ? op.nom : `${f}-${op.nom}`;
+}
+
 export const TROUS = {
   M2:{ taraude:1.6, passage:2.4, lamageD:4.3, lamageP:2.2, fraisureD:4.4 },
   "M2.5":{ taraude:2.05, passage:2.9, lamageD:5, lamageP:2.7, fraisureD:5.5 },

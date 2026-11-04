@@ -22,6 +22,7 @@ import { nomRangeStep, rangerFichier } from "./11-projets.js";
 import { echapper } from "./05-arbre.js";
 import { chercherCollisions, maillageCollisions } from "./12-collisions.js";
 import { mm } from "./06-topologie.js";
+import { avertir } from "./c0-dialogues.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -180,7 +181,7 @@ export class Interface {
           [0, 1, 2, 3, 4, 5].map(n => `<option value="${n}">${n ? "0." + "12345".slice(0, n) : "0"}</option>`).join("")
         }</select>
       </label>
-      <button class="tb mini" id="mesureRaz" title="Effacer la mesure en cours (Échap)">✕</button>`;
+      <button class="tb mini" id="mesureFermer" title="Fermer la mesure (Échap efface seulement la mesure en cours)">✕</button>`;
     $("ctr").appendChild(p);
     this.panneauMesure = p;
 
@@ -203,7 +204,7 @@ export class Interface {
       prefsModifiees("mesurePrecision");
       this.mesure.remesurer();
     };
-    p.querySelector("#mesureRaz").onclick = () => this.mesure.annuler();
+    p.querySelector("#mesureFermer").onclick = () => this.basculerMesure(false);
   }
 
   majPanneauMesure(){
@@ -747,7 +748,7 @@ export class Interface {
       let m = (sel && sel.isMesh) ? sel : null;
       if(!m && sel) sel.traverse(o => { if(o.isMesh && !m) m = o; });
       if(!m){
-        alert("Veuillez sélectionner une pièce à exporter.");
+        avertir("Veuillez sélectionner une pièce à exporter.");
         return null;
       }
       piecesCibles.push(m);
@@ -758,7 +759,7 @@ export class Interface {
         }
       });
       if(!piecesCibles.length){
-        alert("Aucune pièce n'est actuellement visible à l'écran.");
+        avertir("Aucune pièce n'est actuellement visible à l'écran.");
         return null;
       }
     }else{
@@ -770,7 +771,7 @@ export class Interface {
         }
       }
       if(!piecesCibles.length){
-        alert("Veuillez cocher au moins une pièce à exporter.");
+        avertir("Veuillez cocher au moins une pièce à exporter.");
         return null;
       }
     }

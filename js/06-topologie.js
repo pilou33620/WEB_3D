@@ -932,6 +932,28 @@ function entiteArete(maillage, topo, i){
   return e;
 }
 
+/** Le mode conception connaît la vraie surface de chaque face : elle remplace ce qu'on a ajusté sur les triangles. */
+function surfaceExacte(e, surfaces, tri, M, N, sommets){
+  const s = surfaces?.find(g => g.premier <= tri && tri <= g.dernier);
+  if(!s || s.type !== e.type) return;
+  if(s.type === "plan"){
+    const n = new THREE.Vector3(...s.normale).applyMatrix3(N).normalize();
+    e.normale = n.dot(e.normale) < 0 ? n.negate() : n;
+    return;
+  }
+  e.axe = new THREE.Vector3(...s.axe).applyMatrix3(N).normalize();
+  e.point = new THREE.Vector3(...s.point).applyMatrix4(M);
+  e.rayon = s.rayon * M.getMaxScaleOnAxis();
+  let mini = Infinity, maxi = -Infinity;
+  const v = new THREE.Vector3();
+  for(const p of sommets){
+    const t = v.subVectors(p, e.point).dot(e.axe);
+    mini = Math.min(mini, t); maxi = Math.max(maxi, t);
+  }
+  e.hauteur = maxi - mini;
+  e.centre = e.point.clone().addScaledVector(e.axe, (mini + maxi) / 2);
+}
+
 function entiteFace(maillage, topo, r){
   const cle = maillage.uuid + "/f" + r;
   const garde = topo.cacheFaces.get(cle);
@@ -968,6 +990,7 @@ function entiteFace(maillage, topo, r){
               tol:topo.tol * echelle, aire:aire * echelle * echelle,
               boite:new THREE.Box3().setFromPoints(sommets),
               ...formeNappe(sommets, normales, aires, topo.tol * echelle) };
+  surfaceExacte(e, maillage.geometry.userData.surfaces, tris[0], M, N, sommets);
   topo.cacheFaces.set(cle, e);
   return e;
 }
@@ -1725,9 +1748,36 @@ export function mesurerFaces(A, B){
     const w = new THREE.Vector3().subVectors(cyl.centre, plan.centre);
     const ecart = w.dot(plan.normale);
     const dAxe = Math.abs(ecart);
-    const mini = nappeNappe(cyl, plan);
+    let mini = nappeNappe(cyl, plan);
+    /* Axe parallèle au plan : les facettes passent sous la surface et manquent sa génératrice la plus basse.
+       Si le plan s'étend bien dessous (le maillage le confirme, à la flèche près), le calcul exact vaut mieux. */
+    const exacte = dAxe - cyl.rayon, tolPlan = Math.max(cyl.tol, plan.tol);
+    if(sinus < 1e-3 && exacte > 0 && mini.d >= exacte - tolPlan && mini.d - exacte <= 0.01 * cyl.rayon + tolPlan){
+      mini = { ...mini, d:exacte, c1:mini.c2.clone().addScaledVector(plan.normale, (ecart >= 0 ? 1 : -1) * exacte) };
+    }
     const angleAxe = Math.asin(Math.min(1, sinus));
-    const axe = ["Axe", sinus < 1e-3 ? "parallèle au plan" : `à ${degres(angleAxe)} du plan`];
+    const axe = ["Axe", sinus < 1e-3 ? "parallèle au plan" : sinus > 1 - 1e-6 ? "perpendiculaire au plan" : `à ${degres(angleAxe)} du plan`];
+    /* Debout sur le plan : le milieu du cylindre ne dit rien, c'est son bout qui compte, le long de la normale.
+       Le plus court chemin entre les faces reste affiché : il diffère si le plan ne passe pas sous le cylindre. */
+    if(sinus > Math.cos(0.5 * Math.PI / 180)){
+      const signe = ecart >= 0 ? 1 : -1;
+      const vers = cyl.axe.clone().multiplyScalar(cyl.axe.dot(plan.normale) >= 0 ? -signe : signe);
+      const bout = cyl.centre.clone().addScaledVector(vers, cyl.hauteur / 2);
+      const h = new THREE.Vector3().subVectors(bout, plan.centre).dot(plan.normale);
+      const d = h * signe > 0 ? Math.abs(h) : 0;        // sinon le cylindre traverse le plan
+      const pied = bout.clone().addScaledVector(plan.normale, -h);
+      const communesDebout = [["Diamètre", `${diam(cyl.rayon)} mm`], axe,
+        mini.d - d > Math.max(cyl.tol, plan.tol) ? ["Plus court entre les faces", mm(mini.d)] : null];
+      const et = mm(d), fch = fiche("Cylindre et plan", ["Bout → plan", mm(d)], ...communesDebout);
+      const etMax = `${mm(maxi.d)} (Max)`, fchMax = fiche("Cylindre et plan", ["Surface → plan max", mm(maxi.d)], ...communesDebout);
+      return {
+        p1:pied, p2:bout, etiquette:et, fiche:fch,
+        extensible:true, positionActuelle:"min",
+        min:{ p1:pied, p2:bout, d, etiquette:et, fiche:fch },
+        max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, fiche:fchMax },
+        glisser,
+      };
+    }
     const communes = [["Axe → plan", mm(dAxe)], ["Diamètre", `${diam(cyl.rayon)} mm`], axe];
     const etMin = `${mm(mini.d)} (axe ${mm(dAxe)})`;
     const ficheMin = fiche("Cylindre et plan", ["Surface → plan", mm(mini.d)], ...communes);

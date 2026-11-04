@@ -312,6 +312,30 @@ des projets restent liés à leur fichier (une carte de WEB_CAO, par exemple) : 
 il a changé. Le filetage peut être modélisé pour l'impression 3D, avec un jeu réglable (calcul d'environ 30 s
 sur un Raspberry Pi pour un M8 × 20).
 
+**Désigner et mesurer.** Pendant une désignation, l'arête ou la face que le clic prendrait se surligne au
+survol, et ce qui est désigné reste tracé en entier. Le clic prend l'arête la plus proche du curseur, et jamais
+une arête cachée par la matière. La mesure lit les plans et les cylindres sur le noyau (axe, normale et rayon
+exacts) au lieu de les ajuster sur le maillage ; un cylindre debout sur un plan donne la distance de son bout.
+L'affichage compte au moins 24 facettes par tour, et son maillage ne dépend que de la géométrie ; l'export STL
+est plus fin (0,02 mm).
+
+**Sélection.** Un clic dans la vue prend la **face** sous la souris : elle se teinte et sa fiche (aire, normale ou
+diamètre) s'ajoute aux propriétés. Le corps entier se prend dans le navigateur, ou d'un clic en décochant le filtre
+*Faces*. *Esquisse* se pose sur la face choisie ; le panneau d'une esquisse ouvert prend la face plane qu'on clique.
+L'historique nomme chaque opération par sa fonction et son nom : un nom donné « Cabine » s'affiche *Boîte-Cabine*.
+
+**Écrire une pièce par script.** `W3D.conception` est accessible depuis la page :
+- `schema(type)` rend les champs d'une opération et un exemple rempli ; les types sont les clés de `TYPES`
+  (`js/c3-operations.js`) ;
+- `aretes()` et `faces()` listent ce que montre la vue : leur `point` est ce qu'on met dans `op.aretes` et
+  `op.faces` (congé, chanfrein, coque…) ;
+- `ouvrirOnglet(doc, null, false)` ouvre une pièce, et refuse un document mal formé ou contenant des fonctions ;
+- `enregistrer(true, "nom")` enregistre sans poser de question.
+
+Une esquisse est `{ type:"esquisse", plan:{ base:"XY", decalage:"0" }, elements, contraintes }`. Ses éléments sont
+`{ type:"point", x, y }`, `{ type:"ligne", p1, p2 }`, `{ type:"cercle", c, r }`, `{ type:"arc", c, p1, p2, r }`,
+`{ type:"spline", pts }` et `{ type:"texte", p, contenu, h }`, où `p1`, `c`, `pts`… sont des identifiants de points.
+
 Limites connues : une esquisse ne coupe pas ses profils qui se croisent (un contour par boucle, ajuster
 d'abord) ; deux éléments identiques et symétriques peuvent s'échanger si la pièce change beaucoup (ce n'est
 pas un nommage topologique du noyau). Le développé d'une tôle ne vaut que pour des plis partant de la tôle de
@@ -456,7 +480,7 @@ WEB_3D/
 | `js/pilote.js` | canal de pilotage côté page : relais entre onglets, panneau « Claude », cartes, interrupteur. **Copie** de `web_suite/lanceur/pilote.js`, à ne pas modifier ici |
 | `pilote.py` | canal de pilotage côté serveur : file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement. Copie de `web_suite/lanceur/pilote.py` |
 | `appairage.py` | le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste. Copie commune aux web tools |
-| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
+| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures), `banc-conception-retours.mjs` (désignation, mesure, boîtes de question, cube, maillage, échec de construction, script ; même lancement ; lancement commun dans `harnais-page.mjs`) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 | `js/c1-expressions.js` | conception : paramètres et expressions des cotes (analyseur maison, jamais `eval`) |
 | `js/c2-esquisse.js` | conception : modèle d'esquisse, traduction pour le solveur planegcs, contours et trous, import DXF / SVG |
@@ -469,6 +493,7 @@ WEB_3D/
 | `js/c9-ateliers-ui.js` | conception : champs et désignations des ateliers, poignée, animation, éclaté, développé, aides dessinées |
 | `js/c2b-outils-esquisse.js` | conception : ajuster, décaler, congé et chanfrein de coin, miroir, répétitions |
 | `js/c8-analyses.js` | conception : zébrures, dépouille et courbure, par un matériau à nuanceur |
+| `js/c0-dialogues.js` | conception : les boîtes de question du thème, à la place de `prompt()`, `confirm()` et `alert()` |
 | `js/c7-frise.js` | conception : la frise d'historique (marqueur, lecture, réordonner, dossiers, clic droit) et ses règles |
 
 ---

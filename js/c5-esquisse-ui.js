@@ -23,6 +23,7 @@ import * as THREE from "three";
 import { repere, indexer, nouvelId, resoudre, milieuArc, cercle3Points, echantillonSpline, COTES, NOMS_CONTRAINTES } from "./c2-esquisse.js";
 import { ajuster, decaler, casserCoin, miroir, repetitionRect, repetitionCirc } from "./c2b-outils-esquisse.js";
 import { echapper } from "./05-arbre.js";
+import { demander, demanderTexte } from "./c0-dialogues.js";
 
 const COULEURS = { normal:0x3fa0ea, construction:0x8b919c, sel:0xf2c744, survol:0x8af0ff, conflit:0xe8443a, apercu:0xf2c744 };
 const PX = 9;            // tolérance de désignation, en pixels
@@ -292,14 +293,11 @@ export class EditeurEsquisse {
         c.push(m);
         this.dessinerApercu(m);
         return;
-      case "texte": {
-        const contenu = prompt("Texte :", "");
-        if(!contenu) return;
-        const h = this.nombres("Hauteur des caractères (mm) :", "10", 1);
-        if(!h) return;
-        modifier(() => this.esq.elements.push({ id:nouvelId(this.esq, "x"), type:"texte", p:this.point(m, m.id ? {} : { constr:true }), contenu, h:h[0] }));
+      case "texte":
+        this.demanderLeTexte("", "10").then((t) => {
+          if(t) modifier(() => this.esq.elements.push({ id:nouvelId(this.esq, "x"), type:"texte", p:this.point(m, m.id ? {} : { constr:true }), ...t }));
+        });
         return;
-      }
       case "point":
         modifier(() => this.point({ ...m, id:null }, { seul:true }));
         return;
@@ -391,9 +389,17 @@ export class EditeurEsquisse {
     this.resoudre(); this.redessiner(); this.ctx.surModif();
   }
 
+  /** Le texte et sa hauteur : les mêmes champs à la pose et au double-clic. */
+  async demanderLeTexte(contenu, h){
+    const hauteur = (x) => { try{ return this.v(x); }catch(_){ return NaN; } };
+    const r = await demander("Texte de l'esquisse", [{ nom:"Texte", valeur:contenu }, { nom:"Hauteur (mm)", valeur:h }],
+      ([t, x]) => !t ? "Écrivez un texte." : hauteur(x) > 0 ? null : "La hauteur doit être un nombre positif.");
+    return r && { contenu:r[0], h:hauteur(r[1]) };
+  }
+
   /** `n` valeurs séparées par des virgules, évaluées avec les paramètres ; null si annulé ou illisible. */
-  nombres(question, defaut, n){
-    const t = prompt(question, defaut);
+  async nombres(question, defaut, n){
+    const t = await demanderTexte("Esquisse", question, defaut);
     if(t === null) return null;
     try{
       const v = (n > 1 ? t.split(",") : [t]).map(x => this.v(x.trim()));    // seul, « 2,5 » est un nombre
@@ -424,15 +430,15 @@ export class EditeurEsquisse {
     this.ctx.surModif();
   }
 
-  decaler(){
-    const d = this.nombres("Distance du décalage (mm) — positive : vers l'extérieur d'un contour :", "2", 1);
+  async decaler(){
+    const d = await this.nombres("Distance du décalage (mm) — positive : vers l'extérieur d'un contour :", "2", 1);
     if(d) this.transformer(() => decaler(this.esq, [...this.selection], d[0]));
   }
 
-  casserCoin(mode){
+  async casserCoin(mode){
     const { points, els } = this.choisis();
     if(points.length !== 1 || els.length !== 1){ this.statut("Sélectionnez le point du coin."); return; }
-    const d = this.nombres(mode === "conge" ? "Rayon du congé (mm) :" : "Distance du chanfrein (mm) :", "2", 1);
+    const d = await this.nombres(mode === "conge" ? "Rayon du congé (mm) :" : "Distance du chanfrein (mm) :", "2", 1);
     if(d) this.transformer(() => casserCoin(this.esq, points[0].id, d[0], mode));
   }
 
@@ -443,14 +449,14 @@ export class EditeurEsquisse {
     this.transformer(() => miroir(this.esq, [...this.selection], axes[0].id));
   }
 
-  repetition(mode){
+  async repetition(mode){
     if(!this.selection.size){ this.statut("Sélectionnez les éléments à répéter."); return; }
     if(mode === "rect"){
-      const v = this.nombres("Nombre en X, nombre en Y, pas X (mm), pas Y (mm) :", "3, 1, 20, 20", 4);
+      const v = await this.nombres("Nombre en X, nombre en Y, pas X (mm), pas Y (mm) :", "3, 1, 20, 20", 4);
       if(v) this.transformer(() => repetitionRect(this.esq, [...this.selection], Math.round(v[0]), Math.round(v[1]), v[2], v[3]));
       return;
     }
-    const v = this.nombres("Nombre d'exemplaires, angle total (°) :", "6, 360", 2);
+    const v = await this.nombres("Nombre d'exemplaires, angle total (°) :", "6, 360", 2);
     if(!v) return;
     /* Le centre : un point sélectionné seul avec des courbes, sinon l'origine du plan. */
     const { points, els } = this.choisis();
@@ -916,25 +922,25 @@ export class EditeurEsquisse {
       let et = this.cotes.get(e.id);
       if(!et){
         et = document.createElement("div");
-        et.className = "cote-esquisse";
+        et.className = "cote-esquisse texte";
         et.onpointerdown = (ev) => ev.stopPropagation();
         et.onclick = (ev) => { ev.stopPropagation(); if(!ev.shiftKey) this.selection.clear(); this.selection.add(e.id); this.redessiner(); };
-        et.ondblclick = (ev) => {
+        et.ondblclick = async (ev) => {
           ev.stopPropagation();
           const actuel = indexer(this.esq).get(e.id);    // annuler a pu remplacer l'objet depuis la création de l'étiquette
           if(!actuel) return;
-          const t = prompt("Texte :", actuel.contenu);
+          const t = await this.demanderLeTexte(actuel.contenu, String(actuel.h));
           if(!t) return;
           this.ctx.memoriser();
-          actuel.contenu = t;
+          Object.assign(actuel, t);
           this.redessiner();
           this.ctx.surModif();
         };
         this.ctx.ctr.appendChild(et);
         this.cotes.set(e.id, et);
       }
-      et.textContent = "T " + e.contenu;
-      et.title = "Texte — double-clic pour le modifier";
+      et.textContent = "T";          // sous le point d'ancrage : le texte lui-même reste lisible
+      et.title = `Texte « ${e.contenu} » · ${e.h} mm — double-clic pour le modifier`;
       et.classList.toggle("sel", this.selection.has(e.id));
       et.ancre = idx.get(e.p);
     }

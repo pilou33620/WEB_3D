@@ -141,7 +141,10 @@ button.tb.icone{min-width:30px;justify-content:center;font-size:14px;padding:3px
 /* Les panneaux de coupe et de mesure, et les fenêtres de résultats de la visionneuse, laissent
    la place à la barre de navigation et à la colonne de droite. */
 body.conception #panneauCoupe,body.conception #panneauMesure{bottom:76px}
-body.conception .ctr > .fenetre-mesure:not(#fenetreOperation){right:320px}
+body.conception .ctr > .fenetre-mesure:not(#fenetreOperation){right:320px;bottom:124px}
+.vue-erreur{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;max-width:60%;padding:6px 12px;
+  background:var(--panel);border:1px solid var(--red);border-radius:5px;color:var(--red);font-size:12.5px}
+.vue-erreur[hidden]{display:none}
 
 /* ---------- frise d'historique ---------- */
 #frise{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--panel);border-top:1px solid var(--border);
@@ -182,7 +185,11 @@ body.conception .ctr > .fenetre-mesure:not(#fenetreOperation){right:320px}
 #fenetreOperation input[type=text],#fenetreOperation select{width:100%;background:var(--bg);border:1px solid var(--border2);
   color:var(--txt);border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:12.5px}
 #fenetreOperation input.faux{border-color:var(--red)}
-#fenetreOperation .val{font-size:11px;color:var(--txt-dim);margin-left:4px}
+/* « = valeur » dans le champ, pas dessous : la saisie ne décale rien, et le texte long défile avant elle. */
+#fenetreOperation .fm-valeur:has(> .val){position:relative}
+#fenetreOperation .fm-valeur:has(> .val:not(:empty)) input{padding-right:76px}
+#fenetreOperation .val{position:absolute;right:6px;top:50%;transform:translateY(-50%);max-width:68px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;pointer-events:none;font-size:11px;color:var(--txt-dim)}
 #fenetreOperation .liste-choix{display:flex;flex-direction:column;gap:2px;max-height:120px;overflow:auto}
 #fenetreOperation .liste-choix label{display:flex;gap:6px;align-items:center;font-family:var(--ui)}
 #fenetreOperation .designer{display:flex;gap:6px;align-items:center;font-family:var(--ui)}
@@ -213,11 +220,19 @@ body.conception #accueil{z-index:7;background:var(--bg)}
 .accueil-liste .date{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--txt-dim)}
 .scroll-config{overflow:auto;max-height:50vh}
 
+/* ---------- boîtes de question ---------- */
+.dlg-question{min-width:340px;max-width:520px}
+.dlg-question label{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;margin:6px 0}
+.dlg-question input{background:var(--bg);border:1px solid var(--border2);color:var(--txt);border-radius:4px;padding:4px 7px;
+  font-family:var(--mono);font-size:12.5px;width:100%;min-width:0}
+.dlg-question menu .fo-msg{flex:none;max-width:60%;margin:0}
+
 /* ---------- esquisse ---------- */
 #vue3d.esquisse{cursor:crosshair}
 .cote-esquisse{position:absolute;transform:translate(-50%,-50%);z-index:4;background:var(--panel);
   border:1px solid var(--border2);border-radius:3px;padding:0 5px;font-family:var(--mono);font-size:11.5px;
   color:var(--txt);cursor:pointer;white-space:nowrap;user-select:none}
+.cote-esquisse.texte{transform:translate(-100%,12px)}
 .cote-esquisse.sel{border-color:var(--yellow);color:var(--yellow)}
 .cote-esquisse.conflit{border-color:var(--red);color:var(--red)}
 .saisie-cote{position:absolute;transform:translate(-50%,-50%);z-index:7;width:120px;background:var(--bg);

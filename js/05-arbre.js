@@ -140,21 +140,22 @@ export class Arbre {
   /* ==========================================================================
      Sélection
      ========================================================================== */
-  selectionner(objet, { defiler = true } = {}){
+  /** `discret` : le corps est sélectionné sans être teinté ni encadré (c'est une de ses faces qui est visée). */
+  selectionner(objet, { defiler = true, discret = false } = {}){
     if(this.selection === objet) return;
     if(this.selection) this.peindre(this.selection, false);
     this.selection = objet || null;
 
     for(const [, nd] of this.index) nd.classList.remove("sel");
     if(objet){
-      this.peindre(objet, true);
+      if(!discret) this.peindre(objet, true);
       const nd = this.index.get(objet);
       if(nd){
         nd.classList.add("sel");
         if(defiler) nd.scrollIntoView({ block:"nearest" });
       }
       this.cadre.setFromObject(objet);
-      this.cadre.visible = true;
+      this.cadre.visible = !discret;
     }else{
       this.cadre.visible = false;
     }

@@ -37,3 +37,8 @@ jobs:
         run: node --experimental-websocket test/banc-conception-page.mjs
         env:
           CHROMIUM: google-chrome
+
+      - name: Conception — désignation, mesure, boîtes de question
+        run: node --experimental-websocket test/banc-conception-retours.mjs
+        env:
+          CHROMIUM: google-chrome
