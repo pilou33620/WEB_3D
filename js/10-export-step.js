@@ -480,6 +480,23 @@ export function telechargerFichier(contenu, nomFichier, typeMime = "application/
 }
 
 /**
+ * Le STEP d'une seule pièce, tiré du fichier d'où elle vient. Positions d'origine du STEP :
+ * les déplacements faits dans la vue n'y sont pas.
+ */
+export function extraireStepPiece(piece, modele){
+  let fichier = piece;
+  while(fichier.parent && fichier.parent !== modele) fichier = fichier.parent;
+  const texte = fichier.userData.stepTexte;
+  if(!texte) throw new Error("ce fichier n'est pas un STEP (ou son texte n'a pas été gardé).");
+  const ex = new StepExtractor(texte);
+  const memes = [...ex.produits.values()].filter(p => p.nom === piece.name);   // exact, la casse compte
+  if(!memes.length) throw new Error(`pièce « ${piece.name} » introuvable dans le STEP d'origine (nom différent ?).`);
+  if(new Set(memes.map(m => m.defId)).size > 1)
+    throw new Error(`deux produits STEP différents s'appellent « ${piece.name} » : extraction ambiguë.`);
+  return ex.exportPiece(memes[0]);
+}
+
+/**
  * Nettoie une chaîne pour en faire un nom de fichier valide sans caractères interdits.
  */
 export function sanitiserNomFichier(nom, ext = ".stp") {

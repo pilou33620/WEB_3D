@@ -17,7 +17,8 @@ import { prefs, prefsModifiees, reinitialiserPrefs, resumeGestes,
 import { ouvrirFichiers, liberer, calculerAretes, formatDe, estAnnexe,
          LISTE_FORMATS } from "./02-import.js";
 import { MODES as MODES_MESURE, MODES_DELTA } from "./07-mesure.js";
-import { StepExtractor, telechargerFichier, sanitiserNomFichier } from "./10-export-step.js";
+import { StepExtractor, telechargerFichier, sanitiserNomFichier, extraireStepPiece } from "./10-export-step.js";
+import { nomRangeStep, rangerFichier } from "./11-projets.js";
 import { echapper } from "./05-arbre.js";
 import { chercherCollisions, maillageCollisions } from "./12-collisions.js";
 import { mm } from "./06-topologie.js";
@@ -591,6 +592,7 @@ export class Interface {
     // Boutons de validation / annulation
     $("bAnnulerExport")?.addEventListener("click", () => dlg.close());
     $("bValiderExport")?.addEventListener("click", () => this.executerExportPiece());
+    $("bRangerPiece")?.addEventListener("click", () => this.rangerPieceExport());
   }
 
   ouvrirModalExport(piecePreselectionnee = null){
@@ -732,28 +734,23 @@ export class Interface {
     }
 
     $("inputNomFichierExport").value = suggestion;
+    $("inputNomRanger").value = sanitiserNomFichier(suggestion);
   }
 
-  async executerExportPiece(){
+  /** Les pièces du périmètre choisi dans le dialogue ; null (et une alerte) s'il n'y en a pas. */
+  ciblesExport(){
     const dlg = $("dlgExportPiece");
     const perimetre = dlg.querySelector("input[name='perimetreExport']:checked")?.value || "visible";
-    const format = $("selFormatExport").value;
-    const repere = $("selRepereExport").value;
-    let nomFichier = $("inputNomFichierExport").value.trim();
-    if(!nomFichier.toLowerCase().endsWith("." + format)){
-      nomFichier += "." + format;
-    }
-
-    let piecesCibles = [];
+    const piecesCibles = [];
     if(perimetre === "selection"){
       const sel = this.arbre.selection;
       let m = (sel && sel.isMesh) ? sel : null;
       if(!m && sel) sel.traverse(o => { if(o.isMesh && !m) m = o; });
       if(!m){
         alert("Veuillez sélectionner une pièce à exporter.");
-        return;
+        return null;
       }
-      piecesCibles = [m];
+      piecesCibles.push(m);
     }else if(perimetre === "visible"){
       this.vue.modele.traverse(o => {
         if(o.isMesh && o.userData.estPiece && o.visible && visibleEnLignee(o)){
@@ -762,7 +759,7 @@ export class Interface {
       });
       if(!piecesCibles.length){
         alert("Aucune pièce n'est actuellement visible à l'écran.");
-        return;
+        return null;
       }
     }else{
       const items = dlg.querySelectorAll("#listePiecesExport .item-export");
@@ -774,9 +771,45 @@ export class Interface {
       }
       if(!piecesCibles.length){
         alert("Veuillez cocher au moins une pièce à exporter.");
-        return;
+        return null;
       }
     }
+    return piecesCibles;
+  }
+
+  /** Range le STEP de la pièce choisie dans PROJETS, sans fermer le dialogue : le message dit où il est allé. */
+  async rangerPieceExport(){
+    const info = $("infoExportMsg"), bouton = $("bRangerPiece");
+    const cibles = this.ciblesExport();
+    if(!cibles) return;
+    if(cibles.length !== 1){
+      info.textContent = `Une pièce à la fois (${cibles.length} ici) : choisissez « Pièce sélectionnée », ou n'en cochez qu'une.`;
+      return;
+    }
+    bouton.disabled = true;
+    try{
+      const nom = nomRangeStep($("inputNomRanger").value);
+      const chemin = await rangerFichier(nom, extraireStepPiece(cibles[0], this.vue.modele));
+      info.textContent = `Rangé dans le projet : ${chemin}.` +
+        (chemin.split("/").pop() === nom ? "" : ` « ${nom} » existait déjà : il n'est pas écrasé.`);
+    }catch(e){
+      info.textContent = `Rangement impossible : ${e.message}`;
+    }finally{
+      bouton.disabled = false;
+    }
+  }
+
+  async executerExportPiece(){
+    const dlg = $("dlgExportPiece");
+    const format = $("selFormatExport").value;
+    const repere = $("selRepereExport").value;
+    let nomFichier = $("inputNomFichierExport").value.trim();
+    if(!nomFichier.toLowerCase().endsWith("." + format)){
+      nomFichier += "." + format;
+    }
+
+    const piecesCibles = this.ciblesExport();
+    if(!piecesCibles) return;
 
     dlg.close();
     this.attendre(true, `Export ${format.toUpperCase()} en cours…`, "Préparation des données géométriques.");

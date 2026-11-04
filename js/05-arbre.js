@@ -20,6 +20,14 @@ import { repereDePiece } from "./06-topologie.js";
 
 const COULEUR_SEL = 0x2b7fbf;
 
+/* Au-delà, ni la fiche ni web3d_mesurer ne chiffrent volume et surface. */
+export const SEUIL_MATIERE = 800_000;
+
+/** L'encombrement, sur les sommets (exact même tourné) : un seul calcul pour les fiches et web3d_mesurer. */
+export function encombrement(objet){
+  return new THREE.Box3().setFromObject(objet, true);
+}
+
 export class Arbre {
   constructor(vue, elements){
     this.vue = vue;
@@ -272,7 +280,7 @@ export class Arbre {
       hote.innerHTML = '<p class="vide-p">Sélectionnez une pièce dans l\'arbre ou dans la vue.</p>';
       return;
     }
-    const b = new THREE.Box3().setFromObject(objet);
+    const b = encombrement(objet);
     const t = b.getSize(new THREE.Vector3());
     let triangles = 0, maillages = 0;
     objet.traverse(o => { if(o.isMesh){ triangles += o.userData.triangles || 0; maillages++; } });
@@ -323,7 +331,7 @@ export class Arbre {
     /* Volume et surface sont des sommes sur les triangles : sur un gros
        ensemble, le calcul se voit. On le réserve à ce qui reste instantané. */
     let masse = "";
-    if(triangles <= 800_000){
+    if(triangles <= SEUIL_MATIERE){
       const { volume, aire } = mesurerSolide(objet);
       masse = `<h4>Matière (maillage)</h4><table>
         <tr><td>Volume</td><td>${formaterVolume(volume)}</td></tr>

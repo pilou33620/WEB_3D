@@ -42,6 +42,7 @@
 
 import * as THREE from "three";
 import { prefs } from "./00-config.js";
+import { encombrement } from "./05-arbre.js";
 import { analyser, areteSous, faceSous, tailleParPixel, geometrieArete, geometrieFace, contourFace,
          mesurerAretes, mesurerFaces, mesurerEntites, mesurerEntiteSeule, resumer, cote, mm, degres,
          PLAFOND_TRIANGLES, nombre, repereDePiece, pointsAccroche, numeroArete,
@@ -361,6 +362,7 @@ export class Mesure {
   }
 
   annuler(){
+    this.vue.effacerCote();
     this.points = [];
     this.pointsMaillages = [];
     this.pointsTypes = [];
@@ -990,7 +992,7 @@ export class Mesure {
   }
 
   decrirePiece(m){
-    const b = new THREE.Box3().setFromObject(m);
+    const b = encombrement(m);
     const t = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
     return {
       sousTitre:"Pièce entière",

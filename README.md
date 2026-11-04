@@ -326,6 +326,9 @@ pièce insérée ne suit pas l'original.
 - **STEP** (`.stp`) d'une pièce ou d'une sélection d'un assemblage STEP, extraite du
   fichier d'origine : la géométrie exacte (B-Rep) est reprise telle quelle, sans
   passer par les triangles.
+- **Ranger dans le projet** (`#bRangerPiece`, avec son champ de nom, dans le même dialogue, lancé avec
+  `--projets`) : le STEP d'une seule pièce va dans PROJETS, toujours en `.stp`. Un nom pris devient
+  « x (2) » et le message le dit : rien n'est écrasé.
 
 ### Se laisser piloter par Claude
 La page reçoit les ordres de Claude par le MCP de web_suite (canal de pilotage,
@@ -340,10 +343,10 @@ ouverture si Claude Code est prêt (`lanceur/docs/SPEC-claude-pages.md` de web_s
 
 | Genre | Commandes | Ce qui se passe |
 | :--- | :--- | :--- |
-| Lectures | `web3d_scene`, `web3d_mesurer`, `web3d_collisions` | réponse directe, rien ne change |
-| Directes | `web3d_vue`, `web3d_visibilite`, `web3d_coupe` | appliquées tout de suite : vue, œil, plan de coupe — rien du fichier |
+| Lectures | `web3d_scene`, `web3d_mesurer`, `web3d_collisions` | réponse directe ; `web3d_mesurer` : `dimensions` exige `piece` ou `fichier`, volume et surface jusqu'à 800 000 triangles comme la fiche, distance et faces refusent une pièce masquée, la cote part avec « Effacer la mesure » et à la fermeture ; `web3d_collisions` avec `afficher` : les courbes, et la tolérance écrite dans les préférences, comme le champ |
+| Directes | `web3d_vue`, `web3d_visibilite`, `web3d_coupe` | appliquées tout de suite : vue, œil, plan de coupe — rien du fichier ; la projection s'écrit dans les préférences et `#selProjection`, comme le bouton ; une coupe sur une face refuse une pièce masquée |
 | En carte | `web3d_ouvrir` | une carte avant → après, Appliquer ou Refuser ; elle s'annule par la carte |
-| Gestes | `pilote_interface` | tout le reste, comme l'utilisateur : déplacer (`#bDeplacer`), exporter une pièce (`#bExportPiece`) |
+| Gestes | `pilote_interface` | tout le reste, comme l'utilisateur : déplacer (`#bDeplacer`), exporter une pièce (`#bExportPiece`), ranger son STEP (`#bRangerPiece`) |
 
 L'interrupteur « Appliquer directement (cet onglet) » saute la carte ; il est éteint à
 chaque chargement. Le détail du panneau est dans `web_suite/lanceur/docs/DETAILS.md`
@@ -449,7 +452,7 @@ WEB_3D/
 | `js/11-projets.js` | le dossier des projets : liste, ouverture, rangement du modèle ouvert |
 | `js/12-collisions.js` | interférences entre fichiers ouverts (« Ajouter… » puis « 💥 Collisions ») : triangles qui se traversent, courbe d'intersection en rouge |
 | `js/13-deplacement.js` | « ✥ Déplacer » (D) : un fichier entier, à la souris (glisser une pièce, Maj : à la verticale), au clavier (mm, °), ou par contrainte (deux plans plaqués avec décalage, deux cylindres coaxiaux) |
-| `js/14-pilote-3d.js` | les commandes du MCP pour la page 3D (`brancherPilote3d`) : scène, vue, visibilité, coupe, mesure, collisions, et en carte ouvrir, déplacer, ranger un STEP |
+| `js/14-pilote-3d.js` | les commandes du MCP pour la page 3D (`brancherPilote3d`) : scène, vue, visibilité, coupe, mesure, collisions, et en carte ouvrir |
 | `js/pilote.js` | canal de pilotage côté page : relais entre onglets, panneau « Claude », cartes, interrupteur. **Copie** de `web_suite/lanceur/pilote.js`, à ne pas modifier ici |
 | `pilote.py` | canal de pilotage côté serveur : file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement. Copie de `web_suite/lanceur/pilote.py` |
 | `appairage.py` | le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste. Copie commune aux web tools |

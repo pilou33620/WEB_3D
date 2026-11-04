@@ -155,6 +155,24 @@ await verifier("volume d'un ensemble avec une pièce en miroir : la somme des vo
   assert.ok(proche(P3.dimensions(ensemble).volume, 2 * seul, 0.01 * seul), `${P3.dimensions(ensemble).volume} ≠ 2 × ${seul}`);
 });
 
+await verifier("volume et surface : le seuil de la fiche ; encombrement : le calcul de la fiche, exact même tourné", async () => {
+  const { encombrement, SEUIL_MATIERE } = await import("../js/05-arbre.js");
+  const bolt = parNom("bolt")[0], t = bolt.userData.triangles;
+  try{
+    bolt.userData.triangles = SEUIL_MATIERE;
+    assert.ok(P3.dimensions(bolt).volume > 0);
+    bolt.userData.triangles = SEUIL_MATIERE + 1;
+    const d = P3.dimensions(bolt);
+    assert.deepEqual([d.volume, d.surface], [null, null]);
+    assert.match(d.note, /800 000/);
+    assert.ok(d.taille[0] > 0);
+  }finally{ bolt.userData.triangles = t; }
+  const m = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10));
+  m.rotation.z = Math.PI / 4; m.updateMatrixWorld(true);
+  assert.ok(proche(encombrement(m).getSize(new THREE.Vector3()).x, 10 * Math.SQRT2));
+  assert.ok(proche(P3.dimensions(m).taille[0], 10 * Math.SQRT2));
+});
+
 await verifier("distance entre pièces : celle de mesurerEntites, contact quand elles s'interpénètrent", () => {
   const bolts = parNom("bolt"), equerres = parNom("l-bracket");
   assert.ok(bolts.length && equerres.length, "bolt et l-bracket dans l'exemple");
@@ -177,8 +195,11 @@ await verifier("faces d'un boulon : un cylindre au moins, avec son rayon ; index
   assert.deepEqual(JSON.parse(JSON.stringify(f1)), f1);
   const cyl = f1.faces.filter(f => f.type === "cylindre");
   assert.ok(cyl.length >= 1 && cyl.every(f => f.rayon > 0 && f.axe.length === 3));
-  assert.ok(f1.faces.every((f, i) => f.index === i && f.aire > 0));
+  assert.ok(f1.faces.every((f, i) => f.index === i));
   assert.ok(f1.faces.some(f => f.type === "plan" && f.normale.length === 3));
+  // Ce que la fiche de la mesure montre, et rien de plus (07-mesure.js, decrireEntite)
+  assert.ok(cyl.every(f => f.aire === undefined && f.centre.length === 3));
+  assert.ok(f1.faces.filter(f => f.type !== "cylindre").every(f => f.aire > 0 && f.centre === undefined));
 });
 
 await verifier("la cote de Claude : une ligne entre les deux points, nommée, remplaçable", () => {
@@ -276,14 +297,17 @@ await verifier("ouvrir : chemins refusés avant tout fetch", () => {
 });
 
 /* --- T8 : les commandes déclarées au canal, sur une interface factice ------------ */
-const ecritsLS = [];
-globalThis.localStorage = { getItem: () => null, setItem: (k) => ecritsLS.push(k), removeItem() {} };
+const ecritsLS = [], ecritsTous = new Set();     // la commande en cours à chaque écriture dans les préférences
+let commandeEnCours = null;
+globalThis.localStorage = { getItem: () => null, removeItem() {},
+  setItem: () => { ecritsLS.push(commandeEnCours); ecritsTous.add(commandeEnCours); } };
+const { Vue3D } = await import("../js/01-scene.js");
 const scene3 = new THREE.Group(); scene3.add(lireExemple("assemblage-as1.stp")); scene3.updateMatrixWorld(true);
 const desc3 = P3.decrireScene(scene3, { nombre: 500 });     // les uuid de CETTE scène (chaque lecture en crée de neufs)
 const desc3b = () => P3.decrireScene(scene3, { nombre: 500 }).pieces;
 const traces = [];
 const vue = { modele: scene3, annotations: new THREE.Group(), projection: "perspective",
-  adapterAuModele() { traces.push("adapter"); }, invalider() {}, recenserMateriaux() {},
+  adapterAuModele() { traces.push("adapter"); }, invalider() {}, recenserMateriaux() {}, effacerCote: Vue3D.prototype.effacerCote,
   definirProjection(p) { this.projection = p; }, ajusterVue(o) { traces.push("ajuster:" + o.name); } };
 const arbre = { selection: null, isole: null, selectionner(o) { this.selection = o; },
   basculerVisible(o, force) { o.visible = force === undefined ? !o.visible : force; },
@@ -302,6 +326,10 @@ const fauxPilote = { declarer(o) { declare.page = o.page; return this; }, captur
                      commande(n, d) { declare.commandes[n] = d; return this; } };
 P3.brancherPilote3d({ THREE, vue, nav, arbre, ui, coupe }, fauxPilote);
 const C = declare.commandes;
+for(const [nom, c] of Object.entries(C)) if(c.executer){
+  const f = c.executer;
+  c.executer = async a => { commandeEnCours = nom; try{ return await f(a); }finally{ commandeEnCours = null; } };
+}
 
 await verifier("les 7 commandes, avec leur type", () => {
   assert.equal(declare.page, "3d");
@@ -344,7 +372,34 @@ await verifier("mesurer : distance, avec la cote de Claude posée puis effacée"
   assert.ok(r.distance >= 0 && vue.annotations.getObjectByName("cote-claude"));
   await C.web3d_mesurer.executer({ effacer: true });
   assert.equal(vue.annotations.getObjectByName("cote-claude"), undefined);
-  assert.equal((await C.web3d_mesurer.executer({ quoi: "dimensions" })).pieces, 18);
+  await assert.rejects(async () => C.web3d_mesurer.executer({ quoi: "dimensions" }), /pas la scène entière/);
+  assert.equal((await C.web3d_mesurer.executer({ quoi: "dimensions", fichier: 0 })).pieces, 18);
+  assert.equal((await C.web3d_mesurer.executer({ quoi: "dimensions", piece: a })).pieces, 1);
+});
+
+await verifier("la cote part par l'interface : effacer la mesure (mesure.annuler), fermer le modèle (viderModele)", async () => {
+  const { Mesure } = await import("../js/07-mesure.js");
+  const [a, b] = ["bolt", "plate"].map(n => desc3.pieces.find(p => p.nom === n).uuid);
+  const poser = () => C.web3d_mesurer.executer({ quoi: "distance", pieces: [a, b], afficher: true });
+  await poser();
+  Mesure.prototype.annuler.call({ vue, reperes: [], etiquettes: [], ligne: {}, apercu: {}, masquerAccroche() {}, poserConstruction() {},
+    annulerDelta() {}, viderSurlignages() {}, fenetre: { masquer() {} }, annoncer() {} });
+  assert.equal(vue.annotations.getObjectByName("cote-claude"), undefined);
+  await poser();
+  Vue3D.prototype.viderModele.call({ annotations: vue.annotations, modele: new THREE.Group(), materiaux: new Set(), invalider() {}, effacerCote: Vue3D.prototype.effacerCote });
+  assert.equal(vue.annotations.getObjectByName("cote-claude"), undefined);
+});
+
+await verifier("une pièce masquée se refuse : coupe sur sa face, distance, faces ; la règle de la page", async () => {
+  const [a, b] = ["bolt", "plate"].map(n => desc3.pieces.find(p => p.nom === n).uuid);
+  await C.web3d_visibilite.executer({ action: "masquer", pieces: [b] });
+  try{
+    const r = /masquée/;
+    await assert.rejects(async () => C.web3d_coupe.executer({ face: { piece: b, index: 0 } }), r);
+    await assert.rejects(async () => C.web3d_mesurer.executer({ quoi: "distance", pieces: [a, b] }), r);
+    await assert.rejects(async () => C.web3d_mesurer.executer({ quoi: "faces", piece: b }), r);
+    assert.equal((await C.web3d_mesurer.executer({ quoi: "dimensions", piece: b })).pieces, 1, "la fiche d'une pièce masquée reste lisible");
+  }finally{ await C.web3d_visibilite.executer({ action: "tout_afficher" }); }
 });
 
 /* --- Revue : corrections ------------------------------------------------------------ */
@@ -467,8 +522,83 @@ await verifier("lecteur CAO planté : tâche rejetée, lecteur jeté, le suivant
   }finally{ globalThis.Worker = vrai; }
 });
 
-await verifier("aucune commande n'écrit dans les préférences (localStorage)", () => {
+await verifier("préférences : la projection, comme bProjection, jusqu'à #selProjection", async () => {
+  const sel = { value: "?" }, doc = globalThis.document;
+  globalThis.document = { getElementById: id => id === "selProjection" ? sel : null };
+  ecritsLS.length = 0;
+  try{ await C.web3d_vue.executer({ projection: "ortho" }); }finally{ if(doc) globalThis.document = doc; else delete globalThis.document; }
+  assert.deepEqual([prefs.projection, sel.value, vue.projection, ecritsLS], ["ortho", "ortho", "ortho", ["web3d_vue"]]);
+  await C.web3d_vue.executer({ projection: "perspective" });
+  assert.equal(prefs.projection, "perspective");
+});
+
+await verifier("préférences : la tolérance des collisions affichées seulement, et absente, celle de la page", async () => {
+  ecritsLS.length = 0;
+  assert.equal((await C.web3d_collisions.executer({ tolerance: 0.2 })).tolerance, 0.2);
+  assert.deepEqual([prefs.toleranceCollision, ecritsLS], [0.1, []]);
+  await C.web3d_collisions.executer({ tolerance: 0.2, afficher: true });
+  assert.deepEqual([prefs.toleranceCollision, ecritsLS], [0.2, ["web3d_collisions"]]);
+  assert.equal((await C.web3d_collisions.executer({})).tolerance, 0.2);
+  prefs.toleranceCollision = 0.1;
+});
+
+await verifier("ranger le STEP d'une pièce (#bRangerPiece) : la pièce relue par OpenCascade, le nom .stp, rien d'écrasé sans le dire", async () => {
+  const { Interface } = await import("../js/08-interface.js");
+  const { nomRangeStep } = await import("../js/11-projets.js");
+  assert.deepEqual(["écrou", "a/b.step", "x.glb", " ma pièce.stp "].map(nomRangeStep), ["écrou.stp", "a_b.stp", "x.stp", "ma_pièce.stp"]);
+  assert.ok(nomRangeStep("y".repeat(300)).length <= 100);
+  assert.throws(() => nomRangeStep("  "), /nom/);
+
+  const el = { infoExportMsg: { textContent: "" }, bRangerPiece: { disabled: false }, inputNomRanger: { value: "écrou.step" } };
+  const envois = [], vraiFetch = globalThis.fetch, doc = globalThis.document;
+  let chemin = "écrou.stp";
+  globalThis.fetch = async (url, o) => { envois.push([url, o]); return { ok: true, json: async () => ({ chemin }) }; };
+  globalThis.document = { getElementById: id => el[id] };
+  const nut = parNom("nut")[3];
+  const ranger = cibles => Interface.prototype.rangerPieceExport.call({ ciblesExport: () => cibles, vue: { modele } });
+  try{
+    await ranger([nut]);
+    assert.equal(envois[0][0], "api/projets?nom=" + encodeURIComponent("écrou.stp"));
+    assert.equal(envois[0][1].headers["X-Web3D"], "1");
+    assert.equal(el.infoExportMsg.textContent, "Rangé dans le projet : écrou.stp.");
+    assert.ok(!el.bRangerPiece.disabled);
+    const lu = occt.ReadStepFile(new TextEncoder().encode(envois[0][1].body), { linearUnit: "millimeter" });
+    assert.ok(lu.success && lu.meshes.length === 1, "STEP d'une seule pièce, relu");
+
+    chemin = "écrou (2).stp";
+    await ranger([nut]);
+    assert.match(el.infoExportMsg.textContent, /écrou \(2\)\.stp.*existait déjà/);
+
+    envois.length = 0;
+    await ranger([nut, parNom("bolt")[0]]);
+    assert.match(el.infoExportMsg.textContent, /Une pièce à la fois/);
+    const vrai = nut.name; nut.name = "renommee";
+    try{ await ranger([nut]); assert.match(el.infoExportMsg.textContent, /Rangement impossible.*introuvable/); }finally{ nut.name = vrai; }
+    const racine = modele.children[0], texte = racine.userData.stepTexte;
+    delete racine.userData.stepTexte;
+    try{ await ranger([nut]); assert.match(el.infoExportMsg.textContent, /Rangement impossible.*STEP/); }finally{ racine.userData.stepTexte = texte; }
+    assert.equal(envois.length, 0, "rien d'envoyé sur un refus");
+
+    globalThis.fetch = async () => ({ ok: false, status: 400, json: async () => ({ detail: "Nom refusé" }) });
+    await ranger([nut]);
+    assert.match(el.infoExportMsg.textContent, /Rangement impossible.*Nom refusé/);
+  }finally{
+    globalThis.fetch = vraiFetch;
+    if(doc) globalThis.document = doc; else delete globalThis.document;
+  }
+  assert.match(readFileSync(path.join(RACINE, "index.html"), "utf8"), /id="bRangerPiece"[^>]*>Ranger dans le projet</);
+});
+
+await verifier("préférences : seules ces deux exceptions, sur tout le banc (localStorage)", async () => {
+  ecritsLS.length = 0;
+  await C.web3d_vue.executer({ vue: "iso" });
+  await C.web3d_collisions.executer({});
+  await C.web3d_mesurer.executer({ quoi: "dimensions", fichier: 0 });
+  await C.web3d_scene.executer({});
+  await C.web3d_coupe.executer({ actif: false });
+  await C.web3d_visibilite.executer({ action: "tout_afficher" });
   assert.deepEqual(ecritsLS, []);
+  assert.deepEqual([...ecritsTous].sort(), ["web3d_collisions", "web3d_vue"]);
 });
 
 console.log(`${essais}/${essais} ok`);

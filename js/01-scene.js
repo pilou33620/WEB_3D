@@ -18,6 +18,7 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { prefs } from "./00-config.js";
+import { liberer } from "./02-import.js";
 
 const DEG = Math.PI / 180;
 
@@ -515,7 +516,14 @@ export class Vue3D {
     return this.canvas.toDataURL("image/png");
   }
 
+  /** La cote posée par Claude (web3d_mesurer) : effacer la mesure ou fermer le modèle la retire aussi. */
+  effacerCote(){
+    const c = this.annotations.getObjectByName("cote-claude");
+    if(c){ this.annotations.remove(c); liberer(c); this.invalider(); }    // géométrie, matériaux, texture du texte
+  }
+
   viderModele(){
+    this.effacerCote();
     for(const o of [...this.modele.children]) this.modele.remove(o);
     this.materiaux.clear();
     this.rayonModele = 0;

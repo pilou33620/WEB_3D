@@ -12,8 +12,9 @@
    ========================================================================== */
 
 import * as THREE from "three";
+import { prefs, prefsModifiees } from "./00-config.js";
 import { formatDe, LISTE_FORMATS, liberer } from "./02-import.js";
-import { mesurerSolide } from "./05-arbre.js";
+import { encombrement, mesurerSolide, SEUIL_MATIERE } from "./05-arbre.js";
 import { compagnons, lireFichiersProjets } from "./11-projets.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
 import { chercherCollisions, maillageCollisions } from "./12-collisions.js";
@@ -50,6 +51,13 @@ export function cheminDe(modele, objet){
 function visibleEnTout(objet, modele){
   for(let o = objet; o && o !== modele; o = o.parent) if(!o.visible) return false;
   return true;
+}
+
+/* La règle de la page (Vue3D.lancerRayon) : une pièce masquée ne se désigne pas. */
+function pieceVisible(modele, ref){
+  const p = trouverPiece(modele, ref);
+  if(!visibleEnTout(p, modele)) throw new Error(`Pièce « ${nomSur(p.name)} » masquée : affiche-la d'abord.`);
+  return p;
 }
 
 function fichierDe(modele, objet){
@@ -123,16 +131,19 @@ const vec = v => [v.x, v.y, v.z].map(arrondir);
    Mesures : nombres en mm, repère du monde
    ------------------------------------------------------------------------- */
 
-/** Encombrement (sur les sommets, exact même tourné), volume, surface, nombre de pièces. */
+/** Encombrement, nombre de pièces, et volume et surface sous le même seuil que la fiche. */
 export function dimensions(objet){
   objet.updateMatrixWorld(true);
-  const boite = new THREE.Box3();
+  const boite = encombrement(objet);
   const nb = pieces(objet).length || (objet.isMesh ? 1 : 0);
-  objet.traverse(o => { if(o.isMesh) boite.expandByObject(o, true); });
-  const { volume, aire } = mesurerSolide(objet);
   const taille = boite.isEmpty() ? [0, 0, 0] : vec(boite.getSize(new THREE.Vector3()));
-  return { pieces:nb, taille, min:boite.isEmpty() ? [0, 0, 0] : vec(boite.min),
-           max:boite.isEmpty() ? [0, 0, 0] : vec(boite.max), volume:arrondir(volume), surface:arrondir(aire) };
+  const r = { pieces:nb, taille, min:boite.isEmpty() ? [0, 0, 0] : vec(boite.min), max:boite.isEmpty() ? [0, 0, 0] : vec(boite.max) };
+  let triangles = 0;
+  objet.traverse(o => { if(o.isMesh) triangles += o.userData.triangles || 0; });
+  if(triangles > SEUIL_MATIERE)
+    return Object.assign(r, { volume:null, surface:null, note:"Plus de 800 000 triangles : la fiche ne chiffre pas volume et surface." });
+  const { volume, aire } = mesurerSolide(objet);
+  return Object.assign(r, { volume:arrondir(volume), surface:arrondir(aire) });
 }
 
 /** Distance minimale entre deux pièces (triangles du maillage d'affichage), avec les deux points. */
@@ -143,17 +154,18 @@ export function distance(A, B){
   return { distance:arrondir(d), contact:d <= 1e-6, p1:vec(r.p1), p2:vec(r.p2) };
 }
 
-/** Les faces d'une pièce : index stable (région de la topologie), type, géométrie, aire. */
+/** Les faces d'une pièce : index stable (région de la topologie), type, et ce que la fiche de la mesure en montre. */
 export function faces(piece){
   piece.updateMatrixWorld(true);
   const topo = analyser(piece);
   if(!topo) throw new Error(`« ${nomSur(piece.name)} » : trop de triangles pour analyser ses faces.`);
   const liste = topo.trisParRegion.map((tris, index) => {
     const e = faceSous(null, { object:piece, faceIndex:tris[0] });
-    const f = { index, type:e.type, aire:arrondir(e.aire), centre:vec(e.centre) };
+    const f = { index, type:e.type };
+    if(e.type === "cylindre") return Object.assign(f, { axe:vec(e.axe), rayon:arrondir(e.rayon), hauteur:arrondir(e.hauteur),
+                                                        ferme:!!e.ferme, centre:vec(e.centre) });
+    f.aire = arrondir(e.aire);
     if(e.type === "plan") f.normale = vec(e.normale);
-    if(e.type === "cylindre") Object.assign(f, { axe:vec(e.axe), rayon:arrondir(e.rayon), hauteur:arrondir(e.hauteur),
-                                                 ferme:!!e.ferme });
     return f;
   });
   return { piece:piece.name, uuid:piece.uuid, faces:liste };
@@ -191,7 +203,7 @@ export function coteClaude(p1, p2, texte, { etiquette } = {}){
    ------------------------------------------------------------------------- */
 const decrire = (modele, p) => ({ uuid:p.uuid, chemin:cheminDe(modele, p), nom:nomSur(p.name) });
 
-/** Les pièces masquées sont ignorées ; la tolérance est un argument, jamais une préférence écrite. */
+/** Les pièces masquées sont ignorées ; la tolérance est un argument. */
 export async function collisions(modele, options = {}){
   return (await calculerCollisions(modele, options)).resume;
 }
@@ -269,7 +281,9 @@ export function preparerOuverture(chemins, disponibles){
 /* ===========================================================================
    Branchement au canal (js/pilote.js) : les commandes de registre-3d.
    Lectures et réglages visuels s'appliquent tout de suite (trace dans le
-   panneau) ; ouvrir passe par une carte annulable. Aucune commande n'écrit les préférences.
+   panneau) ; ouvrir passe par une carte annulable. Seuls deux réglages que la page
+   enregistre aussi s'écrivent dans les préférences : la projection (comme bProjection) et
+   la tolérance des collisions affichées (comme le champ de leur fenêtre).
    ========================================================================== */
 const VUES = ["avant", "arriere", "gauche", "droite", "dessus", "dessous", "iso"];
 const AXES = ["x", "y", "z"];
@@ -316,16 +330,18 @@ export function brancherPilote3d(W3D, Pilote){
     projection:vue.projection }) });
 
   Pilote.commande("web3d_vue", { executer:a => {
+    const cible = objetVise(modele, a.cadrer || {});
     if(a.vue !== undefined){
       if(!VUES.includes(a.vue)) throw new Error(`Vue inconnue : ${a.vue} (${VUES.join(", ")}).`);
       nav.allerVersVue(a.vue, false);          // sans animation : un onglet caché ne l'avancerait pas
     }
     if(a.projection !== undefined){
       if(!["ortho", "perspective"].includes(a.projection)) throw new Error("Projection : ortho ou perspective.");
-      vue.definirProjection(a.projection);      // la vue seulement, pas les préférences
+      vue.definirProjection(a.projection);
+      if(prefs.projection !== a.projection){ prefs.projection = a.projection; prefsModifiees("projection"); }
+      if(typeof document !== "undefined") document.getElementById("selProjection").value = a.projection;
     }
     // Recadrer seulement si l'on a changé de vue ou demandé un cadrage : la projection seule ne le demande pas
-    const cible = objetVise(modele, a.cadrer || {});
     if(a.vue !== undefined || a.cadrer) vue.ajusterVue(cible);
     ui.majEtatBoutons?.();                     // le bouton de projection suit
     vue.invalider();
@@ -357,7 +373,7 @@ export function brancherPilote3d(W3D, Pilote){
       coupe.definirActif(true); coupe.definirAxe(a.axe);
     }
     if(a.face){
-      const f = faceDe(trouverPiece(modele, a.face.piece), a.face.index);
+      const f = faceDe(pieceVisible(modele, a.face.piece), a.face.index);
       if(f.type !== "plan") throw new Error("La coupe se pose sur une face plane.");
       // La face d'abord, puis le choix à la souris coupé : activer avant laisserait le prochain clic choisir
       coupe.poserFace(f.normale.clone(), f.centre.clone(), `face ${a.face.index}`);
@@ -372,17 +388,13 @@ export function brancherPilote3d(W3D, Pilote){
              bornes_mm:[arrondir(coupe.minMm || 0), arrondir(coupe.maxMm || 0)], inverse:!!coupe.inverse };
   } });
 
-  const effacerCote = () => {
-    const c = vue.annotations.getObjectByName("cote-claude");
-    if(c){ vue.annotations.remove(c); liberer(c); }      // géométrie, matériaux, texture du texte
-  };
   Pilote.commande("web3d_mesurer", { executer:a => {
-    effacerCote();
+    vue.effacerCote();
     if(a.effacer) { vue.invalider(); return { efface:true }; }
     let r;
     if(a.quoi === "distance"){
       if(!Array.isArray(a.pieces) || a.pieces.length !== 2) throw new Error("distance : deux pièces.");
-      r = distance(trouverPiece(modele, a.pieces[0]), trouverPiece(modele, a.pieces[1]));
+      r = distance(pieceVisible(modele, a.pieces[0]), pieceVisible(modele, a.pieces[1]));
       if(a.afficher){
         const texte = `${String(r.distance).replace(".", ",")} mm`;
         const diagonale = new THREE.Box3().setFromObject(modele).getSize(new THREE.Vector3()).length() || 100;
@@ -390,8 +402,9 @@ export function brancherPilote3d(W3D, Pilote){
           typeof document !== "undefined" ? { etiquette:t => etiquetteTexte(THREE, t, diagonale * 0.25) } : {}));
       }
     }else if(a.quoi === "faces"){
-      r = faces(trouverPiece(modele, a.piece));
+      r = faces(pieceVisible(modele, a.piece));
     }else if(a.quoi === "dimensions" || a.quoi === undefined){
+      if(a.piece === undefined && a.fichier === undefined) throw new Error("dimensions : une pièce ou un fichier, comme la fiche ; pas la scène entière.");
       r = dimensions(objetVise(modele, a));
     }else throw new Error("quoi : dimensions, distance ou faces.");
     vue.invalider();
@@ -402,10 +415,12 @@ export function brancherPilote3d(W3D, Pilote){
     /* Onglet caché : le navigateur retarde chaque pause d'au moins une seconde (127 s au lieu de
        3 s mesurés) ; personne ne regarde la page, on calcule donc d'un bloc. */
     const cache = typeof document !== "undefined" && document.visibilityState === "hidden";
-    const { brut, resume:r } = await calculerCollisions(modele,
-      { tolerance:a.tolerance === undefined ? 0.1 : +a.tolerance, pauses:!cache });
+    const tolerance = a.tolerance === undefined ? prefs.toleranceCollision : +a.tolerance;
+    const { brut, resume:r } = await calculerCollisions(modele, { tolerance, pauses:!cache });
     if(cache) r.note = "Onglet caché : calcul fait d'un bloc.";
     if(a.afficher){
+      // La fenêtre montre la préférence : celle du calcul qu'elle affiche, comme si on l'avait saisie dans le champ
+      if(prefs.toleranceCollision !== tolerance){ prefs.toleranceCollision = tolerance; prefsModifiees("toleranceCollision"); }
       // Le résultat déjà calculé, dessiné comme le fait le bouton Collisions : pas de second calcul
       ui.effacerCollisions?.();
       ui.collisions = maillageCollisions(brut);

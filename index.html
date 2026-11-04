@@ -342,6 +342,15 @@ try{
       <input type="text" id="inputNomFichierExport" class="champ-texte" style="flex:0 0 260px" autocomplete="off">
     </div>
 
+    <div id="ligneRangerPiece" hidden>
+      <h4>Ranger le STEP d'une pièce dans le projet</h4>
+      <div class="lg">
+        <label for="inputNomRanger">Nom dans PROJETS (.stp)</label>
+        <input type="text" id="inputNomRanger" class="champ-texte" style="flex:0 0 180px" autocomplete="off">
+        <button type="button" class="tb" id="bRangerPiece" title="Une pièce à la fois, aux positions d'origine du STEP. Un nom déjà pris devient « x (2) » : rien n'est écrasé.">Ranger dans le projet</button>
+      </div>
+    </div>
+
     <div id="infoExportMsg" class="aide" style="margin-top:8px"></div>
 
     <menu>

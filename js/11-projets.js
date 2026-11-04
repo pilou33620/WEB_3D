@@ -12,6 +12,7 @@
 "use strict";
 
 import { estAnnexe } from "./02-import.js";
+import { sanitiserNomFichier } from "./10-export-step.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,6 +32,22 @@ export function nomProjet(nom){
   const i = nom.lastIndexOf(".");
   const base = (i > 0 ? nom.slice(0, i) : nom).replace(/[^\p{L}\p{N}_ .()+-]/gu, "_").trim() || "modele";
   return (/^[\p{L}\p{N}_(]/u.test(base) ? "" : "_") + base + (i > 0 ? nom.slice(i).toLowerCase() : "");
+}
+
+/** Le nom d'un STEP rangé par « Ranger dans le projet » : toujours .stp, accepté par le serveur (100 caractères au plus). */
+export function nomRangeStep(nom){
+  if(!String(nom ?? "").trim()) throw new Error("donnez un nom de fichier.");
+  return nomProjet(sanitiserNomFichier(nom).slice(-100));
+}
+
+/** Range un fichier dans PROJETS ; le serveur n'écrase jamais : un nom pris devient « x (2) », et il rend le chemin écrit. */
+export async function rangerFichier(nom, corps){
+  const r = await fetch("api/projets?nom=" + encodeURIComponent(nom), {
+    method:"POST", headers:{ "X-Web3D":"1", "Content-Type":"application/octet-stream" }, body:corps,
+  });
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(`${nom} : ${j.detail || r.status}`);
+  return j.chemin;
 }
 
 /** Un .obj s'ouvre avec ses matériaux : le .mtl de même nom, s'il est rangé à côté. */
@@ -87,12 +104,7 @@ async function ranger(ui){
   const ranges = [];
   try{
     for(const f of ui.derniersFichiers || []){
-      const r = await fetch("api/projets?nom=" + encodeURIComponent(nomProjet(f.name)), {
-        method:"POST", headers:{ "X-Web3D":"1", "Content-Type":"application/octet-stream" }, body:f,
-      });
-      const j = await r.json().catch(() => ({}));
-      if(!r.ok) throw new Error(`${f.name} : ${j.detail || r.status}`);
-      ranges.push(j.chemin);
+      ranges.push(await rangerFichier(nomProjet(f.name), f));
     }
     await remplir(ui);
     etat.textContent = `Rangé : ${ranges.join(", ")}.`;
@@ -107,6 +119,7 @@ export async function brancherProjets(ui){
   try{ donnees = await liste(); }catch(e){ return; }        // serveur sans la route : pas de projets
   if(!donnees.dispo) return;
   $("bProjets").hidden = false;
+  $("ligneRangerPiece").hidden = false;                     // dans « Exporter une pièce »
   $("bProjets").onclick = async () => {
     $("projetsEtat").textContent = "";
     await remplir(ui);
