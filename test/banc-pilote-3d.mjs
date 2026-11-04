@@ -241,85 +241,20 @@ await verifier("une pièce noyée dans une autre est une collision « contenue �
   assert.deepEqual(await chercherCollisions(trou, { pauses: false }), []);
 });
 
-/* --- T5: déplacement, contrainte, matrices ---------------------------------- */
+/* --- T5: matrices ---------------------------------- */
 const deux = new THREE.Group();          // l'exemple ouvert deux fois : deux fichiers à assembler
 deux.add(lireExemple("assemblage-as1.stp"), lireExemple("assemblage-as1.stp"));
 deux.updateMatrixWorld(true);
-const [f0, f1] = deux.children;
-const centreDe = g => new THREE.Box3().setFromObject(g, true).getCenter(new THREE.Vector3());
-const pres = (a, b, tol = 1e-6) => a.every((x, i) => Math.abs(x - b[i]) <= tol);
-
-await verifier("translation, position absolue, origine", () => {
-  P3.deplacer(f1, { translation: [25, 0, 0] });
-  assert.ok(pres(f1.position.toArray(), [25, 0, 0]));
-  P3.deplacer(f1, { translation: [0, -5, 2] });
-  assert.ok(pres(f1.position.toArray(), [25, -5, 2]));
-  P3.deplacer(f1, { position: [10, 20, 30] });
-  assert.ok(pres(f1.position.toArray(), [10, 20, 30]));
-  P3.deplacer(f1, { origine: true });
-  assert.ok(pres(f1.position.toArray(), [0, 0, 0]) && pres([f1.rotation.x, f1.rotation.y, f1.rotation.z], [0, 0, 0]));
-});
-
-await verifier("une rotation garde le centre de la boîte (comme le panneau Déplacer)", () => {
-  const c0 = centreDe(f1);
-  P3.deplacer(f1, { rotation_deg: [0, 0, 90] });
-  assert.ok(pres(centreDe(f1).toArray(), c0.toArray(), 1e-3), "centre déplacé");
-  assert.ok(Math.abs(f1.rotation.z - Math.PI / 2) < 1e-9);
-  P3.deplacer(f1, { origine: true });
-});
+const f1 = deux.children[1];
 
 await verifier("état des matrices : déplacer puis remettre redonne l'état au bit près", () => {
   const e0 = P3.etatMatrices(deux);
   assert.deepEqual(JSON.parse(JSON.stringify(e0)), e0);
-  P3.deplacer(f1, { translation: [3.3, 1.1, 0], rotation_deg: [10, 20, 30] });
+  f1.position.add(new THREE.Vector3(3.3, 1.1, 0)); f1.rotation.set(0.1, 0.2, 0.3);
   assert.notDeepEqual(P3.etatMatrices(deux), e0);
   P3.remettreMatrices(deux, e0);
   assert.deepEqual(P3.etatMatrices(deux), e0);
   assert.throws(() => P3.remettreMatrices(deux, e0.slice(1)), /fichiers/);
-});
-
-await verifier("contrainte plan contre plan : faces plaquées à 5 mm, normales opposées", () => {
-  const plaque = g => P3.pieces(g).find(p => p.name === "plate");
-  const A = plaque(f1), B = plaque(f0);
-  const fA = P3.faces(A).faces.find(f => f.type === "plan" && f.normale[2] < -0.99);   // dessous de la plaque mobile
-  const fB = P3.faces(B).faces.find(f => f.type === "plan" && f.normale[2] > 0.99);    // dessus de la plaque fixe
-  assert.ok(fA && fB, "faces dessous et dessus de la plaque");
-  P3.deplacer(f1, { translation: [7, 9, -40] });
-  P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: fA.index }, fixe: { piece: B.uuid, face: fB.index }, decalage: 5 });
-  const apresA = P3.faces(A).faces[fA.index], apresB = P3.faces(B).faces[fB.index];
-  assert.ok(pres(apresA.normale, apresB.normale.map(x => -x), 1e-6), "normales opposées");
-  const ecart = [0, 1, 2].reduce((s, k) => s + (apresA.centre[k] - apresB.centre[k]) * apresB.normale[k], 0);
-  assert.ok(Math.abs(ecart - 5) < 1e-3, "écart le long de la normale : " + ecart);
-  P3.deplacer(f1, { origine: true });
-});
-
-await verifier("contrainte axe contre axe : deux vis sur le même axe", () => {
-  const vis = g => P3.pieces(g).find(p => p.name === "bolt");
-  const A = vis(f1), B = vis(f0);
-  const fA = P3.faces(A).faces.find(f => f.type === "cylindre"), fB = P3.faces(B).faces.find(f => f.type === "cylindre");
-  P3.deplacer(f1, { translation: [30, -12, 4], rotation_deg: [20, 0, 35] });
-  P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: fA.index }, fixe: { piece: B.uuid, face: fB.index } });
-  const a = P3.faces(A).faces[fA.index], b = P3.faces(B).faces[fB.index];
-  // Axes rendus arrondis au millième, et ajustés sur le maillage d'affichage : on normalise, et
-  // l'écart entre axes se juge à la précision du maillage (0,1 mm)
-  const ax = new THREE.Vector3(...a.axe).normalize(), bx = new THREE.Vector3(...b.axe).normalize();
-  assert.ok(Math.abs(Math.abs(ax.dot(bx)) - 1) < 1e-3, "axes parallèles");
-  const w = new THREE.Vector3(...a.centre).sub(new THREE.Vector3(...b.centre));
-  assert.ok(w.sub(bx.clone().multiplyScalar(w.dot(bx))).length() < 0.1, "axes confondus");
-  P3.deplacer(f1, { origine: true });
-});
-
-await verifier("contraintes refusées : faces incompatibles, face fixe sur le même fichier, index hors limites", () => {
-  const A = P3.pieces(f1).find(p => p.name === "bolt"), B = P3.pieces(f0).find(p => p.name === "plate");
-  const cyl = P3.faces(A).faces.find(f => f.type === "cylindre"), plan = P3.faces(B).faces.find(f => f.type === "plan");
-  assert.throws(() => P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: cyl.index }, fixe: { piece: B.uuid, face: plan.index } }),
-                /deux faces planes|cylindriques/);
-  const memeFichier = P3.pieces(f1).find(p => p.name === "plate");
-  assert.throws(() => P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: cyl.index }, fixe: { piece: memeFichier.uuid, face: 0 } }),
-                /autre fichier/);
-  assert.throws(() => P3.contrainte(deux, f1, { mobile: { piece: A.uuid, face: 9999 }, fixe: { piece: B.uuid, face: 0 } }),
-                /hors limites/);
-  assert.ok(pres(f1.position.toArray(), [0, 0, 0]), "rien n'a bougé");
 });
 
 /* --- T6 : ouvrir depuis PROJETS/3D (partie pure : chemins et compagnons) ------ */
@@ -340,47 +275,7 @@ await verifier("ouvrir : chemins refusés avant tout fetch", () => {
   ]) assert.throws(() => P3.preparerOuverture(chemins, disponibles), motif, JSON.stringify(chemins));
 });
 
-/* --- T7 : extraction STEP, relue par OpenCascade ------------------------------- */
-const relire = texte => occt.ReadStepFile(new TextEncoder().encode(texte), { linearUnit: "millimeter" });
-const tailleTriee = arr => [...arr].map(x => +x.toFixed(2)).sort((x, y) => y - x);
-
-await verifier("STEP d'une pièce : relu par OpenCascade, même encombrement que la pièce", () => {
-  const nut = parNom("nut")[3];                       // une occurrence parmi 8 : c'est le même produit
-  const r = P3.extraireStep(modele, [nut.uuid]);
-  assert.deepEqual(r.produits, ["nut"]);
-  assert.ok(r.octets > 100 && r.texte.startsWith("ISO-10303-21"));
-  const lu = relire(r.texte);
-  assert.ok(lu.success, "STEP relu");
-  assert.equal(lu.meshes.length, 1);
-  const boite = new THREE.Box3();
-  const p = lu.meshes[0].attributes.position.array;
-  for(let i = 0; i < p.length; i += 3) boite.expandByPoint(new THREE.Vector3(p[i], p[i+1], p[i+2]));
-  nut.geometry.computeBoundingBox();
-  assert.deepEqual(tailleTriee(boite.getSize(new THREE.Vector3()).toArray()),
-                   tailleTriee(nut.geometry.boundingBox.getSize(new THREE.Vector3()).toArray()));
-});
-
-/* Un sous-ensemble choisi pièce par pièce n'est pas fiable : exportAssemblageFiltre remonte au
-   sous-ensemble parent puis redescend vers tous ses enfants (un écrou demandé emporte toutes les
-   vis et tous les écrous de « nut-bolt-assembly »). Une pièce à la fois. */
-await verifier("STEP de deux pièces : refusé, une pièce à la fois", () => {
-  assert.throws(() => P3.extraireStep(modele, [parNom("nut")[0].uuid, parNom("bolt")[0].uuid]), /une pièce à la fois/i);
-  assert.throws(() => P3.extraireStep(modele, []), /une pièce/);
-});
-
-await verifier("STEP refusé : pièce absente du STEP, fichier qui n'est pas un STEP", () => {
-  const plaque = parNom("plate")[0];
-  const vrai = plaque.name;
-  plaque.name = "plaque-renommee";
-  try{ assert.throws(() => P3.extraireStep(modele, [plaque.uuid]), /introuvable/); }
-  finally{ plaque.name = vrai; }
-  const texte = modele.children[0].userData.stepTexte;
-  delete modele.children[0].userData.stepTexte;
-  try{ assert.throws(() => P3.extraireStep(modele, [plaque.uuid]), /STEP/); }
-  finally{ modele.children[0].userData.stepTexte = texte; }
-});
-
-/* --- T8 : les 9 commandes déclarées au canal, sur une interface factice ------------ */
+/* --- T8 : les commandes déclarées au canal, sur une interface factice ------------ */
 const ecritsLS = [];
 globalThis.localStorage = { getItem: () => null, setItem: (k) => ecritsLS.push(k), removeItem() {} };
 const scene3 = new THREE.Group(); scene3.add(lireExemple("assemblage-as1.stp")); scene3.updateMatrixWorld(true);
@@ -408,13 +303,12 @@ const fauxPilote = { declarer(o) { declare.page = o.page; return this; }, captur
 P3.brancherPilote3d({ THREE, vue, nav, arbre, ui, coupe }, fauxPilote);
 const C = declare.commandes;
 
-await verifier("les 9 commandes, avec leur type", () => {
+await verifier("les 7 commandes, avec leur type", () => {
   assert.equal(declare.page, "3d");
   for(const n of ["web3d_scene", "web3d_vue", "web3d_visibilite", "web3d_coupe", "web3d_mesurer", "web3d_collisions"])
     assert.ok(C[n] && typeof C[n].executer === "function" && !C[n].ecriture, n);
-  for(const n of ["web3d_ouvrir", "web3d_deplacer"])
-    assert.ok(C[n] && C[n].ecriture && typeof C[n].annuler === "function" && typeof C[n].etat === "function", n);
-  assert.ok(C.web3d_ranger_step.ecriture && /non annulable/.test(C.web3d_ranger_step.irreversible));
+  assert.ok(C.web3d_ouvrir && C.web3d_ouvrir.ecriture && typeof C.web3d_ouvrir.annuler === "function" && typeof C.web3d_ouvrir.etat === "function");
+  assert.ok(!C.web3d_deplacer && !C.web3d_ranger_step, "déplacer et ranger se font par des gestes");
 });
 
 await verifier("scène, vue sans animation et cadrage, visibilité", async () => {
@@ -451,30 +345,6 @@ await verifier("mesurer : distance, avec la cote de Claude posée puis effacée"
   await C.web3d_mesurer.executer({ effacer: true });
   assert.equal(vue.annotations.getObjectByName("cote-claude"), undefined);
   assert.equal((await C.web3d_mesurer.executer({ quoi: "dimensions" })).pieces, 18);
-});
-
-await verifier("déplacer : carte, application, annulation au bit près", async () => {
-  const d = C.web3d_deplacer, avant = d.etat();
-  const prop = await d.proposer({ fichier: 0, translation: [12, 0, 0] });
-  assert.ok(/Déplacer/.test(prop.titre) && /12/.test(prop.details));
-  const jeton = await d.appliquer({ fichier: 0, translation: [12, 0, 0] }, prop);
-  assert.ok(Math.abs(scene3.children[0].position.x - 12) < 1e-9 && d.etat() !== avant);
-  await d.annuler({}, jeton);
-  assert.equal(d.etat(), avant);
-});
-
-await verifier("ranger un STEP : POST /api/projets avec X-Web3D, chemin rendu", async () => {
-  const nut = desc3.pieces.find(p => p.nom === "nut");
-  const envoi = [];
-  globalThis.fetch = async (url, opts) => { envoi.push([url, opts]); return { ok: true, json: async () => ({ chemin: "nut (2).stp" }) }; };
-  const r = C.web3d_ranger_step;
-  const prop = await r.proposer({ piece: nut.uuid, nom: "nut" });
-  assert.ok(/nut\.stp/.test(prop.titre) && /PROJETS/.test(prop.titre));
-  const retour = await r.appliquer({ piece: nut.uuid, nom: "nut" }, prop);
-  assert.deepEqual(retour, { chemin: "nut (2).stp" });
-  assert.match(envoi[0][0], /api\/projets\?nom=nut\.stp$/);
-  assert.equal(envoi[0][1].method, "POST"); assert.equal(envoi[0][1].headers["X-Web3D"], "1");
-  assert.ok(envoi[0][1].body.startsWith("ISO-10303-21"));
 });
 
 /* --- Revue : corrections ------------------------------------------------------------ */
@@ -521,29 +391,6 @@ await verifier("annuler un ajout : pièce isolée et sélection relâchées, col
   assert.ok(compte.effacer >= 1, "collisions affichées effacées");
 });
 
-await verifier("annuler un déplacement : un seul calcul de collisions, quel que soit le nombre de fichiers", async () => {
-  scene3.add(lireExemple("assemblage-as1.stp")); scene3.updateMatrixWorld(true);
-  const d = C.web3d_deplacer;
-  const prop = await d.proposer({ fichier: 1, translation: [5, 0, 0] });
-  const j = await d.appliquer({ fichier: 1, translation: [5, 0, 0] }, prop);
-  ui.collisions = { factice: true }; compte.lancer = 0;
-  await d.annuler({}, j);
-  assert.equal(compte.lancer, 1);
-  ui.collisions = null;
-  scene3.remove(scene3.children[1]);
-});
-
-await verifier("carte de déplacement : aperçu avant → après, rien ne bouge avant le clic, refus si la scène a changé", async () => {
-  const d = C.web3d_deplacer, g = scene3.children[0], avant = g.position.toArray();
-  const prop = await d.proposer({ fichier: 0, translation: [12, 0, 0] });
-  assert.ok(/0 ; 0 ; 0/.test(prop.avant) && /12 ; 0 ; 0/.test(prop.apres), JSON.stringify(prop));
-  assert.deepEqual(g.position.toArray(), avant, "proposer ne bouge rien");
-  const intrus = new THREE.Group(); intrus.name = "intrus"; scene3.add(intrus); scene3.children.unshift(scene3.children.pop());
-  await assert.rejects(async () => d.appliquer({ fichier: 0, translation: [12, 0, 0] }, prop), /changé/);
-  scene3.remove(intrus);
-  assert.deepEqual(scene3.children[0].position.toArray(), avant);
-});
-
 await verifier("collisions affichées : le résultat calculé est dessiné, sans second calcul", async () => {
   compte.lancer = 0; compte.afficher = 0;
   const r = await C.web3d_collisions.executer({ afficher: true });
@@ -581,25 +428,6 @@ await verifier("vue : la projection seule ne recadre pas, et les boutons suivent
   traces.length = 0; compte.majBoutons = 0;
   await C.web3d_vue.executer({ projection: "perspective" });
   assert.ok(!traces.some(t => t.startsWith("ajuster")) && compte.majBoutons === 1, traces.join());
-});
-
-await verifier("ranger : le STEP n'est plus gardé par la carte après l'envoi ; nom par défaut accepté par le serveur", async () => {
-  const nut = desc3b().find(q => q.nom === "nut");
-  globalThis.fetch = async () => ({ ok: true, json: async () => ({ chemin: "nut.stp" }) });
-  const prop = await C.web3d_ranger_step.proposer({ piece: nut.uuid });
-  assert.match(prop.nom, /^[\w(]/);
-  await C.web3d_ranger_step.appliquer({ piece: nut.uuid }, prop);
-  assert.equal(prop.texte, undefined);
-  globalThis.fetch = async () => ({ ok: false, status: 400, json: async () => ({ detail: "Nom ou format refusé : x" }) });
-  const prop2 = await C.web3d_ranger_step.proposer({ piece: nut.uuid, nom: "x" });
-  await assert.rejects(async () => C.web3d_ranger_step.appliquer({ piece: nut.uuid }, prop2), /Nom ou format refusé/);
-});
-
-await verifier("STEP : nom de produit exact (la casse compte)", () => {
-  const nut = P3.trouverPiece(scene3, desc3b().find(q => q.nom === "nut").uuid);
-  nut.name = "NUT";
-  try{ assert.throws(() => P3.extraireStep(scene3, [nut.uuid]), /introuvable/); }
-  finally{ nut.name = "nut"; }
 });
 
 await verifier("STL illisible : un message de la page, pas l'erreur brute du lecteur (web3d_ouvrir le rend)", () => {

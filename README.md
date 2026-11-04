@@ -342,7 +342,8 @@ ouverture si Claude Code est prêt (`lanceur/docs/SPEC-claude-pages.md` de web_s
 | :--- | :--- | :--- |
 | Lectures | `web3d_scene`, `web3d_mesurer`, `web3d_collisions` | réponse directe, rien ne change |
 | Directes | `web3d_vue`, `web3d_visibilite`, `web3d_coupe` | appliquées tout de suite : vue, œil, plan de coupe — rien du fichier |
-| En carte | `web3d_ouvrir`, `web3d_deplacer`, `web3d_ranger_step` | une carte avant → après, Appliquer ou Refuser ; ouvrir et déplacer s'annulent par la carte, le STEP rangé non |
+| En carte | `web3d_ouvrir` | une carte avant → après, Appliquer ou Refuser ; elle s'annule par la carte |
+| Gestes | `pilote_interface` | tout le reste, comme l'utilisateur : déplacer (`#bDeplacer`), exporter une pièce (`#bExportPiece`) |
 
 L'interrupteur « Appliquer directement (cet onglet) » saute la carte ; il est éteint à
 chaque chargement. Le détail du panneau est dans `web_suite/lanceur/docs/DETAILS.md`

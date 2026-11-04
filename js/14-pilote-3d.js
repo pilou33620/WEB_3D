@@ -3,7 +3,7 @@
 
    Deux étages :
    - des FONCTIONS PURES sur une scène three.js (identifier une pièce, décrire la
-     scène, mesurer, chercher les collisions, déplacer, extraire un STEP), qui
+     scène, mesurer, chercher les collisions), qui
      rendent des nombres et des chaînes, jamais un Vector3 ni un maillage —
      éprouvées sous Node par test/banc-pilote-3d.mjs ;
    - brancherPilote3d, qui les déclare au canal (js/pilote.js) et fait le lien
@@ -14,11 +14,10 @@
 import * as THREE from "three";
 import { formatDe, LISTE_FORMATS, liberer } from "./02-import.js";
 import { mesurerSolide } from "./05-arbre.js";
-import { compagnons, lireFichiersProjets, nomProjet } from "./11-projets.js";
+import { compagnons, lireFichiersProjets } from "./11-projets.js";
 import { analyser, faceSous, mesurerEntites } from "./06-topologie.js";
-import { StepExtractor, sanitiserNomFichier } from "./10-export-step.js";
 import { chercherCollisions, maillageCollisions } from "./12-collisions.js";
-import { contraindre, perimerCaches, apresDeplacement } from "./13-deplacement.js";
+import { perimerCaches, apresDeplacement } from "./13-deplacement.js";
 
 /* Les noms viennent du fichier (produits STEP) : sans caractères de contrôle ni de sens d'écriture,
    bornés, avant d'aller à Claude ou sur une carte — un nom n'est pas une consigne. */
@@ -212,29 +211,11 @@ export async function calculerCollisions(modele, { tolerance = 0.1, pauses = tru
    panneau Déplacer, dont on reprend les conventions (valeurs absolues, rotation
    autour du centre de la boîte).
    ------------------------------------------------------------------------- */
-const RAD = Math.PI / 180;
-const centreBoite = g => new THREE.Box3().setFromObject(g, true).getCenter(new THREE.Vector3());
-
 /** Le groupe d'un fichier par son index. */
 export function trouverFichier(modele, index){
   const g = Number.isInteger(index) ? modele.children[index] : undefined;
   if(!g) throw new Error(`Fichier ${index} inconnu : ${modele.children.length} fichier(s) ouvert(s).`);
   return g;
-}
-
-/** origine, puis position (absolue, mm), translation (relative), rotation_deg (absolue, Euler XYZ). */
-export function deplacer(g, { position, translation, rotation_deg, origine } = {}){
-  if(origine){ g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); }
-  if(position) g.position.fromArray(position);
-  if(translation) g.position.add(new THREE.Vector3().fromArray(translation));
-  if(rotation_deg){
-    g.updateMatrixWorld(true);
-    const avant = centreBoite(g);
-    g.rotation.set(rotation_deg[0] * RAD, rotation_deg[1] * RAD, rotation_deg[2] * RAD);
-    g.updateMatrixWorld(true);
-    g.position.add(avant.sub(centreBoite(g)));
-  }
-  perimerCaches(g);
 }
 
 /** La face d'index donné d'une pièce, en coordonnées du monde (06-topologie). */
@@ -244,18 +225,6 @@ export function faceDe(piece, index){
   const tris = topo && topo.trisParRegion[index];
   if(!tris) throw new Error(`Face ${index} hors limites pour « ${nomSur(piece.name)} » (${topo ? topo.trisParRegion.length : 0} faces).`);
   return faceSous(null, { object:piece, faceIndex:tris[0] });
-}
-
-/** Plaquer deux plans ou aligner deux axes : la face mobile sur le fichier g, la fixe sur un autre. */
-export function contrainte(modele, g, { mobile, fixe, decalage = 0 }){
-  const pA = trouverPiece(modele, mobile.piece), pB = trouverPiece(modele, fixe.piece);
-  const fichierA = modele.children[fichierDe(modele, pA)], fichierB = modele.children[fichierDe(modele, pB)];
-  if(fichierA !== g) throw new Error(`La face mobile doit être sur le fichier déplacé (« ${nomSur(g.name)} »).`);
-  if(fichierB === g) throw new Error("La face fixe doit être sur un autre fichier que celui qu'on déplace.");
-  const A = faceDe(pA, mobile.face), B = faceDe(pB, fixe.face);
-  const erreur = contraindre(g, A, B, decalage);
-  if(erreur) throw new Error(erreur);
-  perimerCaches(g);
 }
 
 /** Position, orientation et échelle de chaque fichier : l'Annuler des cartes les remet au bit près. */
@@ -297,39 +266,10 @@ export function preparerOuverture(chemins, disponibles){
   return sortie;
 }
 
-/* ---------------------------------------------------------------------------
-   Extraire un STEP : la pièce recopiée du STEP d'origine, aux positions d'origine —
-   un déplacement fait dans la vue n'y est pas.
-   ------------------------------------------------------------------------- */
-
-/**
- * Une pièce à la fois. StepExtractor retrouve un produit par nom exact, puis approché : on
- * n'accepte que l'exact (les 8 « nut » sont 8 occurrences d'un même produit : ça va). Un
- * sous-ensemble choisi pièce par pièce n'est pas fiable : exportAssemblageFiltre remonte au
- * sous-ensemble parent et redescend vers tous ses enfants, voisins compris.
- */
-export function extraireStep(modele, refs){
-  if(!Array.isArray(refs) || !refs.length) throw new Error("Donne une pièce.");
-  if(refs.length > 1) throw new Error("Une pièce à la fois : l'extraction d'un sous-ensemble choisi pièce par pièce " +
-                                      "emporterait aussi ses pièces voisines.");
-  const piece = trouverPiece(modele, refs[0]);
-  const texte = modele.children[fichierDe(modele, piece)].userData.stepTexte;
-  if(!texte) throw new Error("Ce fichier n'est pas un STEP (ou son texte n'a pas été gardé) : extraction impossible.");
-  const ex = new StepExtractor(texte);
-  const memes = [...ex.produits.values()].filter(pr => pr.nom === piece.name);   // exact, la casse compte
-  if(!memes.length) throw new Error(`Pièce « ${nomSur(piece.name)} » introuvable dans le STEP d'origine (nom différent ?).`);
-  if(new Set(memes.map(m => m.defId)).size > 1)
-    throw new Error(`Deux produits STEP différents s'appellent « ${nomSur(piece.name)} » : extraction ambiguë.`);
-  const sortie = ex.exportPiece(memes[0]);
-  return { produits:[memes[0].nom], texte:sortie, octets:new TextEncoder().encode(sortie).length,
-           note:"Positions d'origine du STEP : les déplacements faits dans la vue n'y sont pas." };
-}
-
 /* ===========================================================================
-   Branchement au canal (js/pilote.js) : les 9 commandes de registre-3d.
+   Branchement au canal (js/pilote.js) : les commandes de registre-3d.
    Lectures et réglages visuels s'appliquent tout de suite (trace dans le
-   panneau) ; ouvrir et déplacer passent par une carte annulable ; ranger un
-   STEP par une carte irréversible. Aucune commande n'écrit les préférences.
+   panneau) ; ouvrir passe par une carte annulable. Aucune commande n'écrit les préférences.
    ========================================================================== */
 const VUES = ["avant", "arriere", "gauche", "droite", "dessus", "dessous", "iso"];
 const AXES = ["x", "y", "z"];
@@ -523,66 +463,5 @@ export function brancherPilote3d(W3D, Pilote){
       }
     },
     etat:() => JSON.stringify(etatMatrices(modele)),
-  });
-
-  /* --- déplacer : un fichier, annulable par les matrices ------------------- */
-  Pilote.commande("web3d_deplacer", {
-    ecriture:true,
-    proposer:a => {
-      const g = trouverFichier(modele, a.fichier);
-      const quoi = [];
-      if(a.origine) quoi.push("retour à l'origine du fichier");
-      if(a.position) quoi.push(`position ${a.position.join(" ; ")} mm`);
-      if(a.translation) quoi.push(`translation ${a.translation.join(" ; ")} mm`);
-      if(a.rotation_deg) quoi.push(`rotation ${a.rotation_deg.join(" ; ")}° (autour du centre)`);
-      if(a.contrainte) quoi.push(`contrainte : face ${a.contrainte.mobile.face} sur face ${a.contrainte.fixe.face}` +
-                                 (a.contrainte.decalage ? `, décalage ${a.contrainte.decalage} mm` : ""));
-      if(!quoi.length) throw new Error("Rien à faire : position, translation, rotation_deg, origine ou contrainte.");
-      // L'aperçu : on applique, on lit, on remet (une contrainte impossible échoue dès la carte)
-      const lire = () => `position ${vec(g.position).join(" ; ")} mm, rotation ${
-        [g.rotation.x, g.rotation.y, g.rotation.z].map(r => arrondir(r * DEG)).join(" ; ")}°`;
-      const jeton = etatMatrices(modele), avant = lire();
-      let apres;
-      try{ deplacer(g, a); if(a.contrainte) contrainte(modele, g, a.contrainte); apres = lire(); }
-      finally{ remettreMatrices(modele, jeton); }
-      return { titre:`Déplacer « ${nomSur(g.name)} »`, uuid:g.uuid, details:quoi.join("\n"), avant, apres };
-    },
-    appliquer:(a, prop) => {
-      const jeton = etatMatrices(modele);
-      const g = trouverFichier(modele, a.fichier);
-      if(prop && prop.uuid && g.uuid !== prop.uuid)
-        throw new Error("La scène a changé depuis la carte (ce n'est plus le même fichier) : redemande-la.");
-      try{
-        deplacer(g, a);
-        if(a.contrainte) contrainte(modele, g, a.contrainte);
-      }catch(e){ remettreMatrices(modele, jeton); throw e; }      // rien à moitié
-      rafraichir(g);
-      return jeton;
-    },
-    annuler:(_a, jeton) => { remettreMatrices(modele, jeton); rafraichirTous(); },
-    etat:() => JSON.stringify(etatMatrices(modele)),
-  });
-
-  /* --- ranger le STEP d'une pièce dans PROJETS/3D (irréversible ici) -------- */
-  Pilote.commande("web3d_ranger_step", {
-    ecriture:true,
-    irreversible:"Crée un nouveau fichier dans PROJETS/3D (jamais d'écrasement : un nom pris devient « x (2) ») ; non annulable ici.",
-    proposer:a => {
-      const r = extraireStep(modele, [a.piece]);
-      const nom = nomProjet(sanitiserNomFichier(a.nom || r.produits[0]).slice(-100));   // la regex du serveur
-      return { titre:`Ranger « ${nomSur(nom)} » dans PROJETS/3D`, nom, texte:r.texte,
-               details:`Pièce « ${nomSur(r.produits[0])} », ${Math.round(r.octets / 1024)} ko. ${r.note}` };
-    },
-    appliquer:async (_a, prop) => {
-      const r = await fetch("api/projets?nom=" + encodeURIComponent(prop.nom),
-                            { method:"POST", headers:{ "X-Web3D":"1" }, body:prop.texte });
-      if(!r.ok){
-        let detail = "";
-        try{ detail = (await r.json()).detail || ""; }catch(_){ /* corps illisible */ }
-        throw new Error(`Rangement refusé par le serveur : ${detail || r.status}.`);
-      }
-      delete prop.texte;                                   // le STEP n'a plus à rester en mémoire dans la carte
-      return await r.json();
-    },
   });
 }
