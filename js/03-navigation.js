@@ -387,7 +387,7 @@ export class Navigation {
     const dist = Math.max(v.distance(), (v.rayonModele || 1) * 0.01);
     const arrivee = new THREE.Vector3().addVectors(v.cible, direction.clone().normalize().multiplyScalar(dist));
     const hautArrivee = this.hautPour(direction);
-    if(!animer){ this.poser(arrivee, hautArrivee); return; }
+    if(!animer){ this.animation = null; this.poser(arrivee, hautArrivee); return; }   // sinon l'animation en cours écraserait cette vue
     this.animation = {
       t:0, duree:0.42,
       posDepart:this.camera().position.clone(),

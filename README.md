@@ -236,6 +236,89 @@ triangulation près. Le repli « plus court chemin » entre deux surfaces qu'on 
 sait pas nommer — sphère, tore, carreau gauche — est calculé sur le maillage
 d'affichage, et le texte le dit.
 
+### Concevoir une pièce (mode conception)
+Le bouton **✏️ Conception** de l'en-tête ouvre `conception.html` : on y dessine une pièce
+paramétrique, à la manière de [solidcraft](https://github.com/tangency-labs/solidcraft) dont la page
+reprend l'organisation (ruban, historique, paramètres). Le thème, la souris, le cube de vues, la
+mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de la visionneuse ;
+**🧊 Visionneuse** y revient. La géométrie est exacte (B-Rep) : elle est calculée par OpenCascade
+([replicad](https://replicad.xyz)) dans un fil d'exécution à part, dans le navigateur, hors ligne.
+
+- **Disposition** — celle de solidcraft, aux couleurs de la suite : barre fine en haut (menu
+  *Fichier*, enregistrer, annuler / refaire, nom de la pièce), atelier *Design* et ruban à onglets
+  (Modèle, Surface, Assemblage, Insérer, Inspecter, Gérer, Affichage, Tôlerie ; Surface, Assemblage
+  et Tôlerie grisés, à venir), dont chaque titre de groupe ouvre la liste de ses commandes, et
+  recherche de commandes (touche **S**) ; **navigateur** flottant (pièce, paramètres, origine et ses
+  plans — un clic ouvre une esquisse dessus —, corps, esquisses avec leur œil, opérations) ;
+  propriétés et panneau d'opération flottants à droite ; barre de navigation en bas au centre
+  (orbite, ajuster, accueil, vues, projection, affichage) ; **frise d'historique** tout en bas.
+- **Frise d'historique** — comme Fusion : une icône par opération, marqueur bleu à glisser pour
+  revenir en arrière, ⏮ ◀ ▶ ⏭ pour rejouer pas à pas, double-clic pour modifier, glisser une icône
+  pour réordonner (refusé si elle passerait avant l'esquisse dont elle dépend), clic droit pour
+  renommer, suspendre, supprimer, placer le marqueur, créer un dossier ; dossiers repliables
+  (Maj / Ctrl + clic pour choisir plusieurs opérations).
+- **Plusieurs pièces** — une par onglet, en haut ; ⌂ ouvre la page d'accueil (nouvelle pièce, ouvrir,
+  pièces récentes) ; les panneaux flottants se déplacent par leur titre.
+- **Ruban MODÈLE** — *Esquisse* ; *Créer* : extrusion (un côté, symétrique, deux côtés), révolution,
+  balayage, lissage, perçage (simple, lamé, fraisé, sur les points d'une esquisse), boîte, cylindre,
+  sphère, cône, tore, tuyau, ressort, nervure, gravure ; *Modifier* : tirer une face (Press Pull), congé,
+  chanfrein (arêtes désignées dans la vue, ou toutes), coque (faces retirées désignées), combiner,
+  dépouille, découpe par un plan, échelle ; *Disposer* : déplacer, miroir, répétition linéaire ou
+  circulaire ; *Configurer* : paramètres ; *Construire* : plans décalés et inclinés. L'extrusion va
+  à une distance ou jusqu'à une face ; on y coche ou on clique les contours à prendre, et une poignée se
+  tire dans la vue pour régler la distance (extrusion, Tirer). Plans, axes et points de construction :
+  décalés, médians, par trois points, par l'axe d'un cylindre ; les axes servent aux révolutions et répétitions. Le perçage propose les
+  tailles M2 à M12 (taraudé ou passage) : le filetage est cosmétique, dessiné dans la vue, absent du
+  volume et du STEP. Une esquisse sur une face peut la suivre quand la pièce change.
+- **Surface** — extrusion, révolution, balayage, lissage et remplissage en surfaces sans volume ; ajuster par
+  un volume, prolonger, coudre (fermées : un volume), décaler, épaissir.
+- **Assemblage** — composants (une autre pièce `.json`, intégrée au fichier), liaisons rigide, pivot ou
+  glissière par une face de chaque corps, ancrage, animation d'une liaison (sans modifier la pièce), éclaté.
+- **Tôlerie** — tôle plane (épaisseur, rayon, facteur K), bord tombé, ourlet, pli le long d'une ligne ; dépliage
+  à l'écran, développé DXF (contour et lignes de pli sur leur calque), table de pliage en CSV.
+- **Soudures** — profilés (tube carré ou rond, cornière, plat) le long d'une ossature, coupés droits ou en
+  onglet ; liste de débit en CSV.
+- **Autres onglets** — *Insérer* : un STEP (référence pour dessiner autour, ou corps), un DXF ou un SVG comme
+  esquisse, une image de référence sur un plan, un maillage STL, OBJ ou 3MF (5000 triangles au plus), la
+  visserie M2 à M12 (vis CHC, vis H, écrou, rondelle) ; *Inspecter* : mesure, coupe, collisions, zébrures,
+  dépouille, courbure ; *Gérer* : paramètres (import et export CSV), table de configurations, unités (les
+  cotes acceptent `1in`, `2cm` ; l'unité choisie vaut pour les propriétés et le STEP) ; *Affichage* : vues
+  nommées, filtre de sélection (cliquer à travers une référence).
+- **Sur téléphone** — mêmes outils, panneaux repliés d'entrée, ruban et frise qui défilent au doigt.
+- **Ruban ESQUISSE** (pendant l'édition) — ligne, rectangle (deux coins ou centré), cercle, arcs,
+  polygone, oblong, point, spline, texte (DejaVu Sans), projection d'arêtes du modèle ; ajuster, décaler,
+  congé et chanfrein de coin, construction, suppression, plan ; miroir, répétitions ; cotes (longueur, distance, horizontale,
+  verticale, rayon, diamètre, angle) et contraintes (horizontale, verticale, coïncidence, parallèles,
+  perpendiculaires, tangence, égalité, concentriques, milieu, symétrie, point sur, fixe), résolues
+  par le solveur de FreeCAD (planegcs). Les points accrochés sont partagés : les contours se ferment
+  seuls. Un cercle dans un rectangle est un trou.
+- **Paramètres** — `L = 40`, puis `L/2`, `2*e + 1`, `sqrt(L^2 + l^2)` dans n'importe quelle cote.
+  Changer un paramètre reconstruit toute la pièce ; seules les opérations touchées sont refaites.
+- **Historique** — modifier (✎ ou double-clic), suspendre, supprimer, placer le curseur ; une
+  opération en échec est marquée ⚠ avec la raison, la suite se construit sans elle.
+- **Propriétés** — volume, surface, masse selon le matériau (PLA, PETG, aluminium, acier…),
+  centre de gravité, encombrement.
+- **Fichiers** — la pièce est un `.json` (la recette, rouvrable et modifiable) rangé dans le dossier
+  des projets : *Enregistrer* remplace le fichier ouvert, *Enregistrer sous…* ne remplace jamais.
+  Un brouillon est gardé dans le navigateur. Export **STEP** (exact) et **STL** des corps visibles.
+  Dans *🗂 Projets…* de la visionneuse, une pièce `.json` s'ouvre dans la conception.
+
+**Solidité.** Une arête ou une face désignée est retrouvée par sa description (nature, direction, faces
+voisines, angle rentrant ou saillant, place relative) : elle suit les changements de cotes, et une référence
+disparue s'annonce en erreur au lieu de viser sa voisine. Une panne du noyau (mémoire, plantage) relance un
+noyau neuf, le document intact, et suspend l'opération en cause ; un calcul de plus de 20 s peut être arrêté ;
+le noyau est recyclé au repos quand son tas devient trop grand. Les composants et les STEP pris dans le dossier
+des projets restent liés à leur fichier (une carte de WEB_CAO, par exemple) : *⟳ Mettre à jour* s'allume quand
+il a changé. Le filetage peut être modélisé pour l'impression 3D, avec un jeu réglable (calcul d'environ 30 s
+sur un Raspberry Pi pour un M8 × 20).
+
+Limites connues : une esquisse ne coupe pas ses profils qui se croisent (un contour par boucle, ajuster
+d'abord) ; deux éléments identiques et symétriques peuvent s'échanger si la pièce change beaucoup (ce n'est
+pas un nommage topologique du noyau). Le développé d'une tôle ne vaut que pour des plis partant de la tôle de
+base ; un pli oblique garde une couronne à bouts droits. Les liaisons se résolvent une à une, dans l'ordre
+de l'historique : pas de solveur de mécanisme fermé. Sans lien (composant ou STEP pris depuis un fichier), une
+pièce insérée ne suit pas l'original.
+
 ### Exporter
 - **PNG** de la vue courante.
 - **glTF binaire** (`.glb`) de la scène triangulée, pour une visionneuse tierce
@@ -329,18 +412,23 @@ signale — sauf si l'option correspondante est cochée.
 ```
 WEB_3D/
 ├── index.html                    structure de la page et carte des imports
+├── conception.html               la page du mode conception
 ├── web_3D.py                     serveur statique (bibliothèque standard)
 ├── pilote.py                     canal de pilotage, côté serveur (copie de web_suite)
 ├── appairage.py                  code d'appairage des tablettes (copie commune aux web tools)
 ├── css/
-│   └── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
+│   ├── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
+│   └── conception.css            ruban, historique, esquisse (mêmes variables de thème)
 ├── js/                           modules ES, chargés par 09-demarrage.js
 ├── exemples/                     fichiers d'essai, un par voie de lecture
 ├── test/                         bancs d'essai : exemples, pilotage, serveur
 └── vendor/                       bibliothèques, servies en local
     ├── three/                    three.js r186 + modules d'exemples (lecteurs
     │                              STL, 3MF, OBJ, MTL, export glTF, fflate)
-    └── occt/                     occt-import-js 0.0.23 (+ occt-import-js.wasm)
+    ├── occt/                     occt-import-js 0.0.23 (+ occt-import-js.wasm)
+    ├── replicad/                 replicad 1.2.0 + replicad-opencascadejs 1.1.0 (mode conception)
+    ├── planegcs/                 @salusoft89/planegcs 1.3.0, solveur d'esquisse de FreeCAD
+    └── polices/                  DejaVu Sans, pour le texte des esquisses
 ```
 
 | Fichier | Rôle |
@@ -364,8 +452,20 @@ WEB_3D/
 | `js/pilote.js` | canal de pilotage côté page : relais entre onglets, panneau « Claude », cartes, interrupteur. **Copie** de `web_suite/lanceur/pilote.js`, à ne pas modifier ici |
 | `pilote.py` | canal de pilotage côté serveur : file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement. Copie de `web_suite/lanceur/pilote.py` |
 | `appairage.py` | le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste. Copie commune aux web tools |
-| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py` — ceux que lance la CI |
+| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
+| `js/c1-expressions.js` | conception : paramètres et expressions des cotes (analyseur maison, jamais `eval`) |
+| `js/c2-esquisse.js` | conception : modèle d'esquisse, traduction pour le solveur planegcs, contours et trous, import DXF / SVG |
+| `js/c3-operations.js` | conception : les opérations, rejouées sur replicad, avec cache de l'historique |
+| `js/c4-travailleur.js` | conception : le fil d'exécution du noyau (reconstruction, maillage, masse, export STEP / STL) |
+| `js/c5-esquisse-ui.js` | conception : l'éditeur d'esquisse dans la vue (outils, accrochage, glisser, contraintes, cotes) |
+| `js/c6-conception.js` | conception : démarrage de la page, ruban et recherche de commandes, navigateur, menus, panneau d'opération, paramètres, fichiers |
+| `js/c3c-references.js` | conception : retrouver une arête ou une face désignée quand la pièce a changé |
+| `js/c3b-ateliers.js` | conception : surface, assemblage, tôlerie, soudures, visserie, maillages |
+| `js/c9-ateliers-ui.js` | conception : champs et désignations des ateliers, poignée, animation, éclaté, développé, aides dessinées |
+| `js/c2b-outils-esquisse.js` | conception : ajuster, décaler, congé et chanfrein de coin, miroir, répétitions |
+| `js/c8-analyses.js` | conception : zébrures, dépouille et courbure, par un matériau à nuanceur |
+| `js/c7-frise.js` | conception : la frise d'historique (marqueur, lecture, réordonner, dossiers, clic droit) et ses règles |
 
 ---
 
@@ -378,9 +478,15 @@ Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution.
 | [three.js](https://threejs.org) | r186 | MIT | rendu WebGL, lecteurs STL / 3MF / OBJ / MTL, export glTF |
 | [fflate](https://github.com/101arrowz/fflate) | livré avec three.js | MIT | décompression du 3MF (une archive ZIP) |
 | [occt-import-js](https://github.com/kovacsv/occt-import-js) | 0.0.23 | LGPL-2.1 | OpenCascade en WebAssembly : lecture STEP / IGES / BREP |
+| [replicad](https://replicad.xyz) | 1.2.0 | MIT | modélisation B-Rep du mode conception |
+| [replicad-opencascadejs](https://github.com/sgenoud/replicad) | 1.1.0 | LGPL-2.1 | OpenCascade en WebAssembly pour replicad |
+| [planegcs](https://github.com/Salusoft89/planegcs) | 1.3.0 | LGPL-2.0 ou ultérieure | solveur de contraintes d'esquisse de FreeCAD, en WebAssembly |
+| [DejaVu Sans](https://dejavu-fonts.github.io) | paquet Debian fonts-dejavu-core | licence libre DejaVu (voir `vendor/polices/`) | police du texte des esquisses |
 
-Les textes de licence accompagnent les fichiers dans `vendor/three/` et
-`vendor/occt/`. occt-import-js et OpenCascade sont sous **LGPL-2.1** : leurs
+Les textes de licence accompagnent les fichiers dans `vendor/three/`,
+`vendor/occt/`, `vendor/replicad/` et `vendor/planegcs/`. Les modules WebAssembly sous LGPL
+(`replicad_single.wasm`, `planegcs.wasm`) sont, comme celui d'occt-import-js, des fichiers à
+part, non modifiés et remplaçables. occt-import-js et OpenCascade sont sous **LGPL-2.1** : leurs
 sources sont celles des dépôts liés ci-dessus (version 0.0.23, non modifiée), et
 le module reste un fichier à part (`vendor/occt/occt-import-js.wasm`) qu'on peut
 remplacer par une autre version sans toucher au reste de la visionneuse. Côté `exemples/`, `assemblage-as1.stp`, `cube-conges.step` et

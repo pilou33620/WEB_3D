@@ -26,3 +26,14 @@ jobs:
 
       - name: Serveur — fichiers servis, Host
         run: python test/banc-serveur.py
+
+      - name: Conception — expressions, solveur d'esquisse, opérations OpenCascade
+        run: node test/banc-conception.mjs
+
+      - name: Conception — pièces de référence, avant et après un changement de paramètres
+        run: node test/banc-pieces-reference.mjs
+
+      - name: Conception — la page dans un Chrome sans écran
+        run: node --experimental-websocket test/banc-conception-page.mjs
+        env:
+          CHROMIUM: google-chrome

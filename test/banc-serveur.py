@@ -110,6 +110,17 @@ with tempfile.TemporaryDirectory() as tmp:
                    "/projets/C:%5cWindows%5cwin.ini", "/projets/.git/config"):
         verifier("refus " + chemin, requete("GET", chemin)[0], 404)
 
+    # Pièces du mode conception : remplacement explicite, réservé aux .json, atomique
+    piece = lambda corps, nom="p.json", rem="&remplacer=1": requete("POST", "/api/projets?nom=" + nom + rem, corps, {"X-Web3D": "1"})
+    verifier("pièce .json rangée", json.loads(piece(b'{"v":1}', rem="")[1])["chemin"], "p.json")
+    verifier("pièce .json remplacée sur demande", (json.loads(piece(b'{"v":2}')[1])["chemin"],
+             requete("GET", "/projets/p.json")[1]), ("p.json", b'{"v":2}'))
+    verifier("remplacement refusé hors .json", piece(stl, "t.stl")[0], 400)
+    verifier("remplacement : nom qui remonte refusé", piece(b"{}", "..%2Fp.json")[0], 400)
+    verifier("remplacement : sous-dossier absent refusé", piece(b"{}", "absent%2Fp.json")[0], 400)
+    verifier("remplacement : aucun .tmp laissé", [f for f in os.listdir(tmp) if f.endswith(".tmp")], [])
+    verifier("page de conception servie", requete("GET", "/conception.html")[0], 200)
+
     # Un lien symbolique « piege.stl.part » déposé dans PROJETS (dépôt synchronisé) ne fait
     # pas écrire ailleurs : l'écriture va dans la cible, créée en exclusif, sans suivre de lien
     with tempfile.TemporaryDirectory() as dehors:

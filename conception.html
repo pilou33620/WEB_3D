@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conception 3D — pièce paramétrique</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◩</text></svg>">
+<link rel="stylesheet" href="css/visionneuse-3d.css">
+<link rel="stylesheet" href="css/conception.css">
+<script>
+try{
+  const p = JSON.parse(localStorage.getItem("web3d.prefs") || "{}");
+  if(p.theme === "clair") document.documentElement.setAttribute("data-theme", "clair");
+}catch(e){}
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body class="conception">
+
+<!-- Disposition de solidcraft (barre du haut, ruban, navigateur flottant, barre de navigation,
+     frise d'historique), aux couleurs de la suite. Les boutons qui font la même chose que dans la
+     visionneuse gardent ses identifiants : la classe Interface (js/08-interface.js) s'y branche. -->
+<header class="barre-haut">
+  <div class="brand"><i></i><b>Conception 3D</b></div>
+  <button class="tb mini icone" id="bAccueil" title="Page d'accueil : nouvelle pièce, ouvrir, pièces récentes">⌂</button>
+  <button class="tb mini" id="bMenuFichier" title="Nouveau, ouvrir, enregistrer, exporter">Fichier ▾</button>
+  <button class="tb mini icone" id="bEnregistrer" title="Enregistrer — Ctrl+S">⤓</button>
+  <button class="tb mini icone" id="bAnnuler" title="Annuler — Ctrl+Z" disabled>↶</button>
+  <button class="tb mini icone" id="bRefaire" title="Refaire — Ctrl+Y" disabled>↷</button>
+  <span class="onglets-docs" id="ongletsDocs"></span>
+  <span hidden id="nomFichier"></span>
+  <span class="grow"></span>
+  <a class="tb lien mini" href="index.html" title="Revenir à la visionneuse (les modifications non enregistrées restent dans le brouillon de ce navigateur)">◈ Visionneuse</a>
+  <button class="tb mini icone" id="bTheme" title="Passer au thème clair">☀️</button>
+  <button class="tb mini icone" id="bPrefs" title="Souris &amp; vue : configuration de la souris, orbite, sensibilités">⚙</button>
+  <button class="tb mini icone" id="bAide" title="Raccourcis clavier">?</button>
+
+  <!-- Le menu Fichier : ses entrées gardent les identifiants de la visionneuse -->
+  <div class="menu-flottant" id="menuFichier" hidden>
+    <button id="bFermer">Nouvelle pièce</button>
+    <button id="bOuvrir">Ouvrir… <kbd>Ctrl+O</kbd></button>
+    <button id="bProjets" hidden>Pièces du dossier des projets…</button>
+    <hr>
+    <button id="bEnregistrerMenu">Enregistrer <kbd>Ctrl+S</kbd></button>
+    <button id="bEnregistrerSous">Enregistrer sous…</button>
+    <hr>
+    <button id="bExportPiece">Exporter en STEP (.stp)</button>
+    <button id="bExportStl">Exporter en STL (impression 3D)</button>
+    <button id="bGlb" disabled>Exporter en glTF (.glb)</button>
+    <button id="bPng">Capture de la vue (.png)</button>
+  </div>
+  <span hidden><button id="bAjouter"></button><button id="bParcourir"></button><span id="depot"></span><span id="errDepot"></span></span>
+</header>
+
+<!-- Le ruban. Un bouton porte data-op (opération de c3-operations.js), data-outil (outil
+     d'esquisse de c5-esquisse-ui.js), data-action ou data-contrainte, ou l'identifiant d'une
+     commande de la visionneuse. Le titre de chaque groupe ouvre la liste de ses commandes ;
+     la recherche (S) les parcourt toutes. -->
+<nav id="ruban">
+  <div class="atelier" title="Atelier de conception de pièces">
+    <i>◩</i><b>Design</b><span>Atelier</span>
+  </div>
+  <div class="ruban-corps">
+    <div class="onglets-ruban">
+      <button class="ong-ruban on" data-onglet="modele">Modèle</button>
+      <button class="ong-ruban contexte" data-onglet="esquisse" hidden>Esquisse</button>
+      <button class="ong-ruban" data-onglet="surface">Surface</button>
+      <button class="ong-ruban" data-onglet="assemblage">Assemblage</button>
+      <button class="ong-ruban" data-onglet="inserer">Insérer</button>
+      <button class="ong-ruban" data-onglet="inspecter">Inspecter</button>
+      <button class="ong-ruban" data-onglet="gerer">Gérer</button>
+      <button class="ong-ruban" data-onglet="affichage">Affichage</button>
+      <button class="ong-ruban" data-onglet="tolerie">Tôlerie</button>
+      <button class="ong-ruban" data-onglet="soudures">Soudures</button>
+      <span class="grow"></span>
+      <label class="recherche-cmd" title="Rechercher une commande — touche S">⌕
+        <input type="search" id="rechCommande" placeholder="Rechercher une commande" autocomplete="off"><kbd>S</kbd></label>
+    </div>
+
+    <div class="groupes" data-volet="modele">
+      <section><div class="btns">
+          <button data-op="esquisse" title="Nouvelle esquisse sur un plan ou une face plane"><i>✏️</i>Esquisse</button>
+        </div><h5>Esquisse</h5></section>
+      <section><div class="btns">
+          <button data-op="extrusion" title="Extruder les contours fermés d'une esquisse"><i>⬆</i>Extrusion</button>
+          <button data-op="revolution" title="Faire tourner une esquisse autour d'un axe"><i>⟳</i>Révolution</button>
+          <button data-op="percage" title="Trous simples, lamés ou fraisés sur les points d'une esquisse"><i>⊙</i>Perçage</button>
+          <span class="pile">
+            <button data-op="balayage" title="Déplacer un profil le long d'un chemin"><i>≈</i>Balayage</button>
+            <button data-op="lissage" title="Volume passant par plusieurs sections"><i>⧖</i>Lissage</button>
+            <button data-op="boite" title="Boîte"><i>▣</i>Boîte</button>
+          </span>
+          <span class="pile">
+            <button data-op="cylindre" title="Cylindre"><i>⌭</i>Cylindre</button>
+            <button data-op="sphere" title="Sphère"><i>●</i>Sphère</button>
+            <button data-op="cone" title="Cône ou tronc de cône"><i>▲</i>Cône</button>
+          </span>
+          <span class="pile">
+            <button data-op="tore" title="Tore"><i>◎</i>Tore</button>
+            <button data-op="tuyau" title="Tuyau : un cercle le long d'un chemin, plein ou creux"><i>⌇</i>Tuyau</button>
+            <button data-op="ressort" title="Ressort hélicoïdal"><i>⌬</i>Ressort</button>
+          </span>
+          <span class="pile">
+            <button data-op="nervure" title="Nervure : des lignes ouvertes épaissies et extrudées, jointes au corps"><i>╫</i>Nervure</button>
+            <button data-op="gravure" title="Gravure : une esquisse en creux ou en relief sur le corps"><i>✎</i>Gravure</button>
+            <button data-op="filetage" title="Filetage cosmétique sur une face cylindrique : dessiné, sans matière"><i>⧙</i>Filetage</button>
+          </span>
+        </div><h5>Créer</h5></section>
+      <section><div class="btns">
+          <button data-op="tirer" title="Tirer une face plane : ajoute ou enlève de la matière (Press Pull)"><i>⇪</i>Tirer</button>
+          <button data-op="conge" title="Arrondir des arêtes"><i>◜</i>Congé</button>
+          <button data-op="chanfrein" title="Casser des arêtes"><i>◸</i>Chanfrein</button>
+          <button data-op="coque" title="Évider un corps en retirant des faces"><i>▢</i>Coque</button>
+          <button data-op="combiner" title="Joindre, enlever ou intersecter des corps"><i>⊕</i>Combiner</button>
+          <span class="pile">
+            <button data-op="depouille" title="Dépouille : incliner des faces par rapport à un plan neutre"><i>⟋</i>Dépouille</button>
+            <button data-op="decouper" title="Découper un corps en deux par un plan"><i>⫽</i>Découpe</button>
+            <button data-op="echelle" title="Mettre un corps à l'échelle"><i>⤢</i>Échelle</button>
+          </span>
+        </div><h5>Modifier</h5></section>
+      <section><div class="btns">
+          <button data-op="deplacer" title="Déplacer ou tourner un corps"><i>✥</i>Déplacer</button>
+          <button data-op="miroir" title="Symétrie d'un corps par un plan"><i>⇋</i>Miroir</button>
+          <button data-op="repetition" title="Répétition linéaire ou circulaire"><i>⁂</i>Répétition</button>
+        </div><h5>Disposer</h5></section>
+      <section><div class="btns">
+          <button id="bParametres" title="Paramètres nommés : les cotes s'écrivent « L/2 », « 2*e + 1 »…"><i>ƒx</i>Paramètres</button>
+        </div><h5>Configurer</h5></section>
+      <section><div class="btns">
+          <button data-op="plan" title="Plan de construction : décalé et incliné, médian, ou par trois points"><i>▱</i>Plan</button>
+          <span class="pile">
+            <button data-op="axe" title="Axe de construction : par deux points ou l'axe d'un cylindre ; sert aux révolutions et répétitions"><i>╱</i>Axe</button>
+            <button data-op="point" title="Point de construction"><i>•</i>Point</button>
+          </span>
+        </div><h5>Construire</h5></section>
+    </div>
+
+    <div class="groupes" data-volet="esquisse" hidden>
+      <section><div class="btns">
+          <button data-outil="ligne" title="Ligne — clics successifs, Échap pour finir — L"><i>╱</i>Ligne</button>
+          <button data-outil="rectangle" title="Rectangle par deux coins — R"><i>▭</i>Rectangle</button>
+          <button data-outil="cercle" title="Cercle par le centre et un point — O"><i>◯</i>Cercle</button>
+          <span class="pile">
+            <button data-outil="rectangleCentre" title="Rectangle par le centre et un coin"><i>⊡</i>Rect. centré</button>
+            <button data-outil="arc3" title="Arc par début, fin et un point de passage"><i>◠</i>Arc 3 pts</button>
+            <button data-outil="arcCentre" title="Arc par le centre, le début et la fin (sens trigonométrique)"><i>◜</i>Arc centre</button>
+          </span>
+          <span class="pile">
+            <button data-outil="polygone" title="Polygone régulier : centre, sommet (touches 3 à 9 : nombre de côtés)"><i>⬡</i>Polygone</button>
+            <button data-outil="oblong" title="Oblong (rainure) : deux centres puis la largeur"><i>⊂⊃</i>Oblong</button>
+            <button data-outil="point" title="Point isolé (centre de perçage) — P"><i>•</i>Point</button>
+          </span>
+          <span class="pile">
+            <button data-outil="spline" title="Spline par points : clics successifs, Entrée pour finir"><i>∿</i>Spline</button>
+            <button data-outil="texte" title="Texte : cliquez son point d'ancrage (police DejaVu Sans)"><i>T</i>Texte</button>
+            <button data-action="projeter" title="Projeter des arêtes du modèle dans l'esquisse : cliquez-les dans la vue, Échap pour finir"><i>⇣</i>Projeter</button>
+          </span>
+        </div><h5>Créer</h5></section>
+      <section><div class="btns">
+          <button data-outil="ajuster" title="Ajuster : cliquez le morceau de courbe à retirer, entre deux intersections — T"><i>✂</i>Ajuster</button>
+          <button data-action="decaler" title="Décaler les courbes sélectionnées (positif : vers l'extérieur)"><i>⧉</i>Décaler</button>
+          <span class="pile">
+            <button data-action="conge" title="Congé du coin sélectionné (un point partagé par deux lignes)"><i>◜</i>Congé</button>
+            <button data-action="chanfrein" title="Chanfrein du coin sélectionné (un point partagé par deux lignes)"><i>◸</i>Chanfrein</button>
+            <button data-action="construction" title="Basculer les éléments sélectionnés en construction (ignorés par les volumes) — X"><i>┄</i>Construction</button>
+          </span>
+          <span class="pile">
+            <button data-action="supprimer" title="Supprimer la sélection — Suppr"><i>✕</i>Supprimer</button>
+            <button data-action="plan" title="Changer le plan de l'esquisse"><i>▱</i>Plan…</button>
+          </span>
+        </div><h5>Modifier</h5></section>
+      <section><div class="btns">
+          <button data-action="miroir" title="Miroir de la sélection par sa ligne de construction"><i>⇋</i>Miroir</button>
+          <span class="pile">
+            <button data-action="repRect" title="Répétition rectangulaire de la sélection"><i>⁂</i>Rectangulaire</button>
+            <button data-action="repCirc" title="Répétition circulaire de la sélection, autour du point sélectionné (ou de l'origine)"><i>✱</i>Circulaire</button>
+          </span>
+        </div><h5>Motifs</h5></section>
+      <section><div class="btns">
+          <button data-action="cote" title="Cote : longueur d'une ligne, distance de deux points, rayon, diamètre, angle de deux lignes — D"><i>↔</i>Cote</button>
+          <span class="pile">
+            <button data-action="distanceX" title="Distance horizontale entre deux points (ou d'une ligne)"><i>⇿</i>Horizontale</button>
+            <button data-action="distanceY" title="Distance verticale entre deux points (ou d'une ligne)"><i>↕</i>Verticale</button>
+          </span>
+          <span class="galerie">
+            <button data-contrainte="horizontal" title="Horizontale (une ligne, ou deux points) — H">━</button>
+            <button data-contrainte="vertical" title="Verticale (une ligne, ou deux points) — V">┃</button>
+            <button data-contrainte="coincident" title="Coïncidence de deux points">⊙</button>
+            <button data-contrainte="parallele" title="Parallèles (deux lignes)">∥</button>
+            <button data-contrainte="perpendiculaire" title="Perpendiculaires (deux lignes)">⊥</button>
+            <button data-contrainte="tangente" title="Tangence (ligne et courbe, ou deux courbes)">◡</button>
+            <button data-contrainte="egal" title="Égalité (deux lignes, ou deux rayons)">=</button>
+            <button data-contrainte="concentrique" title="Concentriques (deux cercles ou arcs)">◎</button>
+            <button data-contrainte="milieu" title="Point au milieu d'une ligne (un point, une ligne)">⋯</button>
+            <button data-contrainte="symetrie" title="Deux points symétriques par rapport à une ligne">⇹</button>
+            <button data-contrainte="sur" title="Point sur une ligne, un cercle ou un arc">⊷</button>
+            <button data-contrainte="fixe" title="Fixer des points à leur place">⚓</button>
+          </span>
+        </div><h5>Contraindre</h5></section>
+      <section><div class="btns">
+          <button data-action="terminer" class="valider" title="Terminer l'esquisse et revenir au modèle — Entrée"><i>✔</i>Terminer</button>
+        </div><h5>Terminer</h5></section>
+    </div>
+
+    <!-- Onglets de solidcraft sans équivalent ici pour l'instant : présents, grisés. -->
+    <div class="groupes" data-volet="surface" hidden>
+      <section><div class="btns">
+          <button data-op="esquisse" title="Nouvelle esquisse"><i>✏️</i>Esquisse</button>
+        </div><h5>Esquisse</h5></section>
+      <section><div class="btns">
+          <button data-op="surfExtrusion" title="Extruder les chemins et contours d'une esquisse en surface, sans volume"><i>⬆</i>Extrusion</button>
+          <button data-op="surfRevolution" title="Surface de révolution d'une esquisse"><i>⟳</i>Révolution</button>
+          <button data-op="surfBalayage" title="Surface balayée : un profil le long d'un chemin"><i>≈</i>Balayage</button>
+          <button data-op="surfLissage" title="Surface passant par plusieurs sections"><i>⧖</i>Lissage</button>
+          <button data-op="surfRemplissage" title="Boucher un contour d'esquisse, ou un contour d'arêtes du modèle"><i>◫</i>Remplissage</button>
+        </div><h5>Créer</h5></section>
+      <section><div class="btns">
+          <button data-op="surfAjuster" title="Couper une surface par un volume"><i>✂</i>Ajuster</button>
+          <button data-op="surfProlonger" title="Prolonger une surface au-delà d'une arête"><i>⇥</i>Prolonger</button>
+          <button data-op="surfCoudre" title="Coudre des surfaces ; fermées, elles deviennent un volume"><i>⧉</i>Coudre</button>
+          <button data-op="surfDecaler" title="Une copie de la surface à distance constante"><i>⫶</i>Décaler</button>
+        </div><h5>Modifier</h5></section>
+      <section><div class="btns">
+          <button data-op="surfEpaissir" title="Donner une épaisseur à une surface : un volume"><i>▤</i>Épaissir</button>
+        </div><h5>Convertir</h5></section>
+    </div>
+    <div class="groupes" data-volet="assemblage" hidden>
+      <section><div class="btns">
+          <button id="bInsererPiece" title="Insérer une autre pièce du mode conception comme composant : celle du dossier des projets reste liée à son fichier"><i>⧈</i>Composant</button>
+          <button id="bMajComposants" title="Reprendre les composants et STEP dont le fichier a changé"><i>⟳</i>Mettre à jour</button>
+        </div><h5>Composants</h5></section>
+      <section><div class="btns">
+          <button data-op="liaison" title="Lier deux corps par une face de chacun : rigide, pivot ou glissière"><i>⚭</i>Liaison</button>
+          <button data-op="ancrer" title="Ancrer un corps : une liaison ne pourra pas le déplacer"><i>⚓</i>Ancrer</button>
+        </div><h5>Liaisons</h5></section>
+      <section><div class="btns">
+          <button id="bAnimer" title="Animer une liaison pivot ou glissière ; second appui : arrêter"><i>▶</i>Animer</button>
+          <button id="bEclate" title="Vue éclatée : écarter les corps, à l'affichage seulement"><i>✳</i>Éclaté</button>
+        </div><h5>Mouvement</h5></section>
+    </div>
+    <div class="groupes" data-volet="inserer" hidden>
+      <section><div class="btns">
+          <button id="bInsererStep" title="Insérer un STEP comme référence (pour dessiner autour) ou comme corps"><i>⬚</i>STEP</button>
+          <button id="bOuvrirRuban" title="Ouvrir une pièce .json"><i>▱</i>Pièce</button>
+        </div><h5>Fichiers</h5></section>
+      <section><div class="btns">
+          <button id="bInsererDxf" title="Une esquisse à partir d'un DXF ou d'un SVG"><i>⬚</i>DXF / SVG</button>
+          <button id="bInsererImage" title="Une image de référence posée sur un plan, pour dessiner par-dessus"><i>▨</i>Image</button>
+        </div><h5>2D</h5></section>
+      <section><div class="btns">
+          <button id="bInsererMaillage" title="Un maillage STL, OBJ ou 3MF (5000 triangles au plus) comme référence ou comme corps"><i>△</i>Maillage</button>
+        </div><h5>Maillages</h5></section>
+      <section><div class="btns">
+          <button data-op="vis" title="Vis CHC, vis H, écrou ou rondelle, de M2 à M12"><i>⊗</i>Visserie</button>
+        </div><h5>Bibliothèque</h5></section>
+    </div>
+    <div class="groupes" data-volet="inspecter" hidden>
+      <section><div class="btns">
+          <button id="bMesure" title="Mesurer : automatique, point à point, arête à arête, face à face — K"><i>↔</i>Mesurer</button>
+          <button id="bProprietes" title="Volume, surface, masse, centre de gravité"><i>⚖</i>Propriétés</button>
+        </div><h5>Mesure</h5></section>
+      <section><div class="btns">
+          <button id="bCoupe" title="Plan de coupe le long d'un axe — C"><i>◧</i>Coupe</button>
+        </div><h5>Coupe</h5></section>
+      <section><div class="btns">
+          <button id="bCollisions" title="Chercher les interférences entre les corps" disabled><i>✸</i>Collisions</button>
+          <button id="bIsoler" title="N'afficher que le corps sélectionné — I" disabled><i>◉</i>Isoler</button>
+        </div><h5>Vérifier</h5></section>
+      <section><div class="btns">
+          <button data-analyse="zebra" title="Zébrures : continuité des reflets entre les faces"><i>▤</i>Zébrures</button>
+          <button data-analyse="depouille" title="Dépouille selon Z : ce qui démoule, ce qui ne démoule pas"><i>⟋</i>Dépouille</button>
+          <button data-analyse="courbure" title="Carte de courbure"><i>◍</i>Courbure</button>
+        </div><h5>Qualité de surface</h5></section>
+    </div>
+    <div class="groupes" data-volet="gerer" hidden>
+      <section><div class="btns">
+          <button id="bParametres2" title="Paramètres nommés"><i>ƒx</i>Paramètres</button>
+          <span class="pile">
+            <button id="bParamImporter" title="Importer des paramètres depuis un CSV (nom;expression)"><i>⤓</i>Importer</button>
+            <button id="bParamExporter" title="Exporter les paramètres en CSV (nom;expression)"><i>⤒</i>Exporter</button>
+          </span>
+        </div><h5>Paramètres</h5></section>
+      <section><div class="btns">
+          <button id="bConfigurations" title="Table de configurations : des jeux de valeurs de paramètres, à activer d'un clic"><i>▦</i>Configurations</button>
+        </div><h5>Configurations</h5></section>
+      <section><div class="btns">
+          <button id="bUnites" title="Unité d'affichage des propriétés et de l'export STEP"><i>㎜</i>Unités</button>
+        </div><h5>Pièce</h5></section>
+      <section><div class="btns">
+          <button id="bMateriau" title="Matériau de la pièce (masse)"><i>◈</i>Matériau</button>
+        </div><h5>Matériaux</h5></section>
+    </div>
+    <div class="groupes" data-volet="affichage" hidden>
+      <section><div class="btns">
+          <button id="bAjuster" title="Cadrer toute la pièce — F"><i>⛶</i>Ajuster</button>
+          <button id="bProjection" title="Basculer perspective / orthographique — O"><i>⬚</i>Perspective</button>
+        </div><h5>Vue</h5></section>
+      <section><div class="btns">
+          <button id="bAretes" title="Arêtes du modèle — A"><i>◇</i>Arêtes</button>
+          <button id="bFilaire" title="Filaire seul — W"><i>⬡</i>Filaire</button>
+          <button id="bTransparence" title="Rayons X : voir à travers les corps — X"><i>◌</i>Rayons X</button>
+          <button id="bGrille" title="Grille et plan de sol — G"><i>▦</i>Grille</button>
+          <button id="bOrigine" title="Plans et axes de l'origine"><i>⊹</i>Origine</button>
+        </div><h5>Affichage</h5></section>
+      <section><div class="btns">
+          <button id="bVueEnregistrer" title="Enregistrer la vue courante sous un nom"><i>⌖</i>Enregistrer</button>
+          <button id="bVuesNommees" title="Revenir à une vue enregistrée"><i>⧉</i>Vues nommées</button>
+        </div><h5>Vues</h5></section>
+      <section><div class="btns">
+          <button id="bFiltreCorps" class="on" title="Les corps réagissent aux clics dans la vue"><i>◼</i>Corps</button>
+          <button id="bFiltreRef" class="on" title="Les références STEP réagissent aux clics : décochez pour cliquer à travers"><i>◻</i>Références</button>
+        </div><h5>Filtre de sélection</h5></section>
+    </div>
+    <div class="groupes" data-volet="tolerie" hidden>
+      <section><div class="btns">
+          <button data-op="esquisse" title="Nouvelle esquisse"><i>✏️</i>Esquisse</button>
+        </div><h5>Esquisse</h5></section>
+      <section><div class="btns">
+          <button data-op="tole" title="Tôle plane à partir d'une esquisse : épaisseur, rayon de pliage, facteur K"><i>▬</i>Tôle</button>
+          <button data-op="bride" title="Bord tombé sur une arête droite"><i>⌐</i>Bord tombé</button>
+          <button data-op="ourlet" title="Ourlet : un bord replié à 180°"><i>⊏</i>Ourlet</button>
+          <button data-op="pli" title="Plier la tôle le long d'une ligne d'esquisse"><i>⌒</i>Pli</button>
+        </div><h5>Créer</h5></section>
+      <section><div class="btns">
+          <button id="bDeplier" title="Afficher la tôle à plat (développé), ou la replier"><i>▭</i>Déplier</button>
+        </div><h5>Développé</h5></section>
+      <section><div class="btns">
+          <button id="bDxf" title="Exporter le développé en DXF, avec les lignes de pli sur leur calque"><i>⬚</i>DXF</button>
+          <button id="bTablePlis" title="Exporter la table de pliage en CSV"><i>▦</i>Table de pliage</button>
+        </div><h5>Sortie</h5></section>
+    </div>
+    <div class="groupes" data-volet="soudures" hidden>
+      <section><div class="btns">
+          <button data-op="esquisse" title="Nouvelle esquisse : l'ossature"><i>✏️</i>Esquisse</button>
+        </div><h5>Esquisse</h5></section>
+      <section><div class="btns">
+          <button data-op="profile" title="Des profilés le long des lignes d'une esquisse, coupés droits ou en onglet"><i>▥</i>Profilé</button>
+        </div><h5>Créer</h5></section>
+      <section><div class="btns">
+          <button id="bDebit" title="Exporter la liste de débit en CSV"><i>▦</i>Liste de débit</button>
+        </div><h5>Sortie</h5></section>
+    </div>
+  </div>
+  <div class="menu-flottant" id="menuRecherche" hidden></div>
+</nav>
+
+<main>
+  <div class="ctr" id="ctr">
+    <canvas id="vue3d"></canvas>
+
+    <!-- Navigateur flottant, comme celui de solidcraft -->
+    <section class="flottant" id="navigateur">
+      <h3><span>Navigateur</span><span class="cpt" id="cptPieces">—</span><button class="plier" title="Replier">▾</button></h3>
+      <div class="scroll nav-arbre">
+        <div class="nv racine"><span class="fl">▾</span><span class="ic">◩</span><span class="lbl" id="navNomPiece">piece</span></div>
+        <div class="nv" id="navParametres" title="Ouvrir les paramètres"><span class="fl"></span><span class="ic">ƒx</span><span class="lbl">Paramètres</span><span class="nb" id="navNbParametres"></span></div>
+        <div class="dossier" data-dossier="origine">
+          <div class="nv"><span class="fl">▸</span><span class="oeil" id="navOeilOrigine" title="Afficher les plans de l'origine">◌</span><span class="ic">⊹</span><span class="lbl">Origine</span></div>
+          <div class="enfants" hidden>
+            <div class="nv plan" data-plan="XY" title="Nouvelle esquisse sur XY"><span class="fl"></span><span class="ic">▱</span><span class="lbl">Plan XY (dessus)</span></div>
+            <div class="nv plan" data-plan="XZ" title="Nouvelle esquisse sur XZ"><span class="fl"></span><span class="ic">▱</span><span class="lbl">Plan XZ (face)</span></div>
+            <div class="nv plan" data-plan="YZ" title="Nouvelle esquisse sur YZ"><span class="fl"></span><span class="ic">▱</span><span class="lbl">Plan YZ (côté)</span></div>
+          </div>
+        </div>
+        <div class="dossier" data-dossier="vues">
+          <div class="nv"><span class="fl">▸</span><span class="ic">▤</span><span class="lbl">Vues nommées</span></div>
+          <div class="enfants" id="navVues" hidden></div>
+        </div>
+        <div class="dossier ouvert" data-dossier="corps">
+          <div class="nv"><span class="fl">▾</span><span class="ic">▤</span><span class="lbl">Corps</span></div>
+          <div class="enfants" id="arbre"></div>
+        </div>
+        <div class="dossier ouvert" data-dossier="esquisses">
+          <div class="nv"><span class="fl">▾</span><span class="ic">▤</span><span class="lbl">Esquisses</span></div>
+          <div class="enfants" id="navEsquisses"></div>
+        </div>
+        <div class="dossier" data-dossier="operations">
+          <div class="nv"><span class="fl">▸</span><span class="ic">▤</span><span class="lbl">Opérations</span></div>
+          <div class="enfants" id="navOperations" hidden></div>
+        </div>
+      </div>
+      <!-- L'arbre des corps (js/05-arbre.js) écrit ici ; ses commandes cachées servent à Interface -->
+      <div hidden><input type="search" id="rechArbre"><button id="bToutVoir"></button><button id="bToutReplier"></button><button id="bZoomSel"></button></div>
+    </section>
+
+    <!-- Colonne de droite : le panneau de l'opération en cours, puis les propriétés -->
+    <div class="colonne-droite">
+      <div id="fenetreOperation" class="fenetre-mesure flottant" hidden>
+        <div class="fm-tete"><span id="titreOperation"></span><button class="fm-plier" id="bFermerOperation" title="Annuler (Échap)">✕</button></div>
+        <div class="fm-corps" id="champsOperation"></div>
+        <div class="fo-pied">
+          <span class="fo-msg" id="msgOperation"></span>
+          <button class="tb mini" id="bAnnulerOperation">Annuler</button>
+          <button class="tb mini on" id="bValiderOperation">OK</button>
+        </div>
+      </div>
+      <section class="flottant" id="panneauProps">
+        <h3><span id="titreProps">Propriétés</span><button class="plier" title="Replier">▾</button></h3>
+        <div class="scroll" id="props"></div>
+      </section>
+    </div>
+
+    <div id="coinCube" title="Cube de vues — cliquez une face, une arête ou un coin">
+      <canvas id="cubeVue" width="150" height="150"></canvas>
+    </div>
+
+    <!-- Barre de navigation flottante, en bas au centre -->
+    <div class="flottant" id="barreNav">
+      <button id="bOrbiteType" title="Type d'orbite : libre ou contrainte autour de l'axe vertical">↻</button>
+      <button id="bAjusterNav" title="Cadrer toute la pièce — F">⛶</button>
+      <button id="bMaison" title="Vue isométrique d'origine">⌂</button>
+      <button id="bVues" title="Vues normalisées">⧉ ▾</button>
+      <button id="bProjectionNav" title="Perspective / orthographique — O">⬚</button>
+      <button id="bAffichageNav" title="Style d'affichage">◐ ▾</button>
+      <div class="menu-flottant" id="vuesRapides" hidden>
+        <button data-vue="avant" title="Vue de face (−Y) — touche 1">Avant <kbd>1</kbd></button>
+        <button data-vue="arriere" title="Vue arrière (+Y) — touche 2">Arrière <kbd>2</kbd></button>
+        <button data-vue="gauche" title="Vue de gauche (−X) — touche 3">Gauche <kbd>3</kbd></button>
+        <button data-vue="droite" title="Vue de droite (+X) — touche 4">Droite <kbd>4</kbd></button>
+        <button data-vue="dessus" title="Vue de dessus (+Z) — touche 5">Dessus <kbd>5</kbd></button>
+        <button data-vue="dessous" title="Vue de dessous (−Z) — touche 6">Dessous <kbd>6</kbd></button>
+        <button data-vue="iso" title="Vue isométrique — touche 7">Isométrique <kbd>7</kbd></button>
+      </div>
+    </div>
+
+    <div id="accueil" hidden></div>
+
+    <div id="attente" hidden>
+      <div>
+        <b id="attenteTitre">Chargement…</b>
+        <span id="attenteDetail"></span>
+        <div class="jauge"><span id="jaugeBarre"></span></div>
+      </div>
+    </div>
+
+    <button class="tb mini" id="bArreterCalcul" hidden title="Le calcul est long : l'arrêter, relancer le noyau et suspendre l'opération en cours">⏹ Arrêter le calcul</button>
+    <div id="etat">
+      <span id="etatNav" class="mono"></span>
+      <span class="grow"></span>
+      <span id="etatMesure" class="mono" hidden></span>
+      <span id="etatSel" class="mono"></span>
+      <span id="etatStats" class="mono"></span>
+    </div>
+  </div>
+</main>
+
+<!-- La frise d'historique (comme Fusion / solidcraft) : rejouer, glisser le marqueur,
+     réordonner, dossiers, clic droit. Construite par js/c7-frise.js. -->
+<footer id="frise">
+  <span class="poignee">⠿</span><b>Historique</b>
+  <button id="bFriseDebut" title="Au début de l'historique">⏮</button>
+  <button id="bFriseRecul" title="Une opération en arrière">◀</button>
+  <button id="bFriseAvance" title="Une opération en avant">▶</button>
+  <button id="bFriseFin" title="À la fin de l'historique">⏭</button>
+  <div class="frise-piste" id="frisePiste"></div>
+</footer>
+
+<div class="menu-flottant" id="menuContexte" hidden></div>
+
+<!-- La boîte « Souris & vue » est celle de la visionneuse, reprise d'index.html au démarrage
+     (une seule source) : voir chargerReglages() dans js/c6-conception.js. -->
+
+<dialog id="dlgParametres">
+  <form method="dialog">
+    <h2>Paramètres</h2>
+    <p class="aide">Un paramètre se cite par son nom dans n'importe quelle cote : <code>L/2</code>,
+       <code>2*e + 1</code>, <code>sqrt(L^2 + l^2)</code>. Fonctions : sin, cos, tan (en degrés), sqrt, abs,
+       min, max, round ; constante <code>pi</code>.</p>
+    <table class="raccourcis tab-params" id="tabParametres"></table>
+    <menu>
+      <button type="button" class="tb" id="bAjouterParametre">+ Ajouter</button>
+      <span class="grow"></span>
+      <button class="tb on" value="ok">Fermer</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="dlgConfigurations">
+  <form method="dialog">
+    <h2>Table de configurations</h2>
+    <p class="aide">Chaque colonne est un jeu de valeurs pour les paramètres. « Activer » les recopie dans les
+       paramètres et reconstruit la pièce.</p>
+    <div class="scroll-config"><table class="raccourcis tab-params" id="tabConfigurations"></table></div>
+    <menu>
+      <button type="button" class="tb" id="bAjouterConfiguration">+ Configuration</button>
+      <span class="grow"></span>
+      <button class="tb on" value="ok">Fermer</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="dlgProjets">
+  <form method="dialog">
+    <h2>Pièces du dossier des projets</h2>
+    <p class="aide" id="projetsDossier"></p>
+    <table class="raccourcis" id="tabProjets"></table>
+    <p class="aide" id="projetsEtat"></p>
+    <menu><span class="grow"></span><button class="tb on" value="ok">Fermer</button></menu>
+  </form>
+</dialog>
+
+<dialog id="dlgAide">
+  <form method="dialog">
+    <h2>Raccourcis — conception</h2>
+    <table class="raccourcis">
+      <tr><td><kbd>S</kbd></td><td>Rechercher une commande</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Annuler / refaire</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Enregistrer / ouvrir</td></tr>
+      <tr><td colspan="2"><b>Frise d'historique</b></td></tr>
+      <tr><td>double-clic</td><td>Modifier l'opération</td></tr>
+      <tr><td>clic droit</td><td>Renommer, suspendre, supprimer, marqueur ici, dossiers</td></tr>
+      <tr><td>glisser une icône</td><td>Réordonner</td></tr>
+      <tr><td>glisser le marqueur</td><td>Revenir en arrière dans l'historique</td></tr>
+      <tr><td><kbd>Maj</kbd>/<kbd>Ctrl</kbd>+clic</td><td>Sélectionner plusieurs opérations (pour un dossier)</td></tr>
+      <tr><td colspan="2"><b>Dans une esquisse</b></td></tr>
+      <tr><td><kbd>L</kbd> <kbd>R</kbd> <kbd>O</kbd> <kbd>P</kbd> <kbd>T</kbd></td><td>Ligne, rectangle, cercle, point, ajuster</td></tr>
+      <tr><td><kbd>D</kbd> · <kbd>H</kbd> <kbd>V</kbd> · <kbd>X</kbd></td><td>Coter · horizontale, verticale · construction</td></tr>
+      <tr><td><kbd>Suppr</kbd> · <kbd>Maj</kbd>+clic</td><td>Supprimer · ajouter à la sélection</td></tr>
+      <tr><td><kbd>Échap</kbd> · <kbd>Entrée</kbd></td><td>Arrêter le tracé, l'outil, la sélection · terminer l'esquisse</td></tr>
+      <tr><td colspan="2"><b>Vue</b> (comme la visionneuse)</td></tr>
+      <tr><td><kbd>F</kbd> <kbd>A</kbd> <kbd>W</kbd> <kbd>X</kbd> <kbd>G</kbd> <kbd>T</kbd></td><td>Ajuster, arêtes, filaire, rayons X, grille, thème (hors esquisse)</td></tr>
+      <tr><td><kbd>C</kbd> <kbd>K</kbd> <kbd>M</kbd></td><td>Coupe, mesure, mode de mesure (hors esquisse)</td></tr>
+      <tr><td><kbd>1</kbd>…<kbd>7</kbd></td><td>Vues normalisées</td></tr>
+    </table>
+    <menu><span class="grow"></span><button class="tb on" value="ok">Fermer</button></menu>
+  </form>
+</dialog>
+
+<input type="file" id="fichier" accept=".json,.stp,.step,.dxf,.svg,.csv,.stl,.obj,.3mf,.png,.jpg,.jpeg,.webp" hidden>
+
+<script type="module" src="js/c6-conception.js"></script>
+</body>
+</html>

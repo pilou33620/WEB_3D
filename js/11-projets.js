@@ -71,10 +71,13 @@ async function remplir(ui){
   for(const f of donnees.fichiers){
     if(estAnnexe(f.chemin)) continue;                       // annexes : elles suivent leur .obj
     const tr = table.insertRow();
-    tr.insertCell().textContent = f.chemin;                 // textContent : le nom vient du disque
+    const piece = /\.json$/i.test(f.chemin);              // une pièce du mode conception
+    tr.insertCell().textContent = (piece ? "✏️ " : "") + f.chemin;   // textContent : le nom vient du disque
     tr.insertCell().textContent = taille(f.taille);
     tr.insertCell().textContent = jour(f.date);
-    tr.onclick = () => ouvrir(ui, compagnons(f.chemin, donnees.fichiers));
+    if(piece) tr.title = "Pièce du mode conception : s'ouvre dans la page de conception";
+    tr.onclick = piece ? () => { location.href = "conception.html?projet=" + encodeURIComponent(f.chemin); }
+                       : () => ouvrir(ui, compagnons(f.chemin, donnees.fichiers));
   }
   $("bRanger").disabled = !(ui.derniersFichiers && ui.derniersFichiers.length);
 }

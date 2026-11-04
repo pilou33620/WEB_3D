@@ -35,6 +35,7 @@ import socket
 import socketserver
 import subprocess
 import sys
+import tempfile
 import urllib.parse
 import webbrowser
 
@@ -48,7 +49,7 @@ RACINE = os.path.dirname(os.path.abspath(__file__))
 # — ni .git/, ni le script, ni la liste des fichiers. Un segment ne commence
 # jamais par un point : ni « .. », ni fichier caché.
 STATIQUE = re.compile(
-    r"^/(?:index\.html)?$"
+    r"^/(?:index\.html|conception\.html)?$"
     r"|^/(?:css|js|vendor|exemples)(?:/[\w-][\w.-]*)+$"
     r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|png|jpe?g|webp|bmp|gif)$",
     re.IGNORECASE)
@@ -56,9 +57,10 @@ STATIQUE = re.compile(
 # Le dossier des projets (--projets ; WEB_SUITE y passe PROJETS/3D, synchronisé
 # avec GitHub). None : pas de projets, la page cache son bouton.
 PROJETS = None
-# Ce qu'on y lit et y range : des modèles et ce qui accompagne un .obj (les annexes
-# de js/02-import.js). La page nettoie le nom avant l'envoi (nomProjet de js/11-projets.js).
-NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|png|jpe?g|webp|bmp|gif)$",
+# Ce qu'on y lit et y range : des modèles, ce qui accompagne un .obj (les annexes
+# de js/02-import.js) et les pièces du mode conception (.json, conception.html).
+# La page nettoie le nom avant l'envoi (nomProjet de js/11-projets.js).
+NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|png|jpe?g|webp|bmp|gif|json)$",
                         re.IGNORECASE)
 MAX_PROJET = 200 * 1024 * 1024
 
@@ -161,38 +163,57 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
 
         L'en-tête X-Web3D est exigé sur tout POST, canal de pilotage compris : une page
         d'un autre site ne peut pas l'ajouter sans pré-vol CORS, que ce serveur ne valide
-        pas. On n'écrase jamais : un nom déjà pris devient « piece (2).stp »."""
+        pas. On n'écrase jamais : un nom déjà pris devient « piece (2).stp ».
+
+        Seule exception, explicite : POST /api/projets?nom=sous/piece.json&remplacer=1, le
+        bouton « Enregistrer » du mode conception. Réservé aux .json, le remplacement passe
+        par un fichier temporaire caché puis os.replace : jamais de pièce tronquée."""
         if self.headers.get("X-Web3D") != "1":
             return self._json({"detail": "Requête refusée"}, 403)
         if PILOTE.traiter(self):     # refuse lui-même une autre origine
             return
         if urllib.parse.urlsplit(self.path).path != "/api/projets" or not PROJETS:
             return self._json({"detail": "Route inconnue"}, 404)
-        nom = os.path.basename(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-                               .get("nom", [""])[0].replace("\\", "/"))
+        requete = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        relatif = requete.get("nom", [""])[0].replace("\\", "/")
+        remplacer = requete.get("remplacer") == ["1"]
+        nom = os.path.basename(relatif)
         try:
             taille = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             taille = -1
         if not NOM_PROJET.match(nom):
             return self._json({"detail": "Nom ou format refusé : %s" % nom}, 400)
+        if remplacer and not nom.lower().endswith(".json"):
+            return self._json({"detail": "Remplacement réservé aux pièces .json"}, 400)
         if not 0 < taille <= MAX_PROJET:
             self.close_connection = True
             return self._json({"detail": "Taille refusée (%d Mo au plus)" % (MAX_PROJET >> 20)}, 413)
         base, ext = os.path.splitext(nom)
-        # Le nom se réserve en le créant, en exclusif et sans suivre de lien : deux envois du même
-        # nom ne s'écrasent pas, et un lien déposé dans PROJETS ne fait pas écrire ailleurs.
-        # Plus de « .part » commun : un fichier coupé en route est retiré.
-        drapeaux = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-                    | getattr(os, "O_BINARY", 0))
-        cible, n, fd = chemin_projet(nom), 2, None
-        while cible and fd is None and n < 1000:
-            try:
-                fd = os.open(cible, drapeaux, 0o644)
-            except FileExistsError:
-                cible, n = chemin_projet("%s (%d)%s" % (base, n, ext)), n + 1
-        if fd is None:
-            return self._json({"detail": "Nom refusé"}, 400)
+        cible, fd, temporaire = None, None, None
+        if remplacer:
+            # chemin_projet garde la cible dans PROJETS ; un lien ou un dossier à sa place est refusé
+            cible = chemin_projet(relatif)
+            if (not cible or os.path.islink(cible) or (os.path.exists(cible) and not os.path.isfile(cible))
+                    or not os.path.isdir(os.path.dirname(cible))):
+                return self._json({"detail": "Nom refusé"}, 400)
+            # « .xxx.tmp » : un nom caché n'est ni listé ni servi (NOM_PROJET, chemin_projet)
+            fd, temporaire = tempfile.mkstemp(prefix=".", suffix=".tmp", dir=os.path.dirname(cible))
+            os.chmod(temporaire, 0o644)
+        else:
+            # Le nom se réserve en le créant, en exclusif et sans suivre de lien : deux envois du même
+            # nom ne s'écrasent pas, et un lien déposé dans PROJETS ne fait pas écrire ailleurs.
+            # Plus de « .part » commun : un fichier coupé en route est retiré.
+            drapeaux = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_BINARY", 0))
+            cible, n = chemin_projet(nom), 2
+            while cible and fd is None and n < 1000:
+                try:
+                    fd = os.open(cible, drapeaux, 0o644)
+                except FileExistsError:
+                    cible, n = chemin_projet("%s (%d)%s" % (base, n, ext)), n + 1
+            if fd is None:
+                return self._json({"detail": "Nom refusé"}, 400)
         reste, complet = taille, False
         try:
             with os.fdopen(fd, "wb") as f:
@@ -202,13 +223,15 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
                         break
                     f.write(bloc)
                     reste -= len(bloc)
+            if not reste and temporaire:
+                os.replace(temporaire, cible)     # avant `complet` : un échec ici laisse le finally retirer le .tmp
             complet = not reste
         except (ConnectionError, TimeoutError):   # client parti ou muet depuis `timeout` s : personne à qui répondre
             self.close_connection = True
             return None
         finally:
             if not complet:     # fin prématurée, coupure, disque plein : pas de fichier tronqué dans PROJETS
-                os.remove(cible)
+                os.remove(temporaire or cible)
         if not complet:
             return self._json({"detail": "Envoi interrompu"}, 400)
         # realpath des deux côtés : un chemin court Windows (PIERRE~1) ne se compare pas au long
