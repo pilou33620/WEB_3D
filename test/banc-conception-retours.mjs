@@ -12,7 +12,7 @@ const verifier = (nom, obtenu, attendu) => {
   else { ko++; console.log(`ÉCHEC ${nom} : obtenu ${JSON.stringify(obtenu)}, attendu ${JSON.stringify(attendu)}`); }
 };
 
-const { cdp, page, erreurs, fermer, souris, cliquer, etape } = await ouvrirConception();
+const { cdp, page, erreurs, portWeb, fermer, souris, cliquer, etape } = await ouvrirConception();
 const capture = async (nom) => {
   if(!process.env.CAPTURES) return;
   const { data } = await cdp("Page.captureScreenshot", { format:"png" });
@@ -767,6 +767,23 @@ try{
       longueur:Math.round(dessus.longueur), congeRetire:vol1 < vol0, coqueCreuse:vol2 < vol0 / 2, err };`);
   verifier("script : schéma des opérations, arêtes et faces à désigner", r15,
     { champs:true, axe:"Z", stableCompteur:true, nbAretes:12, nbFaces:6, longueur:30, congeRetire:true, coqueCreuse:true, err:null });
+
+  /* Le canal de pilotage, par la route même qu'appelle le MCP : lire, capturer, un geste qui attend sa carte. */
+  const commande = async (nom, args, ecriture = false, attente) => (await fetch(`http://127.0.0.1:${portWeb}/api/pilote/commande`, { method:"POST",
+    headers:{ "X-Web3D":"1", "Content-Type":"application/json" }, body:JSON.stringify({ page:["conception"], nom, args, ecriture, attente }) })).json();
+  const lue = await commande("interface_lire", { filtre:"Extrusion" });
+  verifier("pilote : la page lit son interface", [lue.etat, JSON.stringify(lue.resultat).includes("Extrusion")], ["finie", true]);
+  const vue = await commande("capture", {});
+  verifier("pilote : la page capture sa vue", [vue.etat, String(vue.resultat?.image).startsWith("data:image/png")], ["finie", true]);
+  const geste = await commande("interface", { geste:"cliquer", cible:"#bAide" }, true, 1);
+  const ouverte = () => page(`return document.getElementById("dlgAide").open;`);
+  verifier("pilote : un geste attend le clic sur sa carte", [geste.etat !== "appliquee", await ouverte()], [true, false]);
+  await page(`[...document.querySelectorAll("button")].find(b => b.textContent === "Appliquer").click();
+    for(let i = 0; i < 50 && !document.getElementById("dlgAide").open; i++) await new Promise(r => setTimeout(r, 100));`);
+  verifier("pilote : la carte appliquée fait le geste", await ouverte(), true);
+  await page(`document.getElementById("dlgAide").close();`);
+  const regles = await fetch(`http://127.0.0.1:${portWeb}/` + await page(`return document.getElementById("lienRegles").getAttribute("href");`));
+  verifier("le lien Règles de la page mène au texte", [regles.status, (await regles.text()).includes("RÈGLES DE CONCEPTION")], [200, true]);
 
   await page(`W3D.conception.sauverOnglet(); for(const o of W3D.conception.onglets) o.modifie = false; W3D.conception.modifie = false;`);
   verifier("aucune erreur dans la page", erreurs.filter(e => !/panne de banc|could not be cloned/.test(String(e))), []);

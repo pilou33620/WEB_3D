@@ -2505,6 +2505,9 @@ async function demarrer(){
   };
   await conception.brancherProjets();
   window.W3D = { THREE, vue, nav, arbre, mesure, coupe, ui, conception, prefs };
+  /* Canal de pilotage du MCP de web_suite (js/pilote.js) : ici, les gestes de l'interface et la capture de la vue. */
+  if(window.Pilote) window.Pilote.declarer({ page:"conception", projet:() => document.title })
+    .capture(() => { vue.rendre(); return vue.canvas; });
 
   /* ?projet=chemin.json (depuis les projets de la visionneuse), sinon le brouillon de ce navigateur. */
   const projet = new URLSearchParams(location.search).get("projet");

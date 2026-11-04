@@ -327,6 +327,8 @@ diamètre) s'ajoute aux propriétés. Le corps entier se prend dans le navigateu
 *Faces*. *Esquisse* se pose sur la face choisie ; le panneau d'une esquisse ouvert prend la face plane qu'on clique.
 L'historique nomme chaque opération par sa fonction et son nom : un nom donné « Cabine » s'affiche *Boîte-Cabine*.
 
+**Règles de conception.** `regles-conception.md` (lien *Règles* de la barre du haut) est le seul texte des règles à suivre pour concevoir une pièce : le MCP de web_suite le lit par `savoir_lire` (fiche `conception-3d`), et un raccourci de Claude in Chrome renvoie à ce lien. La page est aussi pilotable par le MCP (`pilote_interface`, page `conception`).
+
 **Écrire une pièce par script.** `W3D.conception` est accessible depuis la page :
 - `schema(type)` rend les champs d'une opération et un exemple rempli ; les types sont les clés de `TYPES`
   (`js/c3-operations.js`) ;
@@ -450,6 +452,7 @@ signale — sauf si l'option correspondante est cochée.
 WEB_3D/
 ├── index.html                    structure de la page et carte des imports
 ├── conception.html               la page du mode conception
+├── regles-conception.md          les règles de conception d'une pièce, lues par le MCP (`savoir_lire`) et Claude in Chrome (lien Règles)
 ├── web_3D.py                     serveur statique (bibliothèque standard)
 ├── pilote.py                     canal de pilotage, côté serveur (copie de web_suite)
 ├── appairage.py                  code d'appairage des tablettes (copie commune aux web tools)

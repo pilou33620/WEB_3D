@@ -120,6 +120,8 @@ with tempfile.TemporaryDirectory() as tmp:
     verifier("remplacement : sous-dossier absent refusé", piece(b"{}", "absent%2Fp.json")[0], 400)
     verifier("remplacement : aucun .tmp laissé", [f for f in os.listdir(tmp) if f.endswith(".tmp")], [])
     verifier("page de conception servie", requete("GET", "/conception.html")[0], 200)
+    verifier("règles de conception servies", requete("GET", "/regles-conception.md")[0], 200)
+    verifier("seul ce .md est servi", requete("GET", "/README.md")[0], 404)
 
     # Un lien symbolique « piege.stl.part » déposé dans PROJETS (dépôt synchronisé) ne fait
     # pas écrire ailleurs : l'écriture va dans la cible, créée en exclusif, sans suivre de lien

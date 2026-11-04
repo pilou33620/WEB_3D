@@ -7,7 +7,9 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◩</text></svg>">
 <link rel="stylesheet" href="css/visionneuse-3d.css">
 <link rel="stylesheet" href="css/conception.css">
+<link rel="stylesheet" href="css/pilote.css">
 <script>
+const ENTETE_WEB = { "X-Web3D": "1" };   // en-tête maison exigé sur tout POST (web_3D.py), lu par js/pilote.js
 try{
   const p = JSON.parse(localStorage.getItem("web3d.prefs") || "{}");
   if(p.theme === "clair") document.documentElement.setAttribute("data-theme", "clair");
@@ -37,6 +39,7 @@ try{
   <span class="onglets-docs" id="ongletsDocs"></span>
   <span hidden id="nomFichier"></span>
   <span class="grow"></span>
+  <a class="tb lien mini" id="lienRegles" href="regles-conception.md" target="_blank" rel="noopener" title="Les règles de conception d'une pièce 3D, à suivre aussi par Claude">Règles</a>
   <a class="tb lien mini" href="index.html" title="Revenir à la visionneuse (les modifications non enregistrées restent dans le brouillon de ce navigateur)">◈ Visionneuse</a>
   <button class="tb mini icone" id="bTheme" title="Passer au thème clair">☀️</button>
   <button class="tb mini icone" id="bPrefs" title="Souris &amp; vue : configuration de la souris, orbite, sensibilités">⚙</button>
@@ -537,6 +540,7 @@ try{
 
 <input type="file" id="fichier" accept=".json,.stp,.step,.dxf,.svg,.csv,.stl,.obj,.3mf,.png,.jpg,.jpeg,.webp" hidden>
 
+<script src="js/pilote.js"></script>
 <script type="module" src="js/c6-conception.js"></script>
 </body>
 </html>

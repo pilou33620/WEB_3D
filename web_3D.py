@@ -49,7 +49,7 @@ RACINE = os.path.dirname(os.path.abspath(__file__))
 # — ni .git/, ni le script, ni la liste des fichiers. Un segment ne commence
 # jamais par un point : ni « .. », ni fichier caché.
 STATIQUE = re.compile(
-    r"^/(?:index\.html|conception\.html)?$"
+    r"^/(?:index\.html|conception\.html|regles-conception\.md)?$"
     r"|^/(?:css|js|vendor|exemples)(?:/[\w-][\w.-]*)+$"
     r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|png|jpe?g|webp|bmp|gif)$",
     re.IGNORECASE)
@@ -116,6 +116,7 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         ".js": "text/javascript",
         ".mjs": "text/javascript",
         ".json": "application/json",
+        ".md": "text/plain; charset=utf-8",     # affiché par le navigateur : text/markdown se télécharge
         ".stp": "application/octet-stream",
         ".step": "application/octet-stream",
         ".igs": "application/octet-stream",
