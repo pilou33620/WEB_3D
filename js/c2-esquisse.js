@@ -298,9 +298,10 @@ function traduire(k, idx, v){
 
 /**
  * Résout l'esquisse en place. `glisse` = { id, x, y } tient un point sous la
- * souris pendant qu'on le fait glisser. Rend { ok, conflits, erreurs } :
+ * souris pendant qu'on le fait glisser. Rend { ok, conflits, erreurs, dof } :
  * conflits = ids des contraintes que le solveur juge contradictoires,
- * erreurs = { idContrainte: message } pour une cote illisible.
+ * erreurs = { idContrainte: message } pour une cote illisible,
+ * dof = degrés de liberté restants (0 : entièrement contrainte).
  */
 export function resoudre(gcs, esq, v = Number, glisse = null){
   const idx = indexer(esq);
@@ -334,9 +335,10 @@ export function resoudre(gcs, esq, v = Number, glisse = null){
   const statut = gcs.solve();
   const conflits = [...new Set(gcs.get_gcs_conflicting_constraints().map(id => id.split("~")[0]))];
   const ok = (statut === 0 || statut === 1) && !conflits.length;
+  const dof = gcs.gcs.dof();
   /* Un échec ne touche pas à l'esquisse : une solution contradictoire écraserait des points
      les uns sur les autres, et le solveur ne saurait plus en repartir. */
-  if(!ok) return { ok, conflits, erreurs };
+  if(!ok) return { ok, conflits, erreurs, dof };
   gcs.apply_solution();
   for(const e of esq.elements){
     const p = gcs.sketch_index.get_primitive(e.id);
@@ -345,7 +347,7 @@ export function resoudre(gcs, esq, v = Number, glisse = null){
     else if(e.type === "cercle") e.r = p.radius;
     else if(e.type === "arc") delete e.r;      // les fichiers d'avant le portaient
   }
-  return { ok, conflits, erreurs };
+  return { ok, conflits, erreurs, dof };
 }
 
 /* -----------------------------------------------------------------------------

@@ -36,6 +36,7 @@ import { TYPES, nomHistorique, TROUS } from "./c3-operations.js";
 import { EditeurEsquisse } from "./c5-esquisse-ui.js";
 import { Frise, deplacementRefuse, deplacer, creerDossier, normaliserDossiers, dependances } from "./c7-frise.js";
 import { ANALYSES, appliquerAnalyse } from "./c8-analyses.js";
+import { controlerRegles, PROCEDES } from "./c10-regles.js";
 import { champsAteliers, defautsAteliers, brancherAteliers, clicAtelier, poigneeBas, marquesAteliers, dessinerAides,
          fichierAtelier, appliquerEclate, verifierLiens, DESIGNATIONS_UNIQUES, AIDES_DESIGNATION } from "./c9-ateliers-ui.js";
 import { init_planegcs_module, GcsWrapper } from "../vendor/planegcs/index.js";
@@ -982,6 +983,8 @@ class Conception {
       ], r.left, r.top - 170);
     };
     /* Inspecter / Gérer */
+    $("bControleRegles").onclick = () => { this.montrerControle(); $("dlgControle").showModal(); };
+    $("selProcede").onchange = () => this.montrerControle();
     $("bProprietes").onclick = () => { $("panneauProps").classList.remove("replie"); this.afficherProprietes(this.arbre.selection); };
     $("bMateriau").onclick = () => { $("panneauProps").classList.remove("replie"); this.afficherProprietes(this.arbre.selection); $("selMateriau")?.focus(); };
     $("bAccueil").onclick = () => this.montrerAccueil();
@@ -1844,7 +1847,7 @@ class Conception {
     const avant = new Set(ed.esq.elements.map(e => e.id));
     ajouterPrimitives(ed.esq, prims);
     for(const e of ed.esq.elements){
-      if(e.type === "point" && !avant.has(e.id)) ed.esq.contraintes.push({ id:nouvelIdEsquisse(ed.esq, "k"), type:"fixe", a:e.id, x:e.x, y:e.y });
+      if(e.type === "point" && !avant.has(e.id)) ed.esq.contraintes.push({ id:nouvelIdEsquisse(ed.esq, "k"), type:"fixe", a:e.id, x:e.x, y:e.y, projete:true });
     }
     ed.resoudre();
     ed.redessiner();
@@ -2240,6 +2243,27 @@ class Conception {
      ========================================================================== */
 
   /** Ce qu'il faut savoir pour écrire une opération : ses champs et ses valeurs par défaut. */
+  /** Les règles vérifiables (c10-regles.js) : ce que montre la fenêtre et ce que lit le MCP. */
+  controlerRegles(procede = "fdm"){
+    if(this.enCours || this.relancer || this.editeur.ouvert) throw new Error("Contrôle impossible pendant une reconstruction ou dans une esquisse : termine-la d'abord.");
+    return controlerRegles(this.doc, { gcs:this.gcs, maillages:this.resultat?.maillages || [], procede });
+  }
+
+  montrerControle(){
+    const hote = $("listeControle");
+    hote.textContent = "";
+    let r;
+    try{ r = this.controlerRegles($("selProcede").value); }
+    catch(e){ hote.textContent = e.message; return; }
+    for(const c of r.controles){
+      const titre = document.createElement("h4");
+      titre.textContent = `${c.ok ? "✓" : "✗"} Règle ${c.regle} : ${c.nom}`;
+      const ul = document.createElement("ul");
+      for(const e of c.ecarts){ const li = document.createElement("li"); li.textContent = e; ul.appendChild(li); }
+      hote.append(titre, ul);
+    }
+  }
+
   schema(type){
     const compteur = this.doc.compteur;     // nouvelleOperation consomme un identifiant : ici, ce n'est qu'un exemple
     const exemple = nouvelleOperation(type, this);
@@ -2506,8 +2530,10 @@ async function demarrer(){
   await conception.brancherProjets();
   window.W3D = { THREE, vue, nav, arbre, mesure, coupe, ui, conception, prefs };
   /* Canal de pilotage du MCP de web_suite (js/pilote.js) : ici, les gestes de l'interface et la capture de la vue. */
-  if(window.Pilote) window.Pilote.declarer({ page:"conception", projet:() => document.title })
-    .capture(() => { vue.rendre(); return vue.canvas; });
+  if(window.Pilote){
+    window.Pilote.declarer({ page:"conception", projet:() => document.title }).capture(() => { vue.rendre(); return vue.canvas; });
+    window.Pilote.commande("web3d_regles", { executer:a => conception.controlerRegles(a.procede) });
+  }
 
   /* ?projet=chemin.json (depuis les projets de la visionneuse), sinon le brouillon de ce navigateur. */
   const projet = new URLSearchParams(location.search).get("projet");

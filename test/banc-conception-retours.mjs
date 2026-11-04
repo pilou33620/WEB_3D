@@ -782,6 +782,11 @@ try{
     for(let i = 0; i < 50 && !document.getElementById("dlgAide").open; i++) await new Promise(r => setTimeout(r, 100));`);
   verifier("pilote : la carte appliquée fait le geste", await ouverte(), true);
   await page(`document.getElementById("dlgAide").close();`);
+  const controle = await commande("web3d_regles", {});
+  verifier("pilote : le contrôle des règles répond", [controle.etat, controle.resultat?.controles?.map(x => x.regle)], ["finie", [5, 6, 15]]);
+  const fenetre = await page(`document.getElementById("bControleRegles").click(); const d = document.getElementById("dlgControle");
+    const r = [d.open, document.getElementById("listeControle").textContent.includes("Règle 5")]; d.close(); return r;`);
+  verifier("le bouton Règles montre le même contrôle", fenetre, [true, true]);
   const regles = await fetch(`http://127.0.0.1:${portWeb}/` + await page(`return document.getElementById("lienRegles").getAttribute("href");`));
   verifier("le lien Règles de la page mène au texte", [regles.status, (await regles.text()).includes("RÈGLES DE CONCEPTION")], [200, true]);
 

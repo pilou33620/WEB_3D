@@ -327,7 +327,7 @@ diamètre) s'ajoute aux propriétés. Le corps entier se prend dans le navigateu
 *Faces*. *Esquisse* se pose sur la face choisie ; le panneau d'une esquisse ouvert prend la face plane qu'on clique.
 L'historique nomme chaque opération par sa fonction et son nom : un nom donné « Cabine » s'affiche *Boîte-Cabine*.
 
-**Règles de conception.** `regles-conception.md` (lien *Règles* de la barre du haut) est le seul texte des règles à suivre pour concevoir une pièce : le MCP de web_suite le lit par `savoir_lire` (fiche `conception-3d`), et un raccourci de Claude in Chrome renvoie à ce lien. La page est aussi pilotable par le MCP (`pilote_interface`, page `conception`).
+**Règles de conception.** `regles-conception.md` (lien *Règles* de la barre du haut) est le seul texte des règles à suivre pour concevoir une pièce : le MCP de web_suite le lit par `savoir_lire` (fiche `conception-3d`), et un raccourci de Claude in Chrome renvoie à ce lien. Le bouton *Règles* de l'onglet Inspecter contrôle ce qu'un programme peut vérifier (esquisses contraintes, noms des paramètres, grille FDM), comme `W3D.conception.controlerRegles(procede)` et l'outil MCP `web3d_regles`. La page est aussi pilotable par le MCP (`pilote_interface`, page `conception`).
 
 **Écrire une pièce par script.** `W3D.conception` est accessible depuis la page :
 - `schema(type)` rend les champs d'une opération et un exemple rempli ; les types sont les clés de `TYPES`
@@ -504,6 +504,7 @@ WEB_3D/
 | `js/c3b-ateliers.js` | conception : surface, assemblage, tôlerie, soudures, visserie, maillages |
 | `js/c9-ateliers-ui.js` | conception : champs et désignations des ateliers, poignée, animation, éclaté, développé, aides dessinées |
 | `js/c2b-outils-esquisse.js` | conception : ajuster, décaler, congé et chanfrein de coin, miroir, répétitions |
+| `js/c10-regles.js` | conception : le contrôle des règles vérifiables (esquisses contraintes, noms des paramètres, grille FDM) |
 | `js/c8-analyses.js` | conception : zébrures, dépouille et courbure, par un matériau à nuanceur |
 | `js/c0-dialogues.js` | conception : les boîtes de question du thème, à la place de `prompt()`, `confirm()` et `alert()` |
 | `js/c7-frise.js` | conception : la frise d'historique (marqueur, lecture, réordonner, dossiers, clic droit) et ses règles |

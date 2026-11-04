@@ -2,6 +2,7 @@
    node test/banc-conception.mjs — n'affiche que les échecs et un bilan. */
 import { fileURLToPath } from "node:url";
 import { evaluer, evaluerParametres, appliquerConfiguration, lireParametresCsv } from "../js/c1-expressions.js";
+import { controlerRegles, prefixePiece } from "../js/c10-regles.js";
 import { nouvelleEsquisse, nouvelId, resoudre, profils, lireDxf, ajouterPrimitives, repere, indexer, milieuArc, rayonDe } from "../js/c2-esquisse.js";
 
 const ici = (c) => fileURLToPath(new URL(c, import.meta.url));
@@ -482,6 +483,48 @@ retirerDuDossier(fd, "d1", "b");
 verifier("dossier : retirer le membre du milieu coupe le dossier en deux", fd.dossiers.map(d => d.ops), [["a"], ["c"]]);
 fr.operations = fr.operations.filter(o => o.id !== "x"); normaliserDossiers(fr);
 verifier("dossier vide supprimé", fr.dossiers.length, 0);
+
+/* ---------------- contrôle des règles vérifiables (regles-conception.md) ---------------- */
+{
+  const esq = (id, elements, contraintes, plan = { base:"XY", decalage:"0" }) => ({ id, type:"esquisse", nom:id, plan, elements, contraintes });
+  const origine = { id:"o", type:"point", x:0, y:0, constr:true }, ko = { id:"ko", type:"fixe", a:"o", x:0, y:0 };
+  const point = { id:"p", type:"point", x:5, y:5 };
+  const doc = (operations, parametres = [], nom = "BoitierBas") => ({ nom, parametres, operations });
+  const ecarts = (d, regle, opts = {}) => controlerRegles(d, { gcs, ...opts }).controles.find(c => c.regle === regle)?.ecarts;
+  verifier("règles : préfixe de la pièce", [prefixePiece("BoitierBas"), prefixePiece("boîtier bas")], ["boitier_bas_", "boitier_bas_"]);
+
+  const contrainte = esq("A", [origine, point], [ko, { id:"k1", type:"coincident", a:"o", b:"p" }]);
+  verifier("règles : esquisse entièrement contrainte", ecarts(doc([contrainte]), 5), []);
+  const avant = JSON.stringify(contrainte);
+  ecarts(doc([contrainte]), 5);
+  verifier("règles : le contrôle ne touche pas à l'esquisse", JSON.stringify(contrainte), avant);
+  verifier("règles : degrés de liberté comptés", ecarts(doc([esq("B", [origine, point], [ko])]), 5), ["« B » : 2 degré(s) de liberté restant(s)."]);
+  const fixe = (extra) => esq("C", [origine, point], [ko, { id:"k1", type:"fixe", a:"p", x:5, y:5, ...extra }]);
+  verifier("règles : Fixe à la main signalé", ecarts(doc([fixe()]), 5).length, 1);
+  verifier("règles : point projeté accepté", ecarts(doc([fixe({ projete:true })]), 5), []);
+  verifier("règles : esquisse suspendue ignorée", ecarts(doc([{ ...esq("D", [origine, point], [ko]), suspendue:true }]), 5), []);
+
+  const p = (...noms) => noms.map(nom => ({ nom, expr:"2" }));
+  verifier("règles : préfixes et familles partagées", ecarts(doc([], p("boitier_bas_paroi", "jeu_ref", "ref_pcb_long", "marge_pcb", "diam_insert_m3")), 6), []);
+  verifier("règles : noms refusés", ecarts(doc([], p("Longueur", "longueur", "capot_long")), 6).length, 3);
+
+  const v = (nom, expr) => ({ nom, expr });
+  const coche = (d, opts) => ecarts(d, 15, opts).length;
+  verifier("règles : grille des paramètres", coche(doc([], [v("x_paroi", "1.3"), v("x_hauteur", "10.1"), v("x_paroi2", "1.5"), v("x_hauteur2", "10.2"), v("x_largeur", "33.33")])), 2);
+  const plaque = esq("S", [origine], [ko]);
+  const extrusion = (esquisse, distance, sens = "un") => ({ id:"e", type:"extrusion", nom:"E", esquisse, sens, distance, distance2:"1" });
+  verifier("règles : hauteur d'extrusion", coche(doc([plaque, extrusion("S", "10.1")])), 1);
+  verifier("règles : hauteur sur la grille", coche(doc([plaque, extrusion("S", "10.2")])), 0);
+  verifier("règles : extrusion dans le plan XY libre", coche(doc([esq("V", [origine], [ko], { base:"XZ", decalage:"0" }), extrusion("V", "10.1")])), 0);
+  verifier("règles : coque 1, 2 ou 3 mm", [coche(doc([{ id:"c", type:"coque", nom:"C", epaisseur:"1.5" }])), coche(doc([{ id:"c", type:"coque", nom:"C", epaisseur:"2" }]))], [1, 0]);
+  const boite = (h) => ({ maillages:[{ nom:"BD", proprietes:{ boite:[[0, 0, 0], [9, 9, h]] } }] });
+  verifier("règles : hauteur hors-tout", [coche(doc([]), boite(10.1)), coche(doc([]), boite(10.2))], [1, 0]);
+  verifier("règles : valeur illisible signalée", coche(doc([], [v("x", "1/*")])), 1);
+  verifier("règles : pas de grille hors FDM", ecarts(doc([], [v("x_paroi", "1.3")]), 15, { procede:"tolerie" }), undefined);
+  let refuse = false;
+  try{ controlerRegles(doc([]), { gcs, procede:"autre" }); }catch(_){ refuse = true; }
+  verifier("règles : procédé inconnu refusé", refuse, true);
+}
 
 export { verifier, ok, ko, gcs };
 if(process.argv[1] === fileURLToPath(import.meta.url)){

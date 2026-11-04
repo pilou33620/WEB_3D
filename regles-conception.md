@@ -16,6 +16,10 @@ Ce que la page ne fait pas à l'identique : l'annoncer dans le plan (règle 4), 
 - Occurrence : pas de fonction de ce nom ; insérer la même pièce par Composant.
 - Liaison : rigide, pivot ou glissière seulement, sans cylindrique, plan ni as-built.
 - Trou en goutte d'eau : pas de fonction dédiée ; le dessiner en esquisse.
+- Projection : les points projetés sont fixés à leurs coordonnées du moment et ne suivent pas la pièce si elle change.
+- Commentaire d'un paramètre : la page n'en a pas ; le rôle se lit dans le nom et se dit dans le compte rendu.
+
+Contrôle automatique : bouton Règles de l'onglet Inspecter (groupe Vérifier), `W3D.conception.controlerRegles(procede)` dans la page, ou `web3d_regles` par le MCP. Il vérifie les esquisses entièrement contraintes sans Fixe posé à la main (règle 5), les noms des paramètres (règle 6) et, en FDM, la grille (règle 15). Le lancer après chaque esquisse (règle 5) et avant le compte rendu (règle 19), et y reporter son résultat. Il ne couvre pas le reste des règles.
 
 
 RÈGLES DE CONCEPTION D'UNE PIÈCE 3D

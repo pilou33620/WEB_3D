@@ -275,6 +275,7 @@ try{
       <section><div class="btns">
           <button id="bCollisions" title="Chercher les interférences entre les corps" disabled><i>✸</i>Collisions</button>
           <button id="bIsoler" title="N'afficher que le corps sélectionné — I" disabled><i>◉</i>Isoler</button>
+          <button id="bControleRegles" title="Contrôler les règles de conception vérifiables : esquisses contraintes, noms des paramètres, grille d'impression"><i>✓</i>Règles</button>
         </div><h5>Vérifier</h5></section>
       <section><div class="btns">
           <button data-analyse="zebra" title="Zébrures : continuité des reflets entre les faces"><i>▤</i>Zébrures</button>
@@ -507,6 +508,16 @@ try{
     <p class="aide" id="projetsDossier"></p>
     <table class="raccourcis" id="tabProjets"></table>
     <p class="aide" id="projetsEtat"></p>
+    <menu><span class="grow"></span><button class="tb on" value="ok">Fermer</button></menu>
+  </form>
+</dialog>
+
+<dialog id="dlgControle">
+  <form method="dialog">
+    <h2>Contrôle des règles</h2>
+    <p class="aide">Seules les règles qu'un programme peut vérifier : le reste du texte (lien Règles) n'est pas contrôlé. La grille se lit avec Z pour hauteur d'impression.</p>
+    <label>Procédé <select id="selProcede"><option value="fdm">Impression FDM</option><option value="injection">Injection plastique</option><option value="tolerie">Tôlerie</option></select></label>
+    <div id="listeControle"></div>
     <menu><span class="grow"></span><button class="tb on" value="ok">Fermer</button></menu>
   </form>
 </dialog>
