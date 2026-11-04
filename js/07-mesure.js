@@ -1223,6 +1223,7 @@ export class Mesure {
       const dy = ev.clientY - startPointer.y;
       et.__offset.x = startOffset.x + dx;
       et.__offset.y = startOffset.y + dy;
+      et.__deplacee = true;
       this.replacerEtiquettes();
       this.vue.invalider();
     };
@@ -1442,6 +1443,7 @@ export class Mesure {
         }
       }
 
+      const posees = [];        // cote alignée sur un axe : deux étiquettes visent le même endroit
       for(const c of this.donneesDelta.composantes){
         if(!c.visible || !c.el) continue;
         const p = this.vue.versEcran(c.ancre);
@@ -1451,12 +1453,17 @@ export class Mesure {
         }
         c.el.style.display = "";
         const lx = p.x + (c.el.__offset?.x ?? c.defautOffset.x);
-        const ly = p.y + (c.el.__offset?.y ?? c.defautOffset.y);
+        let ly = p.y + (c.el.__offset?.y ?? c.defautOffset.y);
+        const w = c.el.offsetWidth || 70;
+        const h = c.el.offsetHeight || 22;
+        /* Ce qui se recouvre descend sous l'étiquette déjà posée ; celle qu'on a glissée à la main reste où on l'a mise. */
+        if(!c.el.__deplacee) for(const q of posees){
+          if(Math.abs(lx - q.x) < (w + q.w) / 2 + 2 && Math.abs(ly - q.y) < (h + q.h) / 2 + 2) ly = q.y + (h + q.h) / 2 + 2;
+        }
+        posees.push({ x:lx, y:ly, w, h });
         c.el.style.left = `${lx}px`;
         c.el.style.top = `${ly}px`;
 
-        const w = c.el.offsetWidth || 70;
-        const h = c.el.offsetHeight || 22;
         const bx = Math.max(lx - w / 2, Math.min(lx + w / 2, p.x));
         const by = Math.max(ly - h / 2, Math.min(ly + h / 2, p.y));
 

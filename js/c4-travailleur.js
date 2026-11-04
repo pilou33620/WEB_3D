@@ -157,7 +157,7 @@ async function traiter(ev){
       if(!choisis.length) throw new Error("aucun corps à exporter");
       /* makeCompound détruit ce qu'il reçoit : jamais les formes du cache. */
       const forme = choisis.length === 1 ? choisis[0].shape : R.makeCompound(choisis.map(c => c.shape.clone()));
-      const blob = ev.data.format === "stl" ? forme.blobSTL({ tolerance:0.02, angularTolerance:ANGLE_EXPORT, binary:true })
+      const blob = ev.data.format === "stl" ? forme.blobSTL({ tolerance:0.01, angularTolerance:ANGLE_EXPORT, binary:true })
         : R.exportSTEP(choisis.map(c => ({ shape:c.shape, name:c.nom })), { unit:{ mm:"MM", cm:"CM", m:"M", in:"INCH" }[doc.unite] || "MM", modelUnit:"MM" });
       postMessage({ id, type:"fichier", blob });
       return;

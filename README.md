@@ -316,8 +316,11 @@ sur un Raspberry Pi pour un M8 × 20).
 survol, et ce qui est désigné reste tracé en entier. Le clic prend l'arête la plus proche du curseur, et jamais
 une arête cachée par la matière. La mesure lit les plans et les cylindres sur le noyau (axe, normale et rayon
 exacts) au lieu de les ajuster sur le maillage ; un cylindre debout sur un plan donne la distance de son bout.
-L'affichage compte au moins 24 facettes par tour, et son maillage ne dépend que de la géométrie ; l'export STL
-est plus fin (0,02 mm).
+Le plus court chemin entre plans, cylindres, cercles et droites se recale sur leur vraie forme, et ne garde la
+valeur du maillage que là où la forme réelle s'arrête. La cote « Max » reste calculée sur les sommets du maillage.
+L'affichage compte au moins 24 facettes par tour, avec une tolérance quatre fois plus fine que pour un fichier
+ouvert (réglage *Qualité*), et son maillage ne dépend que de la géométrie ; l'export STL
+est plus fin (0,01 mm).
 
 **Sélection.** Un clic dans la vue prend la **face** sous la souris : elle se teinte et sa fiche (aire, normale ou
 diamètre) s'ajoute aux propriétés. Le corps entier se prend dans le navigateur, ou d'un clic en décochant le filtre
@@ -329,12 +332,18 @@ L'historique nomme chaque opération par sa fonction et son nom : un nom donné 
   (`js/c3-operations.js`) ;
 - `aretes()` et `faces()` listent ce que montre la vue : leur `point` est ce qu'on met dans `op.aretes` et
   `op.faces` (congé, chanfrein, coque…) ;
+- `ajouterOperation(type, champs)` crée une opération comme le ruban (mêmes valeurs par défaut, mêmes réglages,
+  une étape d'annulation), refuse un champ inconnu et rend `{ op, erreur }` ;
+- `ajouterEsquisse({ nom, plan, primitives, contraintes })` crée une esquisse : primitives `{ type:"ligne", a, b }`,
+  `arc` (`a, m, b`), `cercle` (`c, r`), `point` (`a`), `spline` (`pts`), `texte` (`p, contenu, h`) ; `contraintes` peut
+  être une fonction qui reçoit les éléments créés pour citer leurs identifiants ;
 - `ouvrirOnglet(doc, null, false)` ouvre une pièce, et refuse un document mal formé ou contenant des fonctions ;
 - `enregistrer(true, "nom")` enregistre sans poser de question.
 
 Une esquisse est `{ type:"esquisse", plan:{ base:"XY", decalage:"0" }, elements, contraintes }`. Ses éléments sont
-`{ type:"point", x, y }`, `{ type:"ligne", p1, p2 }`, `{ type:"cercle", c, r }`, `{ type:"arc", c, p1, p2, r }`,
-`{ type:"spline", pts }` et `{ type:"texte", p, contenu, h }`, où `p1`, `c`, `pts`… sont des identifiants de points.
+`{ type:"point", x, y }`, `{ type:"ligne", p1, p2 }`, `{ type:"cercle", c, r }`, `{ type:"arc", c, p1, p2 }` (son rayon se déduit de ses points),
+`{ type:"spline", pts }` et `{ type:"texte", p, contenu, h }`, où `p1`, `c`, `pts`… sont des identifiants de points. Un point fixé (`{ type:"fixe", a, x, y }`) accepte des expressions
+qui citent les paramètres ; dans l'interface, un double-clic sur la contrainte les règle.
 
 Limites connues : une esquisse ne coupe pas ses profils qui se croisent (un contour par boucle, ajuster
 d'abord) ; deux éléments identiques et symétriques peuvent s'échanger si la pièce change beaucoup (ce n'est

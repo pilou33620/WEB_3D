@@ -20,7 +20,7 @@
 "use strict";
 
 import * as THREE from "three";
-import { repere, indexer, nouvelId, resoudre, milieuArc, cercle3Points, echantillonSpline, COTES, NOMS_CONTRAINTES } from "./c2-esquisse.js";
+import { repere, indexer, nouvelId, resoudre, milieuArc, rayonDe, cercle3Points, echantillonSpline, COTES, NOMS_CONTRAINTES } from "./c2-esquisse.js";
 import { ajuster, decaler, casserCoin, miroir, repetitionRect, repetitionCirc } from "./c2b-outils-esquisse.js";
 import { echapper } from "./05-arbre.js";
 import { demander, demanderTexte } from "./c0-dialogues.js";
@@ -156,7 +156,7 @@ export class EditeurEsquisse {
         d = Math.hypot(a.x + t * dx - m.x, a.y + t * dy - m.y);
       }else if(e.type === "cercle" || e.type === "arc"){
         const c = idx.get(e.c);
-        d = Math.abs(Math.hypot(m.x - c.x, m.y - c.y) - e.r);
+        d = Math.abs(Math.hypot(m.x - c.x, m.y - c.y) - rayonDe(idx, e));
         if(e.type === "arc" && !this.dansArc(idx, e, Math.atan2(m.y - c.y, m.x - c.x))) d = Infinity;
       }else if(e.type === "spline" || e.type === "texte"){
         const t = this.trace(idx, e);
@@ -345,7 +345,7 @@ export class EditeurEsquisse {
         if(!k) return;
         modifier(() => {
           const [d, f] = k.trigo ? [c[0], c[1]] : [c[1], c[0]];
-          this.arc(this.point({ ...k.c, id:null }, { constr:true }), this.point(d), this.point(f), k.r);
+          this.arc(this.point({ ...k.c, id:null }, { constr:true }), this.point(d), this.point(f));
         });
         fini();
         return;
@@ -357,7 +357,7 @@ export class EditeurEsquisse {
         const fin = { x:c[0].x + r * Math.cos(t), y:c[0].y + r * Math.sin(t), id:null };
         modifier(() => {
           const ce = this.point(c[0]), p1 = this.point(c[1]);
-          this.arc(ce, p1, this.point(fin), r);
+          this.arc(ce, p1, this.point(fin));
         });
         fini();
         return;
@@ -387,6 +387,19 @@ export class EditeurEsquisse {
     const pts = c.map(m => this.point(m));
     this.esq.elements.push({ id:nouvelId(this.esq, "s"), type:"spline", pts, p1:pts[0], p2:pts[pts.length - 1] });
     this.resoudre(); this.redessiner(); this.ctx.surModif();
+  }
+
+  /** Les coordonnées d'un point fixé : des nombres, ou des expressions pour suivre un paramètre. */
+  async modifierFixe(k){
+    const lisible = (x) => { try{ return Number.isFinite(this.v(x)); }catch(_){ return false; } };
+    const r = await demander("Point fixé", [{ nom:"X (mm)", valeur:String(k.x) }, { nom:"Y (mm)", valeur:String(k.y) }],
+      (q) => q.every(lisible) ? null : "Écrivez un nombre ou une expression valable (par exemple L/2).");
+    if(!r) return;
+    this.ctx.memoriser();
+    [k.x, k.y] = r.map(t => /^-?\d+(\.\d+)?$/.test(t) ? +t : t);
+    this.resoudre();
+    this.redessiner();
+    this.ctx.surModif();
   }
 
   /** Le texte et sa hauteur : les mêmes champs à la pose et au double-clic. */
@@ -464,9 +477,9 @@ export class EditeurEsquisse {
     this.transformer(() => repetitionCirc(this.esq, [...this.selection].filter(i => i !== centre.id), Math.round(v[0]), v[1], centre.x, centre.y));
   }
 
-  arc(c, p1, p2, r){
+  arc(c, p1, p2){
     const id = nouvelId(this.esq, "a");
-    this.esq.elements.push({ id, type:"arc", c, p1, p2, r });
+    this.esq.elements.push({ id, type:"arc", c, p1, p2 });
     return id;
   }
 
@@ -507,7 +520,7 @@ export class EditeurEsquisse {
     const P = (c, s) => this.point({ x:c.x + nx * w * s, y:c.y + ny * w * s, id:null });
     const a1 = P(c1, 1), b1 = P(c2, 1), b2 = P(c2, -1), a2 = P(c1, -1);
     const haut = this.ligne(a1, b1), bas = this.ligne(b2, a2);
-    const arcB = this.arc(B, b2, b1, w), arcA = this.arc(A, a1, a2, w);
+    const arcB = this.arc(B, b2, b1), arcA = this.arc(A, a1, a2);
     for(const [l, a] of [[haut, arcA], [haut, arcB], [bas, arcA], [bas, arcB]]) this.contrainte({ type:"tangente", a:l, b:a });
     this.contrainte({ type:"egal", a:arcA, b:arcB });
   }
@@ -613,7 +626,7 @@ export class EditeurEsquisse {
       k = { type:"distance", a:p.id, b:L[0].id, expr:arrondi(d) };
     }else if(els.length === 1 && C.length === 1){
       const c = C[0];
-      k = c.type === "cercle" ? { type:"diametre", a:c.id, expr:arrondi(2 * c.r) } : { type:"rayon", a:c.id, expr:arrondi(c.r) };
+      k = c.type === "cercle" ? { type:"diametre", a:c.id, expr:arrondi(2 * c.r) } : { type:"rayon", a:c.id, expr:arrondi(rayonDe(indexer(this.esq), c)) };
     }else if(els.length === 2 && L.length === 2){
       const [a1, b1] = bouts(L[0]), [a2, b2] = bouts(L[1]);
       const u = [b1.x - a1.x, b1.y - a1.y], w = [b2.x - a2.x, b2.y - a2.y];
@@ -776,8 +789,8 @@ export class EditeurEsquisse {
       bal = (Math.atan2(p2.y - c.y, p2.x - c.x) - a1) % TAU;
       if(bal <= 1e-9) bal += TAU;
     }
-    const n = Math.max(8, Math.ceil(64 * bal / TAU));
-    return Array.from({ length:n + 1 }, (_, i) => ({ x:c.x + e.r * Math.cos(a1 + bal * i / n), y:c.y + e.r * Math.sin(a1 + bal * i / n) }));
+    const n = Math.max(8, Math.ceil(64 * bal / TAU)), r = rayonDe(idx, e);
+    return Array.from({ length:n + 1 }, (_, i) => ({ x:c.x + r * Math.cos(a1 + bal * i / n), y:c.y + r * Math.sin(a1 + bal * i / n) }));
   }
 
   redessiner(){
@@ -956,7 +969,8 @@ export class EditeurEsquisse {
       if(k.type === "rayon" || k.type === "diametre"){
         const e = P(k.a), c = P(e.c);
         const t = e.type === "arc" ? Math.atan2(milieuArc(idx, e).y - c.y, milieuArc(idx, e).x - c.x) : Math.PI / 4;
-        return { x:c.x + e.r * Math.cos(t), y:c.y + e.r * Math.sin(t) };
+        const r = rayonDe(idx, e);
+        return { x:c.x + r * Math.cos(t), y:c.y + r * Math.sin(t) };
       }
       if(k.type === "angle"){ const a = P(k.a), b = P(k.b); return milieu(milieu(P(a.p1), P(a.p2)), milieu(P(b.p1), P(b.p2))); }
       const b = P(k.b);
@@ -998,6 +1012,11 @@ export class EditeurEsquisse {
       const s = document.createElement("span");
       s.textContent = `${NOMS_CONTRAINTES[k.type] || k.type} : ${[k.a, k.b, k.l].filter(Boolean).map(nomEl).join(", ")}${k.expr !== undefined ? " = " + k.expr : ""}`;
       s.onclick = () => { this.selection.clear(); for(const x of [k.a, k.b, k.l]) if(x) this.selection.add(x); this.redessiner(); };
+      if(k.type === "fixe"){
+        s.textContent += ` (${k.x} ; ${k.y})`;
+        s.title = "Double-clic : ses coordonnées, en nombres ou en expressions";
+        s.ondblclick = () => this.modifierFixe(k);
+      }
       const b = document.createElement("button");
       b.textContent = "✕"; b.title = "Supprimer cette contrainte";
       b.onclick = () => this.supprimerContrainte(k.id);

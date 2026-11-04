@@ -128,6 +128,13 @@ const angle = (c, p) => Math.atan2(p.y - c.y, p.x - c.x);
 const balayage = (a1, a2) => { let d = (a2 - a1) % TAU; if(d <= 1e-12) d += TAU; return d; };
 
 /** Le point au milieu d'un arc (sens trigonométrique de p1 vers p2). */
+/** Le rayon d'un cercle, ou d'un arc : celui-là se déduit de ses points, pour ne jamais les contredire. */
+export function rayonDe(idx, e){
+  if(e.type !== "arc") return e.r;
+  const c = idx.get(e.c), p = idx.get(e.p1);
+  return Math.hypot(p.x - c.x, p.y - c.y);
+}
+
 export function milieuArc(idx, a){
   const c = idx.get(a.c), p1 = idx.get(a.p1), p2 = idx.get(a.p2);
   const a1 = angle(c, p1), m = a1 + balayage(a1, angle(c, p2)) / 2;
@@ -255,7 +262,11 @@ function traduire(k, idx, v){
     case "concentrique": return [{ type:"p2p_coincident", p1_id:E(k.a).c, p2_id:E(k.b).c }];
     case "milieu": { const l = E(k.b); return [{ type:"p2p_symmetric_ppp", p1_id:l.p1, p2_id:l.p2, p_id:k.a }]; }
     case "symetrie": return [{ type:"p2p_symmetric_ppl", p1_id:k.a, p2_id:k.b, l_id:k.l }];
-    case "fixe": return [{ type:"coordinate_x", p_id:k.a, x:k.x }, { type:"coordinate_y", p_id:k.a, y:k.y }];
+    case "fixe": {       // des nombres, ou des expressions pour suivre un paramètre
+      const x = v(k.x), y = v(k.y);
+      if(!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("coordonnées illisibles");
+      return [{ type:"coordinate_x", p_id:k.a, x }, { type:"coordinate_y", p_id:k.a, y }];
+    }
     case "sur": {
       const e = E(k.b);
       if(e.type === "ligne") return [{ type:"point_on_line_pl", p_id:k.a, l_id:k.b }];
@@ -307,7 +318,7 @@ export function resoudre(gcs, esq, v = Number, glisse = null){
     else if(e.type === "arc"){
       const c = idx.get(e.c), p1 = idx.get(e.p1), p2 = idx.get(e.p2);
       const a1 = angle(c, p1);
-      prims.push({ id:e.id, type:"arc", c_id:e.c, start_id:e.p1, end_id:e.p2, radius:e.r,
+      prims.push({ id:e.id, type:"arc", c_id:e.c, start_id:e.p1, end_id:e.p2, radius:rayonDe(idx, e),
                    start_angle:a1, end_angle:a1 + balayage(a1, angle(c, p2)) });
       prims.push({ id:e.id + "~r", type:"arc_rules", a_id:e.id });
     }
@@ -331,7 +342,8 @@ export function resoudre(gcs, esq, v = Number, glisse = null){
     const p = gcs.sketch_index.get_primitive(e.id);
     if(!p) continue;
     if(e.type === "point"){ e.x = p.x; e.y = p.y; }
-    else if(e.type === "cercle" || e.type === "arc") e.r = p.radius;
+    else if(e.type === "cercle") e.r = p.radius;
+    else if(e.type === "arc") delete e.r;      // les fichiers d'avant le portaient
   }
   return { ok, conflits, erreurs };
 }
@@ -496,7 +508,8 @@ export function profils(esq){
    Import DXF / SVG : des primitives, puis des éléments d'esquisse
    --------------------------------------------------------------------------- */
 
-/** Primitives { type:"ligne", a, b } | { type:"arc", a, m, b } | { type:"cercle", c, r }
+/** Primitives { type:"ligne", a, b } | { type:"arc", a, m, b } | { type:"cercle", c, r } | { type:"point", a }
+ *  | { type:"spline", pts } | { type:"texte", p, contenu, h }. Rend pour chacune les identifiants créés (null si elle est dégénérée).
     ajoutées à l'esquisse, les extrémités communes partagées. */
 export function ajouterPrimitives(esq, prims){
   const parCle = new Map();
@@ -508,23 +521,33 @@ export function ajouterPrimitives(esq, prims){
     parCle.set(cle, id);
     return id;
   };
-  for(const p of prims){
+  const ajouter = (e) => { esq.elements.push(e); return e; };
+  return prims.map((p) => {
     if(p.type === "ligne"){
-      if(Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]) < 1e-6) continue;
-      esq.elements.push({ id:nouvelId(esq, "l"), type:"ligne", p1:point(p.a), p2:point(p.b) });
-    }else if(p.type === "cercle"){
+      if(Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]) < 1e-6) return null;
+      return ajouter({ id:nouvelId(esq, "l"), type:"ligne", p1:point(p.a), p2:point(p.b) });
+    }
+    if(p.type === "point") return { id:point(p.a) };
+    if(p.type === "cercle"){
       const c = nouvelId(esq, "p");
       esq.elements.push({ id:c, type:"point", x:p.c[0], y:p.c[1] });
-      esq.elements.push({ id:nouvelId(esq, "c"), type:"cercle", c, r:p.r });
-    }else if(p.type === "arc"){
+      return ajouter({ id:nouvelId(esq, "c"), type:"cercle", c, r:p.r });
+    }
+    if(p.type === "arc"){
       const k = cercle3Points({ x:p.a[0], y:p.a[1] }, { x:p.m[0], y:p.m[1] }, { x:p.b[0], y:p.b[1] });
-      if(!k){ esq.elements.push({ id:nouvelId(esq, "l"), type:"ligne", p1:point(p.a), p2:point(p.b) }); continue; }
+      if(!k) return ajouter({ id:nouvelId(esq, "l"), type:"ligne", p1:point(p.a), p2:point(p.b) });
       const c = nouvelId(esq, "p");
       esq.elements.push({ id:c, type:"point", x:k.c.x, y:k.c.y });
       const [d, f] = k.trigo ? [p.a, p.b] : [p.b, p.a];        // nos arcs tournent dans le sens trigonométrique
-      esq.elements.push({ id:nouvelId(esq, "a"), type:"arc", c, p1:point(d), p2:point(f), r:k.r });
+      return ajouter({ id:nouvelId(esq, "a"), type:"arc", c, p1:point(d), p2:point(f) });
     }
-  }
+    if(p.type === "spline"){
+      const pts = p.pts.map(point);
+      return ajouter({ id:nouvelId(esq, "s"), type:"spline", pts, p1:pts[0], p2:pts[pts.length - 1] });
+    }
+    if(p.type === "texte") return ajouter({ id:nouvelId(esq, "x"), type:"texte", p:point(p.p), contenu:p.contenu, h:p.h });
+    throw new Error(`primitive inconnue : ${p.type}`);
+  });
 }
 
 /** Arc DXF d'un segment de polyligne à renflement (bulge) : milieu de l'arc. */

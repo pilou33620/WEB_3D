@@ -2,7 +2,7 @@
    node test/banc-conception.mjs — n'affiche que les échecs et un bilan. */
 import { fileURLToPath } from "node:url";
 import { evaluer, evaluerParametres, appliquerConfiguration, lireParametresCsv } from "../js/c1-expressions.js";
-import { nouvelleEsquisse, nouvelId, resoudre, profils, lireDxf, ajouterPrimitives, repere, indexer, milieuArc } from "../js/c2-esquisse.js";
+import { nouvelleEsquisse, nouvelId, resoudre, profils, lireDxf, ajouterPrimitives, repere, indexer, milieuArc, rayonDe } from "../js/c2-esquisse.js";
 
 const ici = (c) => fileURLToPath(new URL(c, import.meta.url));
 let ok = 0, ko = 0;
@@ -61,6 +61,27 @@ verifier("solveur : succès", res.ok, true);
 verifier("cote L pilotée", P(r.p[1]).x, 40, 1e-6);
 verifier("cote l pilotée", P(r.p[2]).y, 20, 1e-6);
 verifier("diamètre", P("c1").r, 2.5, 1e-6);
+/* Point fixé par une expression : il suit le paramètre. Rayon d'arc : déduit des points, même contredit par le fichier. */
+{
+  const e = nouvelleEsquisse("e9", "E", { base:"XY", decalage:"0" });
+  const [q] = ajouterPrimitives(e, [{ type:"point", a:[1, 1] }]);
+  e.contraintes.push({ id:"f", type:"fixe", a:q.id, x:"L/2", y:"l + 1" });
+  verifier("fixe : expressions", [resoudre(gcs, e, v).ok, e.elements[0].x, e.elements[0].y], [true, 20, 21]);
+  e.contraintes[0].x = "inconnu";
+  const avecFaute = resoudre(gcs, e, (t) => evaluer(t, (n) => { if(!valeurs.has(n)) throw new Error("paramètre inconnu"); return valeurs.get(n); }));
+  verifier("fixe : expression fausse signalée", Object.keys(avecFaute.erreurs), ["f"]);
+
+  const a = nouvelleEsquisse("e8", "A", { base:"XY", decalage:"0" });
+  const [arc] = ajouterPrimitives(a, [{ type:"arc", a:[5, 0], m:[0, 5], b:[-5, 0] }]);
+  verifier("arc : pas de rayon enregistré", "r" in arc, false);
+  arc.r = 999;              // un fichier d'avant, contredit par ses points
+  verifier("arc : le rayon vient des points", [resoudre(gcs, a, v).ok, "r" in arc, rayonDe(indexer(a), arc)], [true, false, 5]);
+  a.contraintes.push({ id:"r", type:"rayon", a:arc.id, expr:"8" });
+  verifier("arc : la cote de rayon pilote les points", [resoudre(gcs, a, v).ok, +rayonDe(indexer(a), arc).toFixed(6)], [true, 8]);
+  const [sp, tx] = ajouterPrimitives(a, [{ type:"spline", pts:[[0, 0], [5, 5], [10, 0]] }, { type:"texte", p:[1, 2], contenu:"T", h:3 }]);
+  verifier("primitives : spline et texte", [sp.pts.length, sp.p2 === sp.pts[2], tx.contenu], [3, true, "T"]);
+  leve("primitive inconnue refusée", () => ajouterPrimitives(a, [{ type:"carré" }]));
+}
 const pr = profils(esq);
 verifier("une région avec un trou", [pr.regions.length, pr.regions[0].trous.length], [1, 1]);
 verifier("contour de 4 segments", pr.regions[0].exterieur.segments.length, 4);

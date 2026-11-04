@@ -472,10 +472,12 @@ try{
   const r2m = await page(`
     const f = [...document.querySelectorAll(".ctr > .fenetre-mesure:not(#fenetreOperation)")].find(x => !x.hidden), b = document.getElementById("panneauMesure").getBoundingClientRect();
     const a = f?.getBoundingClientRect(), txt = f?.textContent || "";
+    const et = [...document.querySelectorAll(".cote-cad")].filter(x => x.style.display !== "none").map(x => x.getBoundingClientRect());
+    const etiquettes = et.some((u, i) => et.some((w, j) => j > i && u.right > w.left && u.left < w.right && u.bottom > w.top && u.top < w.bottom));
     return { mode:W3D.mesure.mode, bout:/Bout → plan\s*227,00/.test(txt), perp:txt.includes("perpendiculaire"), sansAxe:!txt.includes("Axe → plan"),
-      recouvre:!!a && a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right, txt:txt.slice(0, 120) };`);
+      recouvre:!!a && a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right, nbEtiquettes:et.length >= 2, etiquettes, txt:txt.slice(0, 120) };`);
   await capture("mesure");
-  verifier("mesure réelle, mode Auto : 227 mm, perpendiculaire, fenêtre à côté de la barre", { ...r2m, txt:undefined }, { mode:"auto", bout:true, perp:true, sansAxe:true, recouvre:false });
+  verifier("mesure réelle, mode Auto : 227 mm, perpendiculaire, fenêtre à côté de la barre", { ...r2m, txt:undefined }, { mode:"auto", bout:true, perp:true, sansAxe:true, recouvre:false, nbEtiquettes:true, etiquettes:false });
   await page(`W3D.ui.basculerMesure(false);`);
 
   /* Retour 2 : cylindre couché : la distance de surface et l'angle exacts ; l'axe → plan y garde son sens */
@@ -490,6 +492,48 @@ try{
     const txt = JSON.stringify(r.fiche);
     return { d:+r.min.d.toFixed(3), parallele:txt.includes("parallèle au plan"), axe:txt.includes("Axe → plan") };`);
   verifier("cylindre couché au-dessus d'un plan : 40 mm exactement, axe parallèle", r2b, { d:40, parallele:true, axe:true });
+
+  /* Cylindres et arêtes : la distance sur la vraie forme, et le maillage là où la forme réelle s'arrête */
+  const rE = await page(`
+    const c = W3D.conception, T = await import("/js/06-topologie.js"), V = W3D.THREE.Vector3;
+    const corps = (i) => W3D.vue.modele.children[i];
+    const face = (i, garder) => T.faceSous(W3D.vue, { object:corps(i), faceIndex:c.resultat.maillages[i].surfaces.find(garder).premier });
+    const cyl = (i) => face(i, g => g.type === "cylindre");
+    const haut = (i) => face(i, g => g.type === "plan" && g.normale[2] > 0.9);
+    const arete = (i, x, y, z) => T.areteSous(W3D.vue, { object:corps(i), point:new V(x, y, z) }, 16);
+    const d = (A, B) => +T.mesurerEntites(A, B).min.d.toFixed(3);
+    const cy = (diametre, h, x, y, z, axe = "Z") => ({ type:"cylindre", diametre:String(diametre), h:String(h), axe, x:String(x), y:String(y), z:String(z), operation:"nouveau" });
+    const r = {};
+    /* Parallèles, côte à côte */
+    await piece([cy(20, 20, 0, 0, 0), cy(10, 20, 40, 0, 0)]);
+    r.paralleles = d(cyl(0), cyl(1));
+    /* Axes croisés, l'un au-dessus de l'autre */
+    await piece([cy(20, 40, 0, 0, -10), cy(10, 60, -30, 40, 10, "X")]);
+    r.croises = d(cyl(0), cyl(1));
+    /* Dedans : une goupille décentrée dans un alésage */
+    await piece([{ type:"boite", L:"60", l:"60", h:"20", centre:true, operation:"nouveau" },
+                 { type:"cylindre", diametre:"30", h:"20", axe:"Z", operation:"enlever" }, cy(10, 20, 3, 0, 0)]);
+    r.dedans = d(cyl(0), cyl(1));
+    /* Cercles et arêtes */
+    await piece([cy(20, 20, 0, 0, 0), cy(10, 20, 40, 0, 0), cy(10, 30, 0, 40, 0),
+                 { type:"boite", L:"10", l:"40", h:"20", centre:true, x:"35", y:"-40", operation:"nouveau" }]);
+    const rim = arete(0, -7.071, 7.071, 20);
+    r.nature = rim?.type;
+    r.cercleCercle = d(rim, arete(1, 40, 5, 20));
+    r.cercleCercleHaut = d(rim, arete(2, 0, 45, 30));
+    r.cercleCylindre = d(rim, cyl(1));
+    r.cercleDroite = d(rim, arete(3, 30, -40, 20));         // jusqu'au bout de l'arête, en (30, -20)
+    /* Le bord d'un cylindre au-dessus d'une plaque : le plan s'étend bien dessous */
+    await piece([cy(20, 20, 0, 0, 10), { type:"boite", L:"60", l:"60", h:"5", centre:true, operation:"nouveau" }]);
+    r.cerclePlan = d(arete(0, -7.071, 7.071, 30), haut(1));
+    /* Le plan ne s'étend pas sous le cylindre : la vraie distance reste celle du bord du plan */
+    await piece([cy(20, 40, 0, 0, 50, "X"), { type:"boite", L:"10", l:"10", h:"5", centre:true, x:"100", z:"-5", operation:"nouveau" }]);
+    const k = T.mesurerEntites(cyl(0), haut(1));
+    r.horsPlan = k.min.d > 55;
+    return r;`);
+  verifier("cylindres et arêtes : la vraie forme, et le bord du plan quand il s'arrête avant", rE, {
+    paralleles:25, croises:25, dedans:7, nature:"cercle", cercleCercle:25, cercleCercleHaut:+Math.hypot(25, 10).toFixed(3),
+    cercleCylindre:25, cercleDroite:+(Math.hypot(30, 20) - 10).toFixed(3), cerclePlan:25, horsPlan:true });
 
   /* Retours 3 et 4 : les vrais gestes dans les boîtes : Entrée, Échap, double-clic, touches qui ne fuient pas */
   await page(`
@@ -601,8 +645,105 @@ try{
         if(Math.abs(A[2] - B[2]) < 1e-3) mini = Math.min(mini, Math.hypot((A[0] + B[0]) / 2, (A[1] + B[1]) / 2));
       }
     }
-    return { ecran:facettes >= 24, flecheStl:mini < 5 && 5 - mini <= 0.021 };`);
-  verifier("petit cylindre ⌀10 : 24 facettes au moins à l'écran, écart STL dans les 0,02 mm demandés", r6b, { ecran:true, flecheStl:true });
+    return { ecran:facettes >= 24, flecheStl:mini < 5 && 5 - mini <= 0.011 };`);
+  verifier("petit cylindre ⌀10 : 24 facettes au moins à l'écran, écart STL dans les 0,01 mm demandés", r6b, { ecran:true, flecheStl:true });
+
+  /* ---------------- point fixé par une expression, création par script ---------------- */
+  const rS = await page(`
+    const c = W3D.conception;
+    await piece([]);
+    c.doc.parametres.push({ nom:"X0", expr:"12" });
+    const carre = [[0, 0], [20, 0], [20, 10], [0, 10]].map((a, i, t) => ({ type:"ligne", a, b:t[(i + 1) % 4] }));
+    const e = await c.ajouterEsquisse({ nom:"Profil", primitives:carre, contraintes:(el) => [
+      { type:"fixe", a:el[0].p1, x:"X0", y:0 }, { type:"horizontal", a:el[0].id }, { type:"vertical", a:el[1].id },
+      { type:"horizontal", a:el[2].id }, { type:"vertical", a:el[3].id }, { type:"longueur", a:el[0].id, expr:"20" }, { type:"longueur", a:el[1].id, expr:"10" }] });
+    const x = await c.ajouterOperation("extrusion", { esquisse:e.op.id, distance:"5", nom:"Bloc" });
+    const mini = () => +new W3D.THREE.Box3().setFromObject(W3D.vue.modele).min.x.toFixed(3);
+    const r = { esquisse:[e.ok, e.conflits, e.op.nom], extrusion:x.erreur, x0:mini() };
+    c.doc.parametres[0].expr = "30";
+    await c.reconstruire(); await fini();
+    r.suit = mini();
+    c.renommerParametre("X0", "Origine");
+    const k = c.doc.operations[0].contraintes.find(q => q.type === "fixe" && q.a !== "o");      // pas celui de l'origine
+    r.renomme = [k.x, k.y];
+    await c.reconstruire(); await fini();
+    r.toujours = mini();
+    /* Une étape d'annulation par création */
+    const n = c.doc.operations.length;
+    c.annuler(); await fini();
+    r.annule = [n, c.doc.operations.length];
+    c.refaire(); await fini();
+    /* Le panneau d'une opération créée ainsi */
+    await c.editer(c.doc.operations[1]); await fini();
+    const champs = [...document.querySelectorAll("#champsOperation input[type=text]")].map(i => i.value);
+    r.panneau = champs.includes("Bloc") && champs.includes("5");
+    const d = [...document.querySelectorAll("#champsOperation .fm-ligne")].find(l => /Distance/.test(l.querySelector(".fm-cle").textContent)).querySelector("input");
+    d.value = "9"; d.dispatchEvent(new Event("input", { bubbles:true }));
+    await fini();
+    r.apercu = +new W3D.THREE.Box3().setFromObject(W3D.vue.modele).max.z.toFixed(3);
+    c.validerOperation(); await fini();
+    /* Les refus */
+    const refus = async (f) => { try{ await f(); return "accepté"; }catch(e){ return e.message.split(" :")[0]; } };
+    r.refus = [await refus(() => c.ajouterOperation("nimporte")), await refus(() => c.ajouterOperation("boite", { largeur:"3" })),
+               await refus(() => c.ajouterEsquisse({ contraintes:[{ type:"collee" }] }))];
+    /* Un réglage de l'interface qui remplit d'autres champs : la norme d'un perçage */
+    const p = await c.ajouterOperation("percage", { esquisse:e.op.id, norme:"M8" });      // un M6 se perce justement à 5, la valeur par défaut
+    r.norme = String(p.op.diametre) !== "5";
+    c.annuler(); await fini();
+    return r;`);
+  verifier("point fixé par une expression et création par script", rS, {
+    esquisse:[true, [], "Profil"], extrusion:null, x0:12, suit:30, renomme:["Origine", 0], toujours:30, annule:[2, 1], panneau:true, apercu:9,
+    refus:["opération inconnue", "champs inconnus pour boite", "contrainte inconnue"], norme:true });
+
+  /* Le point fixé se règle aussi à la main, depuis la liste des contraintes */
+  const rF = await page(`
+    const c = W3D.conception, esq = c.doc.operations[0];
+    c.ouvrirEsquisse(esq, JSON.stringify(c.doc)); await fini();
+    const ed = c.editeur, k = esq.contraintes.find(q => q.type === "fixe" && q.a !== "o");
+    const li = [...document.querySelectorAll(".ctr-liste li span")].find(s => /^Fixe.*Origine/.test(s.textContent));
+    const texte = li.textContent;
+    li.dispatchEvent(new MouseEvent("dblclick", { bubbles:true }));
+    const attendre = async (f) => { for(let i = 0; i < 100; i++){ const v = f(); if(v) return v; await new Promise(r => setTimeout(r, 50)); } throw new Error("attente trop longue"); };
+    const d = await attendre(() => document.querySelector("dialog.dlg-question"));
+    const i = d.querySelectorAll("input");
+    i[0].value = "pas un nom"; d.querySelector("button.on").click();
+    const refuse = d.open;
+    i[0].value = "Origine + 1"; i[1].value = "2,5"; d.querySelector("button.on").click();
+    await attendre(() => !document.querySelector("dialog.dlg-question"));
+    const pt = ed.esq.elements.find(q => q.id === k.a);
+    const r = { texte:/Origine/.test(texte), refuse, k:[k.x, k.y], x:+pt.x.toFixed(4) };
+    c.terminerEsquisse(); await fini();
+    return r;`);
+  verifier("point fixé : réglé à la main, en expression", rF, { texte:true, refuse:true, k:["Origine + 1", "2,5"], x:31 });
+
+  /* Toutes les opérations : créées par script, elles ont les champs de l'interface, et leur panneau s'ouvre */
+  verifier("toutes les opérations : mêmes champs que le ruban, panneau qui s'ouvre", await page(`
+    const c = W3D.conception, { TYPES } = await import("/js/c3-operations.js");
+    await piece([{ type:"boite", L:"30", l:"30", h:"30", centre:true, operation:"nouveau" }]);
+    const ecarts = [];
+    for(const t of Object.keys(TYPES)){
+      if(t === "esquisse") continue;
+      try{
+        c.creer(t);
+        const ruban = Object.keys(c.edition.op).sort().join();
+        c.annulerOperation(); await fini();
+        const { op } = await c.ajouterOperation(t);
+        const script = Object.keys(op).filter(k => k !== "corpsNom" && k !== "refs" && k !== "plan" || k in JSON.parse(JSON.stringify(op))).sort().join();
+        await c.editer(op);
+        if(!c.edition || !document.querySelector("#titreOperation").textContent) ecarts.push(t + " : panneau");
+        c.annulerOperation(); await fini();
+        c.annuler(); await fini();
+        for(const k of ruban.split(",")) if(!script.split(",").includes(k)) ecarts.push(t + " : " + k);
+      }catch(e){ ecarts.push(t + " : " + e.message); }
+    }
+    return ecarts;`), []);
+
+  /* Affichage : une grande pièce reste ronde */
+  verifier("grand cylindre ⌀300 : 50 facettes au moins par tour à l'écran", await page(`
+    const c = W3D.conception;
+    await piece([{ type:"cylindre", diametre:"300", h:"300", axe:"Z", operation:"nouveau" }]);
+    const s = c.resultat.maillages[0].surfaces.find(g => g.type === "cylindre");
+    return (s.dernier - s.premier + 1) / 2 >= 50;`), true);
 
   /* ---------------- écriture par script ---------------- */
   const r15 = await page(`

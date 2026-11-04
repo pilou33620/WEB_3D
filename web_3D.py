@@ -265,6 +265,14 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "frame-ancestors 'self'")
         super().end_headers()
 
+    def handle(self):
+        # Un client coupé (onglet fermé, attente du pilote abandonnée) n'est pas une erreur à afficher.
+        # ConnectionError couvre BrokenPipe, Reset et Aborted, celui que Windows donne le plus souvent.
+        try:
+            super().handle()
+        except ConnectionError:
+            self.close_connection = True
+
     def log_message(self, format, *args):
         # Ignorer favicon.ico et masquer les requêtes réussies ordinaires
         if args and "favicon.ico" in str(args[0]):

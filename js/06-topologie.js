@@ -1110,6 +1110,55 @@ function polyPoly(A, B){
   return meilleur;
 }
 
+/** Le point de la vraie forme d'un élément le plus proche de p ; null si la forme n'est pas connue. */
+function surForme(e, p){
+  const v = new THREE.Vector3();
+  if(e.type === "plan") return p.clone().addScaledVector(e.normale, -v.subVectors(p, e.centre).dot(e.normale));
+  if(e.type === "droite") return e.a.clone().addScaledVector(e.dir, Math.max(0, Math.min(e.longueur, v.subVectors(p, e.a).dot(e.dir))));
+  if(e.type === "cercle"){
+    const q = p.clone().addScaledVector(e.normale, -v.subVectors(p, e.centre).dot(e.normale)).sub(e.centre);
+    return q.length() < 1e-9 ? null : q.setLength(e.rayon).add(e.centre);
+  }
+  if(e.type === "cylindre"){
+    const t = v.subVectors(p, e.centre).dot(e.axe);
+    const radial = v.clone().addScaledVector(e.axe, -t);
+    if(radial.length() < 1e-9) return null;
+    const h = e.hauteur / 2;
+    return e.centre.clone().addScaledVector(e.axe, Math.max(-h, Math.min(h, t))).add(radial.setLength(e.rayon));
+  }
+  return null;
+}
+
+/** Ce point est-il bien sur cet élément, et pas sur le prolongement de sa forme (plan au-delà du bord, arc ou congé après sa fin) ? */
+function surElement(e, p){
+  const marge = 0.01 * (e.rayon || 0) + e.tol;      // la flèche des facettes
+  if(e.genre === "arete") return versPolyligne(p, e.pts) <= marge;
+  const nappe = sommetsDeFace(e, 1200), tri = new THREE.Triangle(), proche = new THREE.Vector3();
+  for(let i = 0; i + 2 < nappe.length; i += 3){
+    if(tri.set(nappe[i], nappe[i+1], nappe[i+2]).closestPointToPoint(p, proche).distanceTo(p) <= marge) return true;
+  }
+  return false;
+}
+
+/**
+ * Le maillage ne donne qu'une distance approchée : ses cordes passent à côté de la courbe, et deux cylindres
+ * croisés se frôlent là où il n'a aucun sommet. Depuis ce point de départ, on se projette tour à tour sur les deux
+ * vraies formes jusqu'au plus court chemin ; on ne le garde que s'il tombe bien sur les deux éléments.
+ */
+function raffiner(A, B, m){
+  if(A.type !== "cercle" && A.type !== "cylindre" && B.type !== "cercle" && B.type !== "cylindre") return m;
+  let c1 = m.c1, c2 = m.c2;
+  for(let i = 0; i < 200; i++){
+    const n2 = surForme(B, c1), n1 = n2 && surForme(A, n2);
+    if(!n1) return m;
+    const bouge = n1.distanceTo(c1) + n2.distanceTo(c2);
+    c1 = n1; c2 = n2;
+    if(bouge < 1e-7) break;
+  }
+  const d = c1.distanceTo(c2);
+  return d <= m.d + Math.max(A.tol, B.tol) && surElement(A, c1) && surElement(B, c2) ? { ...m, d, c1, c2 } : m;
+}
+
 /** Le plus long chemin (distance maximale) entre deux polylignes. */
 function polyPolyMax(A, B){
   let meilleur = { d:-1, c1:A[0].clone(), c2:B[0].clone() };
@@ -1399,7 +1448,7 @@ export function mesurerAretes(A, B){
   if(A.type === "cercle" && B.type === "cercle"){
     const dCentres = A.centre.distanceTo(B.centre);
     const angle = Math.acos(Math.min(1, Math.abs(A.normale.dot(B.normale))));
-    const mini = polyPoly(A.pts, B.pts);
+    const mini = raffiner(A, B, polyPoly(A.pts, B.pts));
     const concentrique = dCentres < 1e-3;
     const axes = ["Axes", concentrique ? "confondus (concentriques)" : (angle < 1e-3 ? "parallèles" : `à ${degres(angle)}`)];
     const entraxe = concentrique ? null : ["Entraxe", mm(dCentres)];
@@ -1502,7 +1551,7 @@ export function mesurerAretes(A, B){
     const t = Math.max(0, Math.min(droite.longueur, w.dot(droite.dir)));
     const pied = droite.a.clone().addScaledVector(droite.dir, t);
     const dAxe = pied.distanceTo(cercle.centre);
-    const mini = polyPoly(cercle.pts, droite.pts);
+    const mini = raffiner(cercle, droite, polyPoly(cercle.pts, droite.pts));
     const etMin = `${mm(mini.d)} (axe ${mm(dAxe)})`;
     const dim = [cercle.ferme ? "Cercle" : "Arc", `${dimCercle(cercle)} mm`];
     const ficheMin = fiche("Cercle et arête droite", ["Bord à bord", mm(mini.d)], ["Centre → arête", mm(dAxe)], dim);
@@ -1517,7 +1566,7 @@ export function mesurerAretes(A, B){
     };
   }
 
-  const mini = polyPoly(A.pts, B.pts);
+  const mini = raffiner(A, B, polyPoly(A.pts, B.pts));
   const etMin = mm(mini.d);
   const ficheMin = fiche("Arête et arête", ["Plus court chemin", mm(mini.d)]);
   const etMax = `${mm(maxi.d)} (Max)`;
@@ -1577,7 +1626,7 @@ function nappeNappe(A, B){
       }
     }
   }
-  return meilleur;
+  return raffiner(A, B, meilleur);
 }
 
 /** Plus grande distance entre deux nappes de triangles (échantillonnées). */
@@ -1748,13 +1797,7 @@ export function mesurerFaces(A, B){
     const w = new THREE.Vector3().subVectors(cyl.centre, plan.centre);
     const ecart = w.dot(plan.normale);
     const dAxe = Math.abs(ecart);
-    let mini = nappeNappe(cyl, plan);
-    /* Axe parallèle au plan : les facettes passent sous la surface et manquent sa génératrice la plus basse.
-       Si le plan s'étend bien dessous (le maillage le confirme, à la flèche près), le calcul exact vaut mieux. */
-    const exacte = dAxe - cyl.rayon, tolPlan = Math.max(cyl.tol, plan.tol);
-    if(sinus < 1e-3 && exacte > 0 && mini.d >= exacte - tolPlan && mini.d - exacte <= 0.01 * cyl.rayon + tolPlan){
-      mini = { ...mini, d:exacte, c1:mini.c2.clone().addScaledVector(plan.normale, (ecart >= 0 ? 1 : -1) * exacte) };
-    }
+    const mini = nappeNappe(cyl, plan);
     const angleAxe = Math.asin(Math.min(1, sinus));
     const axe = ["Axe", sinus < 1e-3 ? "parallèle au plan" : sinus > 1 - 1e-6 ? "perpendiculaire au plan" : `à ${degres(angleAxe)} du plan`];
     /* Debout sur le plan : le milieu du cylindre ne dit rien, c'est son bout qui compte, le long de la normale.
@@ -1889,7 +1932,8 @@ export function mesurerAreteFace(A, B){
     }
     const distP = new THREE.Vector3().subVectors(pProche, face.centre).dot(face.normale);
     const pPlan = pProche.clone().addScaledVector(face.normale, -distP);
-    const dMin = pProche.distanceTo(pPlan);
+    const bord = raffiner(arete, face, { d:pProche.distanceTo(pPlan), c1:pProche, c2:pPlan });
+    const dMin = bord.d;
     const etMin = `${mm(dMin)} (centre ${mm(dAxe)})`;
     const nature = arete.ferme ? "Cercle et plan" : "Arc et plan";
     const communes = [["Centre → plan", mm(dAxe)], [arete.ferme ? "Cercle" : "Arc", `${dimCercle(arete)} mm`],
@@ -1900,9 +1944,9 @@ export function mesurerAreteFace(A, B){
     const ficheMax = fiche(nature, ["Bord → plan max", mm(maxi.d)], ...communes);
 
     return {
-      p1:pProche, p2:pPlan, etiquette:etMin, fiche:ficheMin,
+      p1:bord.c1, p2:bord.c2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:pProche, p2:pPlan, d:dMin, etiquette:etMin, fiche:ficheMin },
+      min:{ p1:bord.c1, p2:bord.c2, d:dMin, etiquette:etMin, fiche:ficheMin },
       max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
@@ -1920,6 +1964,7 @@ export function mesurerAreteFace(A, B){
         if(d < meilleur.d) meilleur = { d, c1:p.clone(), c2:proche.clone() };
       }
     }
+    meilleur = raffiner(arete, face, meilleur);
     const w = new THREE.Vector3().subVectors(arete.centre, face.point);
     const tAxe = w.dot(face.axe);
     const pAxe = face.point.clone().addScaledVector(face.axe, tAxe);
@@ -1983,6 +2028,7 @@ export function mesurerAreteFace(A, B){
       }
     }
   }
+  meilleur = raffiner(arete, face, meilleur);
 
   const etMin = mm(meilleur.d);
   const ficheMin = fiche("Arête et face", ["Plus court chemin (maillage)", mm(meilleur.d)]);

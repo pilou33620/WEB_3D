@@ -7,7 +7,7 @@
    ============================================================================= */
 "use strict";
 
-import { indexer, nouvelId, profils, ajouterPrimitives, cercle3Points } from "./c2-esquisse.js";
+import { rayonDe, indexer, nouvelId, profils, ajouterPrimitives, cercle3Points } from "./c2-esquisse.js";
 
 const TAU = Math.PI * 2;
 const norm2 = (x, y) => Math.hypot(x, y) || 1;
@@ -29,7 +29,7 @@ function forme(idx, e){
   if(e.type === "cercle") return { c, r:e.r, a1:0, bal:TAU };
   if(e.type === "arc"){
     const a1 = angleDe(c, idx.get(e.p1));
-    return { c, r:e.r, a1, bal:pos(angleDe(c, idx.get(e.p2)) - a1) || TAU };
+    return { c, r:rayonDe(idx, e), a1, bal:pos(angleDe(c, idx.get(e.p2)) - a1) || TAU };
   }
   return null;
 }
@@ -129,7 +129,7 @@ export function ajuster(esq, id, m){
     if(t0 > 0 && t1 < fin){
       const q1 = point(esq, lieu(t0).x, lieu(t0).y), q2 = point(esq, lieu(t1).x, lieu(t1).y);
       e.p2 = q1;
-      esq.elements.push({ id:nouvelId(esq, "a"), type:"arc", c:e.c, p1:q2, p2:ancienP2, r:e.r, ...(e.constr ? { constr:true } : {}) });
+      esq.elements.push({ id:nouvelId(esq, "a"), type:"arc", c:e.c, p1:q2, p2:ancienP2, ...(e.constr ? { constr:true } : {}) });
     }else if(t0 > 0){ e.p2 = point(esq, lieu(t0).x, lieu(t0).y); }
     else { e.p1 = point(esq, lieu(t1).x, lieu(t1).y); }
   }
@@ -283,7 +283,7 @@ function copier(esq, ids, f, partage = () => false){
     else if(e.type === "cercle") esq.elements.push({ id:nouvelId(esq, "c"), type:"cercle", c:pointDe(e.c), r:e.r, ...(e.constr ? { constr:true } : {}) });
     else if(e.type === "arc"){
       const [a, b] = f.miroir ? [e.p2, e.p1] : [e.p1, e.p2];    // un miroir inverse le sens de l'arc
-      esq.elements.push({ id:nouvelId(esq, "a"), type:"arc", c:pointDe(e.c), p1:pointDe(a), p2:pointDe(b), r:e.r, ...(e.constr ? { constr:true } : {}) });
+      esq.elements.push({ id:nouvelId(esq, "a"), type:"arc", c:pointDe(e.c), p1:pointDe(a), p2:pointDe(b), ...(e.constr ? { constr:true } : {}) });
     }else if(e.type === "texte"){      // shortcut: le miroir déplace le texte sans retourner ses lettres
       esq.elements.push({ id:nouvelId(esq, "x"), type:"texte", p:pointDe(e.p), contenu:e.contenu, h:e.h, ...(e.constr ? { constr:true } : {}) });
     }else if(e.type === "spline"){

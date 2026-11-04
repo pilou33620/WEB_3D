@@ -244,6 +244,21 @@ with tempfile.TemporaryDirectory() as tmp:
             if v is not None:
                 os.environ[k] = v
 
+# --- Un client coupé en pleine réponse n'est pas une erreur à afficher ; une vraie erreur, si ---
+vues = []
+serveur.handle_error = lambda *a: vues.append(a[1])
+for exc, attendu in ((ConnectionAbortedError, 0), (ConnectionResetError, 0), (BrokenPipeError, 0), (ValueError, 1)):
+    def casse(_handler, exc=exc):
+        raise exc("essai")
+    vues.clear()
+    web_3D.PILOTE.traiter = casse
+    try:
+        code("/conception.html")
+    except Exception:
+        pass             # la connexion tombe : c'est le but
+    del web_3D.PILOTE.traiter
+    verifier("client coupé : " + exc.__name__, len(vues), attendu)
+
 serveur.shutdown()
 print("%d/%d ok" % (essais - echecs, essais))
 sys.exit(1 if echecs else 0)

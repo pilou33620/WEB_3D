@@ -31,7 +31,7 @@ import { Interface, pieceSous } from "./08-interface.js";
 import { telechargerFichier } from "./10-export-step.js";
 import { nomProjet } from "./11-projets.js";
 import { evaluerParametres, evaluateur, evaluer, NOM_PARAMETRE, appliquerConfiguration, lireParametresCsv } from "./c1-expressions.js";
-import { nouvelleEsquisse, nouvelId as nouvelIdEsquisse, resoudre, axePerpendiculaire, ajouterPrimitives, lireDxf, lireSvg, repere, indexer, profils, cercle3Points, planConstruction } from "./c2-esquisse.js";
+import { NOMS_CONTRAINTES, nouvelleEsquisse, nouvelId as nouvelIdEsquisse, resoudre, axePerpendiculaire, ajouterPrimitives, lireDxf, lireSvg, repere, indexer, profils, cercle3Points, planConstruction } from "./c2-esquisse.js";
 import { TYPES, nomHistorique, TROUS } from "./c3-operations.js";
 import { EditeurEsquisse } from "./c5-esquisse-ui.js";
 import { Frise, deplacementRefuse, deplacer, creerDossier, normaliserDossiers, dependances } from "./c7-frise.js";
@@ -750,7 +750,8 @@ class Conception {
     this.docEnCalcul = this.doc;
     try{
       const doc = this.doc;
-      const res = await this.envoyer({ type:"construire", doc:this.docPourNoyau(), plat:!!this.plat, finesse:prefs.tolLineaire });
+      /* Un quart de la tolérance des fichiers ouverts : une pièce unique se regarde de près, pas un assemblage. */
+      const res = await this.envoyer({ type:"construire", doc:this.docPourNoyau(), plat:!!this.plat, finesse:prefs.tolLineaire / 4 });
       /* Changé de pièce (ou annulé) pendant le calcul : ce résultat ne vaut plus pour ce document. */
       this.surveillerTas(res.tas);
       if(doc === this.doc) this.afficher(res, performance.now() - t0);
@@ -1366,13 +1367,18 @@ class Conception {
   /* ==========================================================================
      Créer et modifier une opération : le panneau
      ========================================================================== */
+  /** Une opération de plus, au marqueur. */
+  inserer(op){
+    const fin = this.doc.curseur ?? this.doc.operations.length;
+    this.doc.operations.splice(fin, 0, op);
+    if(this.doc.curseur !== undefined) this.doc.curseur++;
+  }
+
   creer(type){
     if(this.edition || this.editeur.ouvert) return;
     const op = nouvelleOperation(type, this);
     const avant = JSON.stringify(this.doc);
-    const fin = this.doc.curseur ?? this.doc.operations.length;
-    this.doc.operations.splice(fin, 0, op);
-    if(this.doc.curseur !== undefined) this.doc.curseur++;
+    this.inserer(op);
     const face = this.faceChoisie;
     this.ouvrirPanneau(op, avant, true);
     if(type === "esquisse" && face?.type === "plan") this.poserSurFace(op, face);
@@ -2060,7 +2066,10 @@ class Conception {
       /* Seuls les champs d'expression : renommer « y » ne doit toucher ni un axe, ni le base64 d'un STEP. */
       for(const ch of CHAMPS[op.type] || []) if(ch.type === "expr" && !ch.get && typeof op[ch.cle] === "string") op[ch.cle] = remplace(op[ch.cle]);
       if(op.type === "esquisse"){
-        for(const c of op.contraintes) if(c.expr !== undefined) c.expr = remplace(c.expr);
+        for(const c of op.contraintes){
+          if(c.expr !== undefined) c.expr = remplace(c.expr);
+          if(c.type === "fixe"){ c.x = remplace(c.x); c.y = remplace(c.y); }
+        }
         if(op.plan.decalage !== undefined) op.plan.decalage = remplace(op.plan.decalage);
       }
     }
@@ -2238,6 +2247,52 @@ class Conception {
     return { nom:TYPES[type].nom, exemple, champs:(CHAMPS[type] || []).map(ch => ({
       cle:ch.cle, nom:ch.nom, type:ch.type, quoi:ch.quoi, conditionnel:!!ch.si,
       options:typeof ch.options === "function" ? ch.options(this, exemple) : ch.options })) };
+  }
+
+  /** Pose une opération fabriquée par un script, en une étape d'annulation, et la construit. Rend son erreur éventuelle. */
+  async poserPourScript(op, avant){
+    this.inserer(op);
+    this.memoriser(avant);
+    this.marquerModifie();
+    this.majHistorique();
+    this.majRuban();
+    await this.reconstruire();
+    while(this.enCours || this.relancer) await new Promise(r => setTimeout(r, 30));
+    return this.resultat?.etats?.[op.id]?.erreur ?? null;
+  }
+
+  /** Une opération créée comme par le ruban : mêmes valeurs par défaut, et les champs passent par les mêmes réglages. */
+  async ajouterOperation(type, champs = {}){
+    if(!TYPES[type]) throw new Error(`opération inconnue : ${type} (voir schema)`);
+    if(type === "esquisse") throw new Error("une esquisse se crée par ajouterEsquisse");
+    if(this.edition || this.editeur.ouvert) throw new Error("une opération ou une esquisse est ouverte");
+    const avant = JSON.stringify(this.doc), compteur = this.doc.compteur;
+    const op = nouvelleOperation(type, this), definitions = CHAMPS[type] || [];
+    const connus = new Set([...Object.keys(op), ...definitions.map(c => c.cle), "suspendue"]);
+    const inconnus = Object.keys(champs).filter(k => !connus.has(k));
+    if(inconnus.length){ this.doc.compteur = compteur; throw new Error(`champs inconnus pour ${type} : ${inconnus.join(", ")}`); }
+    for(const [k, v] of Object.entries(structuredClone(champs))){
+      const ch = definitions.find(c => c.cle === k);
+      if(ch?.set) ch.set(op, v); else op[k] = v;
+    }
+    return { op, erreur:await this.poserPourScript(op, avant) };
+  }
+
+  /** Une esquisse avec ses primitives ; `contraintes` : une liste, ou une fonction qui reçoit les éléments créés et la rend. */
+  async ajouterEsquisse({ nom, plan, primitives = [], contraintes = [] } = {}){
+    if(this.edition || this.editeur.ouvert) throw new Error("une opération ou une esquisse est ouverte");
+    const avant = JSON.stringify(this.doc);
+    const op = nouvelleOperation("esquisse", this);
+    if(nom) op.nom = nom;
+    if(plan) op.plan = structuredClone(plan);
+    const elements = ajouterPrimitives(op, primitives);
+    for(const k of typeof contraintes === "function" ? contraintes(elements) : contraintes){
+      if(!NOMS_CONTRAINTES[k.type]) throw new Error(`contrainte inconnue : ${k.type}`);
+      op.contraintes.push({ ...k, id:nouvelIdEsquisse(op, "k") });
+    }
+    const { ok, conflits, erreurs } = resoudre(this.gcs, op, this.v());
+    const erreur = await this.poserPourScript(op, avant);
+    return { op, elements, ok, conflits, erreurs, erreur };
   }
 
   /** Les arêtes de la pièce montrée ; `point` est ce qu'on met dans op.aretes. */
