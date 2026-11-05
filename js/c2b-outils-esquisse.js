@@ -162,7 +162,7 @@ export function nettoyer(esq){
    Décaler : une copie à distance constante des courbes choisies
    --------------------------------------------------------------------------- */
 /** d > 0 : vers l'extérieur d'un contour fermé, à gauche du sens de parcours d'une chaîne ouverte. */
-export function decaler(esq, ids, d){
+export function decaler(esq, ids, d, lien = null){
   const choisis = new Set(ids);
   const courbes = esq.elements.filter(e => choisis.has(e.id) && ["ligne", "arc", "cercle"].includes(e.type));
   if(!courbes.length) return "Sélectionnez les lignes, arcs ou cercles à décaler.";
@@ -174,13 +174,13 @@ export function decaler(esq, ids, d){
     const dec = segs.map(s => {
       if(s.type === "ligne"){
         const L = norm2(s.b[0] - s.a[0], s.b[1] - s.a[1]), nx = -(s.b[1] - s.a[1]) / L * signe * d, ny = (s.b[0] - s.a[0]) / L * signe * d;
-        return { type:"ligne", a:[s.a[0] + nx, s.a[1] + ny], b:[s.b[0] + nx, s.b[1] + ny] };
+        return { type:"ligne", a:[s.a[0] + nx, s.a[1] + ny], b:[s.b[0] + nx, s.b[1] + ny], src:s.id };
       }
       const k = cercle3Points({ x:s.a[0], y:s.a[1] }, { x:s.m[0], y:s.m[1] }, { x:s.b[0], y:s.b[1] });
       const r = k.r + (k.trigo ? -signe : signe) * d;
       if(r <= 0) throw new Error("le décalage est plus grand que le rayon d'un arc");
       const sur = (p) => [k.c.x + (p[0] - k.c.x) * r / k.r, k.c.y + (p[1] - k.c.y) * r / k.r];
-      return { type:"arc", a:sur(s.a), m:sur(s.m), b:sur(s.b) };
+      return { type:"arc", a:sur(s.a), m:sur(s.m), b:sur(s.b), src:s.id };
     });
     const n = dec.length;
     for(let i = 0; i < (ferme ? n : n - 1); i++){
@@ -199,7 +199,7 @@ export function decaler(esq, ids, d){
       if(f.exterieur.cercle){
         const r = f.exterieur.cercle.r + d;
         if(r <= 0) return "Le décalage est plus grand que le rayon du cercle.";
-        prims.push({ type:"cercle", c:f.exterieur.cercle.c, r });
+        prims.push({ type:"cercle", c:f.exterieur.cercle.c, r, src:f.exterieur.ids[0] });
       }else{
         /* Sens du contour : aire signée ; on décale à droite d'un contour trigonométrique (l'extérieur). */
         let aire = 0;
@@ -209,7 +209,14 @@ export function decaler(esq, ids, d){
     }
     for(const o of ouverts) chaine(o.segments, false, 1);
   }catch(e){ return e.message; }
-  ajouterPrimitives(esq, prims);
+  const crees = ajouterPrimitives(esq, prims);
+  /* Lié : la copie suit l'original. Une ligne reste parallèle à sa distance ; un arc ou un cercle garde son centre. */
+  if(lien) crees.forEach((n, i) => {
+    const src = prims[i].src;
+    if(!n || !src) return;
+    if(n.type === "ligne") esq.contraintes.push({ id:nouvelId(esq, "k"), type:"parallele", a:src, b:n.id }, { id:nouvelId(esq, "k"), type:"distance", a:n.p1, b:src, expr:lien });
+    else esq.contraintes.push({ id:nouvelId(esq, "k"), type:"concentrique", a:src, b:n.id });
+  });
   return null;
 }
 
@@ -224,7 +231,7 @@ function intersections2(A, B){
 /* -----------------------------------------------------------------------------
    Congé et chanfrein d'un coin : un point partagé par exactement deux lignes
    --------------------------------------------------------------------------- */
-export function casserCoin(esq, idPoint, valeur, mode){
+export function casserCoin(esq, idPoint, valeur, mode, valeur2 = valeur){
   const idx = indexer(esq);
   const lignes = esq.elements.filter(e => e.type === "ligne" && !e.constr && (e.p1 === idPoint || e.p2 === idPoint));
   if(lignes.length !== 2) return "Sélectionnez le point d'un coin, partagé par exactement deux lignes.";
@@ -234,9 +241,10 @@ export function casserCoin(esq, idPoint, valeur, mode){
   const theta = Math.acos(Math.max(-1, Math.min(1, u.x * w.x + u.y * w.y)));
   if(theta < 1e-3 || Math.PI - theta < 1e-3) return "Les deux lignes sont alignées : pas de coin à casser.";
   const recul = mode === "conge" ? valeur / Math.tan(theta / 2) : valeur;
-  if(recul >= u.L || recul >= w.L) return "Le coin est trop petit pour cette valeur.";
-  const Q = (d) => point(esq, P.x + d.x * recul, P.y + d.y * recul);
-  const q1 = Q(u), q2 = Q(w);
+  const recul2 = mode === "conge" ? recul : valeur2;      // un chanfrein peut reculer autrement sur sa seconde ligne
+  if(recul >= u.L || recul2 >= w.L) return "Le coin est trop petit pour cette valeur.";
+  const Q = (d, r) => point(esq, P.x + d.x * r, P.y + d.y * r);
+  const q1 = Q(u, recul), q2 = Q(w, recul2);
   for(const [l, q] of [[lignes[0], q1], [lignes[1], q2]]){
     if(l.p1 === idPoint) l.p1 = q; else l.p2 = q;
     /* Une ligne raccourcie n'a plus sa longueur ni l'égalité d'origine. */

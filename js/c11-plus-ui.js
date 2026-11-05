@@ -13,13 +13,16 @@ import { telechargerFichier } from "./10-export-step.js";
 import { nomProjet } from "./11-projets.js";
 import { chercherCollisions } from "./12-collisions.js";
 import { demander, avertir, confirmer } from "./c0-dialogues.js";
-import { nomenclature, operationsCollees, csvBalayage, archive, dxfEsquisse } from "./c12-exports.js";
-import { echantillonSpline } from "./c2-esquisse.js";
+import { nomenclature, operationsCollees, csvBalayage, archive, dxfEsquisse, contoursImage } from "./c12-exports.js";
+import { echantillonSpline, nouvelleEsquisse, ajouterPrimitives } from "./c2-esquisse.js";
+import { repereImage } from "./c9-ateliers-ui.js";
 
 const $ = (id) => document.getElementById(id);
 const etat = (t) => { $("etatSel").textContent = t; };
 const CLE_PRESSE_PAPIER = "web3d.conception.presse-papier";
 const OUI_NON = { oui:"Oui", non:"Non" };
+const CLE_FAVORIS = "web3d.conception.apparences", CLE_DISPOSITION = "web3d.conception.disposition", CLE_BIBLIOTHEQUE = "web3d.conception.bibliotheque";
+const lireLocal = (cle, defaut) => { try{ return JSON.parse(localStorage.getItem(cle)) ?? defaut; }catch(_){ return defaut; } };
 
 /* Tôles courantes : épaisseur, rayon intérieur, facteur K. */
 export const REGLES_TOLE = {
@@ -83,11 +86,19 @@ export function champsPlus({ NOM, MODE, CIBLE }){
     perforation:[NOM, { ...E, nom:"Esquisse (contour à perforer)" }, C, { cle:"diametre", type:"expr", nom:"Diamètre (mm)" }, { cle:"pas", type:"expr", nom:"Pas (mm)" },
       { cle:"disposition", type:"choix", nom:"Disposition", options:{ carre:"Carrée", quinconce:"En quinconce" } }, { cle:"marge", type:"expr", nom:"Marge au bord (mm)" }],
     nuage:[NOM, { cle:"taille", type:"expr", nom:"Taille des points (pixels)" }],
+    gravureCylindre:[NOM, { ...E, nom:"Esquisse (devant le cylindre)" }, { cle:"contours", type:"contours", nom:"Contours (aucun coché : tous)" }, C, { cle:"cylindre", type:"designer", nom:"Face cylindrique", quoi:"cylindreAxe" },
+      { cle:"mode", type:"choix", nom:"Sens", options:{ creux:"En creux", relief:"En relief" } }, { cle:"profondeur", type:"expr", nom:"Profondeur (mm)" }, { cle:"inverse", type:"case", nom:"Esquisse de l'autre côté" }],
+    chemin3d:[NOM, { cle:"points", type:"texte", nom:"Points : x, y, z ; x, y, z ; …" }, { cle:"mode", type:"choix", nom:"Entre les points", options:{ lignes:"Des droites", spline:"Une courbe" } }],
+    occurrence:[NOM, { cle:"source", type:"choix", nom:"Composant", options:(c) => ({ "":"— choisir —", ...Object.fromEntries((c.doc.composants || []).map(k => [k.id, k.nom])) }) },
+      ...["tx", "ty", "tz"].map((k, i) => ({ cle:k, type:"expr", nom:`Translation ${"XYZ"[i]} (mm)` })), ...["rx", "ry", "rz"].map((k, i) => ({ cle:k, type:"expr", nom:`Rotation ${"XYZ"[i]} (°)` }))],
   };
 }
 
-export function defautsPlus({ derniere, mode }){
+export function defautsPlus({ derniere, mode, composants = [] }){
   return {
+    gravureCylindre:{ esquisse:derniere, corps:"", cylindre:null, mode:"creux", profondeur:"1", inverse:false },
+    chemin3d:{ points:"0, 0, 0; 20, 0, 0; 20, 20, 10", mode:"lignes" },
+    occurrence:{ source:composants[0]?.id || "", tx:"30", ty:"0", tz:"0", rx:"0", ry:"0", rz:"0" },
     englobant:{ outils:[], marge:"0", operation:"nouveau", corps:"" },
     retirerCorps:{ corps:"" },
     aligner:{ corps:"", reference:"", x:"", y:"", z:"" },
@@ -116,7 +127,7 @@ export function defautsPlus({ derniere, mode }){
 export function completerChamps(CHAMPS){
   const lp = CHAMPS.liaison;
   const i = lp.findIndex(ch => ch.cle === "mode");
-  lp[i] = { ...lp[i], options:{ rigide:"Rigide", pivot:"Pivot", glissiere:"Glissière", cylindrique:"Cylindrique", plan:"Plan" } };
+  lp[i] = { ...lp[i], options:{ rigide:"Rigide", pivot:"Pivot", glissiere:"Glissière", cylindrique:"Cylindrique", plan:"Plan", spherique:"Sphérique" } };
   const sansTelle = (o) => !o.telleQuelle;
   const j = lp.findIndex(ch => ch.cle === "repereB");
   lp[j] = { ...lp[j], si:sansTelle };
@@ -132,6 +143,9 @@ export function completerChamps(CHAMPS){
     { cle:"valeur2", type:"expr", nom:"Position (mm)", si:(o) => o.mode === "cylindrique" },
     { cle:"valeur2", type:"expr", nom:"Glissement V (mm)", si:(o) => o.mode === "plan" },
     { cle:"valeur3", type:"expr", nom:"Rotation (°)", si:(o) => o.mode === "plan" },
+    { cle:"valeur", type:"expr", nom:"Rotation X (°)", si:(o) => o.mode === "spherique" && !o.pilote },
+    { cle:"valeur2", type:"expr", nom:"Rotation Y (°)", si:(o) => o.mode === "spherique" },
+    { cle:"valeur3", type:"expr", nom:"Rotation Z (°)", si:(o) => o.mode === "spherique" },
     { cle:"pilote", type:"choix", nom:"Commandée par", si:anim,
       options:(c, op) => ({ "":"Elle-même", ...Object.fromEntries(c.doc.operations.slice(0, c.doc.operations.indexOf(op)).filter(o => o.type === "liaison" && o.mode !== "rigide").map(o => [o.id, o.nom])) }) },
     { cle:"loi", type:"texte", nom:"Loi (x : valeur du pilote)", si:(o) => anim(o) && o.pilote },
@@ -154,19 +168,27 @@ export function completerChamps(CHAMPS){
 
   const pl = CHAMPS.plan;
   const mp = pl.findIndex(ch => ch.cle === "mode");
-  pl[mp] = { ...pl[mp], options:{ ...pl[mp].options, chemin:"Le long d'un chemin", tangent:"Tangent à un cylindre" } };
-  const horsNouveaux = (o) => o.mode !== "chemin" && o.mode !== "tangent";
+  pl[mp] = { ...pl[mp], options:{ ...pl[mp].options, chemin:"Le long d'un chemin", tangent:"Tangent à un cylindre", aretes:"Par deux arêtes" } };
+  const horsNouveaux = (o) => !["chemin", "tangent", "aretes"].includes(o.mode);
   for(const ch of pl.filter(c => c.cle === "base" || c.cle === "decalage")) ch.si = ((si) => (o) => horsNouveaux(o) && (!si || si(o)))(ch.si);
   pl.push({ cle:"chemin", type:"esquisse", nom:"Chemin", si:(o) => o.mode === "chemin" }, { cle:"position", type:"expr", nom:"Position (0 à 1)", si:(o) => o.mode === "chemin" },
-    { cle:"cylindre", type:"designer", nom:"Face cylindrique", quoi:"cylindreAxe", si:(o) => o.mode === "tangent" });
+    { cle:"cylindre", type:"designer", nom:"Face cylindrique", quoi:"cylindreAxe", si:(o) => o.mode === "tangent" },
+    { cle:"lignes", type:"designer", nom:"Deux arêtes droites", quoi:"lignes", si:(o) => o.mode === "aretes" });
 
   const ax = CHAMPS.axe;
   const ma = ax.findIndex(ch => ch.cle === "mode");
-  ax[ma] = { ...ax[ma], options:{ ...ax[ma].options, normale:"Perpendiculaire à une face" } };
-  for(const ch of ax.filter(c => c.quoi === "sommets" || /^[xyz][12]$/.test(c.cle))) ch.si = ((si) => (o) => o.mode !== "normale" && (!si || si(o)))(ch.si);
-  ax.push({ cle:"face", type:"designer", nom:"Face plane", quoi:"faceTiree", si:(o) => o.mode === "normale" });
+  ax[ma] = { ...ax[ma], options:{ ...ax[ma].options, normale:"Perpendiculaire à une face", deuxPlans:"Deux plans" } };
+  for(const ch of ax.filter(c => c.quoi === "sommets" || /^[xyz][12]$/.test(c.cle))) ch.si = ((si) => (o) => o.mode !== "normale" && o.mode !== "deuxPlans" && (!si || si(o)))(ch.si);
+  const planDeConstruction = (cle, nom, si) => ({ cle, type:"choix", nom, si, options:(c, op) => ({ "":"— choisir —", ...plansConstruits(c, op) }) });
+  ax.push({ cle:"face", type:"designer", nom:"Face plane", quoi:"faceTiree", si:(o) => o.mode === "normale" },
+    planDeConstruction("plan1", "Premier plan", (o) => o.mode === "deuxPlans"), planDeConstruction("plan2", "Second plan", (o) => o.mode === "deuxPlans"));
 
-  CHAMPS.point.splice(1, 0, { cle:"cylindre", type:"designer", nom:"Centre d'un cylindre", quoi:"cylindreAxe" });
+  const po = CHAMPS.point, coord = (o) => !o.mode || o.mode === "coord";
+  for(const ch of po.filter(c => c.quoi === "sommets" || /^[xyz]1$/.test(c.cle))) ch.si = coord;
+  po.splice(1, 0, { cle:"mode", type:"choix", nom:"Par", options:{ coord:"Ses coordonnées", axePlan:"Un axe et un plan", troisPlans:"Trois plans" } },
+    { cle:"cylindre", type:"designer", nom:"Centre d'un cylindre", quoi:"cylindreAxe", si:coord });
+  po.push({ cle:"axe", type:"choix", nom:"Axe", si:(o) => o.mode === "axePlan", options:(c, op) => ({ "":"— choisir —", ...Object.fromEntries(c.doc.operations.slice(0, c.doc.operations.indexOf(op)).filter(o => o.type === "axe").map(o => [o.id, o.nom])) }) },
+    planDeConstruction("plan1", "Plan", (o) => o.mode === "axePlan" || o.mode === "troisPlans"), planDeConstruction("plan2", "Deuxième plan", (o) => o.mode === "troisPlans"), planDeConstruction("plan3", "Troisième plan", (o) => o.mode === "troisPlans"));
 }
 
 /* -----------------------------------------------------------------------------
@@ -232,7 +254,8 @@ export function apresAffichage(c){
     m.material = Array.isArray(m.material) ? neufs : neufs[0];
   }
   if(c.centreGravite) montrerCentre(c);
-  c.vue.recenserMateriaux?.();
+  if((c.doc.composants || []).length) montrerComposants(c);
+  else c.vue.recenserMateriaux?.();
 }
 
 function montrerCentre(c){
@@ -260,13 +283,28 @@ function montrerCentre(c){
    --------------------------------------------------------------------------- */
 const blobToile = (toile) => new Promise((ok, ko) => toile.toBlob(b => b ? ok(b) : ko(new Error("le navigateur n'a pas pu écrire l'image")), "image/png"));
 
-async function rendreImage(c, { largeur, hauteur, fond, ombres }){
+/** La scène rendue avec l'occlusion ambiante : les creux s'assombrissent. Chargée à la demande : la vue n'en a pas besoin. */
+async function rendreAvecOcclusion(vue, cam, l, h){
+  const [{ EffectComposer }, { RenderPass }, { GTAOPass }, { OutputPass }] = await Promise.all([
+    import("three/addons/postprocessing/EffectComposer.js"), import("three/addons/postprocessing/RenderPass.js"),
+    import("three/addons/postprocessing/GTAOPass.js"), import("three/addons/postprocessing/OutputPass.js")]);
+  const composeur = new EffectComposer(vue.renderer);
+  composeur.setSize(l, h);
+  composeur.addPass(new RenderPass(vue.scene, cam));
+  composeur.addPass(new GTAOPass(vue.scene, cam, l, h));
+  composeur.addPass(new OutputPass());
+  composeur.render();
+  return composeur;
+}
+
+async function rendreImage(c, { largeur, hauteur, fond, ombres, occlusion }){
   const { vue } = c, r = vue.renderer, cam = vue.camera();
   const taille = r.getSize(new THREE.Vector2()), ratio = r.getPixelRatio();
   const decor = [vue.annotations, vue.decor].map(o => [o, o.visible]);
   const fondScene = vue.scene.background, couleur = r.getClearColor(new THREE.Color()), alpha = r.getClearAlpha(), intensite = vue.scene.environmentIntensity;
   const ombresAvant = prefs.ombres;
   const memoCam = cam.isPerspectiveCamera ? { aspect:cam.aspect } : { left:cam.left, right:cam.right };
+  let composeur = null;
   try{
     vue.annotations.visible = false;
     vue.decor.visible = !!ombres;
@@ -279,9 +317,11 @@ async function rendreImage(c, { largeur, hauteur, fond, ombres }){
     if(cam.isPerspectiveCamera) cam.aspect = largeur / hauteur;
     else{ const m = (cam.top - cam.bottom) * (largeur / hauteur) / 2, cx = (cam.left + cam.right) / 2; cam.left = cx - m; cam.right = cx + m; }
     cam.updateProjectionMatrix();
-    r.render(vue.scene, cam);
+    if(occlusion) composeur = await rendreAvecOcclusion(vue, cam, largeur, hauteur);
+    else r.render(vue.scene, cam);
     return await blobToile(r.domElement);
   }finally{
+    composeur?.dispose();
     for(const [o, v] of decor) o.visible = v;
     vue.scene.background = fondScene;
     r.setClearColor(couleur, alpha);
@@ -295,17 +335,137 @@ async function rendreImage(c, { largeur, hauteur, fond, ombres }){
   }
 }
 
+/* -----------------------------------------------------------------------------
+   Composants : un conteneur dans la pièce, dont les opérations portent le nom
+   --------------------------------------------------------------------------- */
+/** La liste du navigateur : activer d'un clic, œil, clic droit pour le reste. */
+export function majComposants(c, hote){
+  if(!hote) return;
+  const liste = c.doc.composants || [];
+  hote.replaceChildren(...liste.map(k => {
+    const d = document.createElement("div");
+    d.className = "nv" + (c.doc.composantActif === k.id ? " sel" : "");
+    d.title = "Clic : l'activer, ce qu'on crée entre dedans — clic droit : menu";
+    d.innerHTML = '<span class="fl"></span>';
+    const oeil = Object.assign(document.createElement("span"), { className:"oeil", textContent:k.cache ? "◌" : "◉", title:k.cache ? "Afficher ce composant" : "Masquer ce composant" });
+    oeil.onclick = (e) => { e.stopPropagation(); k.cache = !k.cache; if(!k.cache) delete k.cache; c.marquerModifie(); majComposants(c, hote); montrerComposants(c); };
+    d.append(oeil, Object.assign(document.createElement("span"), { className:"ic", textContent:"⧈" }),
+      Object.assign(document.createElement("span"), { className:"lbl", textContent:`${k.nom} (${c.doc.operations.filter(o => o.composant === k.id).length})` }));
+    d.onclick = () => activerComposant(c, c.doc.composantActif === k.id ? null : k.id);
+    d.oncontextmenu = (e) => { e.preventDefault(); menuComposant(c, k, e.clientX, e.clientY); };
+    return d;
+  }));
+}
+
+function activerComposant(c, id){
+  if(id) c.doc.composantActif = id; else delete c.doc.composantActif;
+  c.marquerModifie();
+  majComposants(c, $("navComposants"));
+  montrerComposants(c);
+  const k = (c.doc.composants || []).find(x => x.id === id);
+  etat(k ? `Composant actif : « ${k.nom} ». Ce qu'on crée y entre, le reste de la pièce s'estompe.` : "Plus de composant actif.");
+}
+
+/** Le composant actif ressort, les autres s'estompent ; un composant masqué disparaît. */
+export function montrerComposants(c){
+  const actif = c.doc.composantActif, par = new Map((c.resultat?.maillages || []).map(m => [m.nom, m.composant]));
+  const caches = new Set((c.doc.composants || []).filter(k => k.cache).map(k => k.id));
+  for(const m of c.vue.modele.children){
+    if(!m.isMesh) continue;
+    const k = par.get(m.name);
+    m.visible = !caches.has(k);
+    /* Les corps de même couleur partagent un matériau : l'estomper toucherait aussi le composant actif. */
+    if(!m.userData.matPropre){
+      m.material = Array.isArray(m.material) ? m.material.map(x => x.clone()) : m.material.clone();
+      m.userData.matPropre = true;
+    }
+    for(const x of Array.isArray(m.material) ? m.material : [m.material]){
+      if(x.userData.opaciteComposant === undefined){ x.userData.opaciteComposant = x.opacity; x.userData.transparentComposant = x.transparent; }
+      const estompe = actif && k !== actif;
+      x.opacity = estompe ? 0.25 : x.userData.opaciteComposant;
+      x.transparent = estompe || x.userData.transparentComposant;
+      x.needsUpdate = true;
+    }
+  }
+  c.vue.recenserMateriaux?.();
+  c.vue.invalider();
+}
+
+function menuComposant(c, k, x, y){
+  c.menu([
+    { texte:"Renommer…", action:async () => {
+      const r = await demander("Renommer le composant", [{ nom:"Nom", valeur:k.nom }], ([n]) => n ? null : "Donnez un nom.");
+      if(r) c.modifierDoc(() => { k.nom = r[0]; });
+    } },
+    { texte:"Y déplacer les opérations choisies", action:() => {
+      const ids = c.selOps.size ? [...c.selOps] : c.selOp ? [c.selOp] : [];
+      if(!ids.length){ etat("Choisissez d'abord des opérations dans la frise."); return; }
+      c.modifierDoc(() => { for(const o of c.doc.operations) if(ids.includes(o.id)) o.composant = k.id; });
+    } },
+    { texte:"Nouvelle occurrence", action:() => { c.creer("occurrence"); if(c.edition){ c.edition.op.source = k.id; c.construirePanneau(); c.apercu(); } } },
+    { texte:"Extraire en nouvelle pièce", action:async () => {
+      const ops = c.doc.operations.filter(o => o.composant === k.id).map(o => { const n = structuredClone(o); delete n.composant; return n; });
+      if(!ops.length){ etat("Ce composant est vide."); return; }
+      const doc = { ...structuredClone(c.docVide()), nom:k.nom, parametres:structuredClone(c.doc.parametres), operations:ops, compteur:c.doc.compteur };
+      await c.ouvrirOnglet(doc, null, true);
+    } },
+    { texte:"Dissoudre (les opérations restent dans la pièce)", action:() => c.modifierDoc(() => {
+      for(const o of c.doc.operations) if(o.composant === k.id) delete o.composant;
+      c.doc.composants = c.doc.composants.filter(q => q !== k);
+      if(c.doc.composantActif === k.id) delete c.doc.composantActif;
+    }) },
+  ], x, y);
+}
+
 const REGLAGES_RENDU = [{ nom:"Largeur (pixels)", valeur:"1920" }, { nom:"Hauteur (pixels)", valeur:"1080" },
-  { nom:"Fond", valeur:"theme", options:{ theme:"Celui de la vue", blanc:"Blanc", transparent:"Transparent" } }, { nom:"Ombres", valeur:"oui", options:OUI_NON }];
+  { nom:"Fond", valeur:"theme", options:{ theme:"Celui de la vue", blanc:"Blanc", transparent:"Transparent" } }, { nom:"Ombres", valeur:"oui", options:OUI_NON }, { nom:"Occlusion ambiante (plus lent)", valeur:"non", options:OUI_NON }];
 
 async function demanderRendu(){
   const r = await demander("Rendu", REGLAGES_RENDU, ([l, h]) => (+l >= 16 && +l <= 8192 && +h >= 16 && +h <= 8192) ? null : "De 16 à 8192 pixels de côté.");
-  return r && { largeur:Math.round(+r[0]), hauteur:Math.round(+r[1]), fond:r[2], ombres:r[3] === "oui" };
+  return r && { largeur:Math.round(+r[0]), hauteur:Math.round(+r[1]), fond:r[2], ombres:r[3] === "oui", occlusion:r[4] === "oui" };
 }
 
 /* -----------------------------------------------------------------------------
    Études de mouvement
    --------------------------------------------------------------------------- */
+/** Les corps qui se touchent ; un jeu de contact restreint la recherche à ses corps. */
+function contacts(c, nomJeu){
+  const jeu = nomJeu && (c.doc.contacts || []).find(j => j.nom === nomJeu);
+  const corps = jeu ? new Set(jeu.corps) : null;
+  return chercherCollisions(c.vue.modele, { tol:0.05, pauses:false, visible:(o) => o.visible && (!corps || corps.has(o.name)) });
+}
+
+/** Une valeur de liaison le temps d'un calcul, et les corps qui se touchent alors. */
+async function contactsA(c, op, valeur, nomJeu){
+  while(c.enCours) await new Promise(r => setTimeout(r, 30));
+  c.valeursAnimees = { [op.id]:String(valeur) };
+  await c.reconstruire();
+  return (await contacts(c, nomJeu)).length;
+}
+
+/**
+ * Cherche où une liaison s'arrête : pas à pas depuis `de` dans chaque sens, puis par dichotomie sur le dernier pas.
+ * Rend les limites trouvées, null si rien ne l'arrête dans l'intervalle.
+ */
+async function chercherLimites(c, op, de, bas, haut, pas, nomJeu){
+  const borne = async (fin) => {
+    const sens = Math.sign(fin - de);
+    if(!sens) return null;
+    let libre = de;
+    for(let x = de + sens * pas; sens > 0 ? x <= fin + 1e-9 : x >= fin - 1e-9; x += sens * pas){
+      if(!c.animation) return null;
+      if(await contactsA(c, op, x, nomJeu)){
+        let a = libre, b = x;
+        for(let i = 0; i < 6 && c.animation; i++){ const m = (a + b) / 2; if(await contactsA(c, op, m, nomJeu)) b = m; else a = m; }
+        return a;
+      }
+      libre = x;
+    }
+    return null;
+  };
+  return { min:await borne(bas), max:await borne(haut) };
+}
+
 async function jouerEtude(c, etude){
   const liens = etude.lignes.map(l => ({ ...l, op:c.doc.operations.find(o => o.id === l.liaison) })).filter(l => l.op);
   if(!liens.length){ etat("Cette étude ne vise plus aucune liaison."); return; }
@@ -327,7 +487,7 @@ async function jouerEtude(c, etude){
       if(m?.proprietes){ ligne.centre = m.proprietes.centre; piste.push(m.proprietes.centre); }
     }
     if(etude.contact){
-      const res = await chercherCollisions(c.vue.modele, { tol:0.05, pauses:false });
+      const res = await contacts(c, etude.jeu);
       ligne.contacts = res.length;
       if(res.length && !contact){ contact = { pas:i, paires:res.map(p => `${p.a.name} / ${p.b.name}`) }; }
     }
@@ -368,7 +528,7 @@ async function nouvelleEtude(c){
     ...liaisons.map(o => ({ nom:`${o.nom} : de, à (vide : ne bouge pas)`, valeur:liaisons.length === 1 ? (o.mode === "pivot" ? "0, 360" : "0, 50") : "" })),
     { nom:"Nombre de pas", valeur:"24" },
     { nom:"Suivre le centre de", valeur:"", options:{ "":"Aucun corps", ...Object.fromEntries(c.nomsCorps.map(n => [n, n])) } },
-    { nom:"Chercher les contacts", valeur:"non", options:OUI_NON },
+    { nom:"Chercher les contacts", valeur:"non", options:{ non:"Non", oui:"Entre tous les corps", ...Object.fromEntries((c.doc.contacts || []).map(j => [`j:${j.nom}`, `Jeu « ${j.nom} »`])) } },
     { nom:"S'arrêter au premier contact", valeur:"non", options:OUI_NON },
     { nom:"Enregistrer les images (zip)", valeur:"non", options:OUI_NON },
   ], (v) => {
@@ -381,7 +541,7 @@ async function nouvelleEtude(c){
   if(!r) return null;
   const k = liaisons.length;
   const etude = {
-    nom:r[0] || "Étude", pas:Math.round(+r[1 + k]), suivi:r[2 + k] || null, contact:r[3 + k] === "oui" || r[4 + k] === "oui", arret:r[4 + k] === "oui", images:r[5 + k] === "oui",
+    nom:r[0] || "Étude", pas:Math.round(+r[1 + k]), suivi:r[2 + k] || null, contact:r[3 + k] !== "non" || r[4 + k] === "oui", jeu:r[3 + k].startsWith("j:") ? r[3 + k].slice(2) : null, arret:r[4 + k] === "oui", images:r[5 + k] === "oui",
     lignes:liaisons.flatMap((o, i) => { if(!r[1 + i]) return []; const [de, a] = r[1 + i].split(",").map(Number); return [{ liaison:o.id, de, a }]; }),
   };
   c.memoriser();
@@ -399,14 +559,15 @@ async function poserApparence(c){
   if(!cibles.length){ etat("Aucun corps à habiller."); return; }
   const base = c.doc.apparences?.[cibles[0]] || {};
   const r = await demander(face ? `Apparence de la face de « ${objet?.name} »` : cibles.length > 1 ? "Apparence de tous les corps" : `Apparence de « ${cibles[0]} »`, [
-    { nom:"Bibliothèque", valeur:"", options:{ "":"Personnalisée", ...Object.fromEntries(Object.keys(APPARENCES).map(n => [n, n])) } },
+    { nom:"Bibliothèque", valeur:"", options:{ "":"Personnalisée", ...Object.fromEntries([...Object.keys(APPARENCES), ...Object.keys(lireLocal(CLE_FAVORIS, {}))].map(n => [n, n])) } },
     { nom:"Couleur", valeur:base.couleur || "#a9b1bb", type:"color" },
     { nom:"Métal (0 à 1)", valeur:String(base.metal ?? 0.25) }, { nom:"Rugosité (0 à 1)", valeur:String(base.rugosite ?? 0.52) }, { nom:"Opacité (0 à 1)", valeur:String(base.opacite ?? 1) },
     { nom:"Matériau physique (masse)", valeur:base.materiau || "", options:{ "":"Celui de la pièce", ...Object.fromEntries(c.materiaux().map(n => [n, n])) } },
     { nom:"Effacer ce qui est posé", valeur:"non", options:OUI_NON },
   ], ([, , m, ru, op]) => [m, ru, op].every(x => x !== "" && +x >= 0 && +x <= 1) ? null : "Trois valeurs de 0 à 1.");
   if(!r) return;
-  const lib = APPARENCES[r[0]];
+  const fav = lireLocal(CLE_FAVORIS, {})[r[0]];
+  const lib = APPARENCES[r[0]] || (fav && [fav.couleur, fav.metal, fav.rugosite, fav.opacite]);
   const a = lib ? { couleur:lib[0], metal:lib[1], rugosite:lib[2], opacite:lib[3] } : { couleur:r[1], metal:+r[2], rugosite:+r[3], opacite:+r[4] };
   c.modifierDoc(() => {
     const table = (c.doc.apparences ||= {});
@@ -466,6 +627,15 @@ export function collerOperations(c){
 /* -----------------------------------------------------------------------------
    Les boutons
    --------------------------------------------------------------------------- */
+function appliquerDisposition(){
+  for(const [id, v] of Object.entries(lireLocal(CLE_DISPOSITION, {}))){
+    const f = $(id);
+    if(!f || typeof v?.style !== "string") continue;
+    f.setAttribute("style", v.style);
+    f.classList.toggle("replie", !!v.replie);
+  }
+}
+
 export function brancherPlus(c){
   const si = (id, f) => { const b = $(id); if(b) b.onclick = f; };
   const exp = (format, ext, titre, extra = {}) => async () => {
@@ -579,6 +749,70 @@ export function brancherPlus(c){
     ], r.left, r.bottom + 2);
   });
 
+  si("bLimites", async () => {
+    if(c.animation){ c.animation = false; return; }
+    const liaisons = c.doc.operations.filter(o => o.type === "liaison" && o.mode !== "rigide" && !o.pilote);
+    if(!liaisons.length){ etat("Aucune liaison mobile."); return; }
+    const r = await demander("Chercher les limites d'une liaison", [{ nom:"Liaison", valeur:liaisons[0].id, options:Object.fromEntries(liaisons.map(o => [o.id, o.nom])) },
+      { nom:"Départ (sans contact)", valeur:"0" }, { nom:"Chercher jusqu'à, vers le bas", valeur:"-180" }, { nom:"Chercher jusqu'à, vers le haut", valeur:"180" }, { nom:"Pas", valeur:"15" },
+      { nom:"Entre", valeur:"", options:{ "":"Tous les corps", ...Object.fromEntries((c.doc.contacts || []).map(j => [j.nom, `Jeu « ${j.nom} »`])) } }],
+      ([, de, b, h, p]) => [de, b, h, p].every(x => Number.isFinite(+x) && x !== "") && +p > 0 ? null : "Quatre nombres, et un pas positif.");
+    if(!r) return;
+    const op = c.doc.operations.find(o => o.id === r[0]);
+    c.animation = true;
+    $("bLimites").classList.add("on");
+    let res = null;
+    try{
+      if(await contactsA(c, op, +r[1], r[5])){ etat("Au départ, des corps se touchent déjà : choisissez un autre départ ou un jeu de contact."); return; }
+      res = await chercherLimites(c, op, +r[1], +r[2], +r[3], +r[4], r[5]);
+    }finally{
+      c.animation = false;
+      c.valeursAnimees = null;
+      $("bLimites").classList.remove("on");
+      await c.reconstruire();
+    }
+    c.dernieresLimites = res;
+    const f = (x) => x === null ? "rien" : String(+x.toFixed(2));
+    if(await confirmer(`« ${op.nom} » : butée basse ${f(res.min)}, butée haute ${f(res.max)}. Les poser comme limites de la liaison ?`, "Poser"))
+      c.modifierDoc(() => { if(res.min !== null) op.min = String(+res.min.toFixed(3)); if(res.max !== null) op.max = String(+res.max.toFixed(3)); });
+  });
+
+  si("bContacts", (e) => {
+    const r = e.currentTarget.getBoundingClientRect(), jeux = c.doc.contacts || [];
+    c.menu([{ texte:"Nouveau jeu de contact…", action:async () => {
+      if(c.nomsCorps.length < 2){ etat("Il faut au moins deux corps."); return; }
+      const q = await demander("Jeu de contact", [{ nom:"Nom", valeur:`Jeu ${jeux.length + 1}` }, { nom:"Corps, séparés par des virgules", valeur:c.nomsCorps.slice(0, 2).join(", ") }], ([n, l]) => {
+        if(!n) return "Donnez un nom.";
+        const noms = l.split(",").map(x => x.trim());
+        const inconnu = noms.find(x => !c.nomsCorps.includes(x));
+        return inconnu ? `Corps inconnu : « ${inconnu} ».` : noms.length < 2 ? "Deux corps au moins." : null;
+      });
+      if(q) c.modifierDoc(() => { (c.doc.contacts ||= []).push({ nom:q[0], corps:q[1].split(",").map(x => x.trim()) }); });
+    } }, ...jeux.map(j => ({ texte:`✕ Supprimer « ${j.nom} » (${j.corps.length} corps)`, action:() => c.modifierDoc(() => { c.doc.contacts = c.doc.contacts.filter(x => x !== j); }) }))], r.left, r.bottom + 2);
+  });
+
+  si("bNouveauComposant", async () => {
+    const liste = c.doc.composants || [];
+    const q = await demander("Nouveau composant", [{ nom:"Nom", valeur:`Composant ${liste.length + 1}` }], ([n]) => n ? null : "Donnez un nom.");
+    if(!q) return;
+    c.modifierDoc(() => { const id = "k" + (c.doc.compteur = (c.doc.compteur || 0) + 1); (c.doc.composants ||= []).push({ id, nom:q[0] }); c.doc.composantActif = id; });
+    montrerComposants(c);
+  });
+
+  si("bLiens", (e) => {
+    const r = e.currentTarget.getBoundingClientRect(), lies = c.doc.operations.filter(o => o.source && (o.type === "composant" || o.type === "step"));
+    if(!lies.length){ etat("Aucun composant ni STEP lié à un fichier."); return; }
+    c.menu(lies.flatMap(o => [{ texte:`Casser le lien de « ${o.nom} »`, titre:o.source, action:() => c.modifierDoc(() => { delete o.source; delete o.sourceDate; delete o.sourceTaille; }) },
+      { texte:`Réassigner « ${o.nom} »…`, titre:o.source, action:async () => {
+        let fichiers = [];
+        try{ fichiers = (await (await fetch("api/projets", { cache:"no-store" })).json()).fichiers.filter(f => o.type === "composant" ? /\.json$/i.test(f.chemin) : /\.(stp|step)$/i.test(f.chemin)); }
+        catch(err){ avertir(`Dossier des projets injoignable : ${err.message}`); return; }
+        if(!fichiers.length){ etat("Aucun fichier de ce genre dans les projets."); return; }
+        const q = await demander("Réassigner le lien", [{ nom:"Fichier", valeur:fichiers[0].chemin, options:Object.fromEntries(fichiers.map(f => [f.chemin, f.chemin])) }]);
+        if(q) c.modifierDoc(() => { o.source = q[0]; o.sourceDate = 0; o.sourceTaille = 0; });     // la date ne colle plus : Mettre à jour s'allume
+      } }]), r.left, r.bottom + 2);
+  });
+
   /* ---------------- gérer ---------------- */
   si("bProprietesDoc", async () => {
     const p = c.doc.proprietes || {};
@@ -637,6 +871,124 @@ export function brancherPlus(c){
   si("bApparence2", () => poserApparence(c));
   si("bCopierLook", () => copierLook(c));
   si("bCollerLook", () => collerLook(c));
+  si("bPinceau", () => {
+    if(!c.pinceau && !c.lookCopie){ etat("Copiez d'abord une apparence."); return; }
+    c.pinceau = !c.pinceau;
+    $("bPinceau").classList.toggle("on", c.pinceau);
+    etat(c.pinceau ? "Pinceau : cliquez les corps à habiller ; second appui pour finir." : "");
+  });
+  si("bFavoriLook", async () => {
+    if(!c.lookCopie){ etat("Copiez d'abord une apparence."); return; }
+    const q = await demander("Apparence favorite", [{ nom:"Nom", valeur:"Ma couleur" }], ([n]) => n ? null : "Donnez un nom.");
+    if(!q) return;
+    try{ localStorage.setItem(CLE_FAVORIS, JSON.stringify({ ...lireLocal(CLE_FAVORIS, {}), [q[0]]:c.lookCopie })); etat(`« ${q[0]} » rejoint la bibliothèque.`); }
+    catch(_){ avertir("Stockage du navigateur indisponible : la favorite n'est pas gardée."); }
+  });
+  si("bRemplacerLook", () => {
+    const o = c.arbre.selection, a = o && c.doc.apparences?.[o.name];
+    if(!a || !c.lookCopie){ etat("Copiez la nouvelle apparence, puis choisissez un corps qui porte l'ancienne."); return; }
+    const pareil = (x) => x && ["couleur", "metal", "rugosite", "opacite"].every(k => x[k] === a[k]);
+    let n = 0;
+    c.modifierDoc(() => { for(const [nom, x] of Object.entries(c.doc.apparences)) if(pareil(x)){ c.doc.apparences[nom] = { ...x, ...c.lookCopie }; n++; } });
+    etat(`${n} corps changé(s).`);
+  });
+
+  /* ---------------- calque de référence ---------------- */
+  si("bImageEsquisse", async () => {
+    const images = c.doc.operations.filter(o => o.type === "image" && !o.suspendue);
+    if(!images.length){ etat("Insérez d'abord une image (onglet Insérer)."); return; }
+    if(c.edition || c.editeur.ouvert){ etat("Terminez d'abord l'opération ou l'esquisse en cours."); return; }
+    const q = await demander("Image vers esquisse", [{ nom:"Image", valeur:images[0].id, options:Object.fromEntries(images.map(o => [o.id, o.nom])) }, { nom:"Seuil (0 à 255 : ce qui est plus sombre devient contour)", valeur:"128" }, { nom:"Tolérance (pixels)", valeur:"1.5" }],
+      ([, s, t]) => +s >= 0 && +s <= 255 && +t >= 0 ? null : "Un seuil de 0 à 255 et une tolérance positive.");
+    if(!q) return;
+    await tache(c, "Image vers esquisse", async () => {
+      const op = images.find(o => o.id === q[0]);
+      const img = new Image();
+      await new Promise((ok, ko) => { img.onload = ok; img.onerror = () => ko(new Error("image illisible")); img.src = op.donnees; });
+      /* Réduite : une esquisse de milliers de segments serait inutilisable. */
+      const k = Math.min(1, 400 / Math.max(img.width, img.height)), l = Math.round(img.width * k), h = Math.round(img.height * k);
+      const toile = Object.assign(document.createElement("canvas"), { width:l, height:h }), ctx = toile.getContext("2d");
+      ctx.drawImage(img, 0, 0, l, h);
+      const d = ctx.getImageData(0, 0, l, h).data;
+      const boucles = contoursImage((x, y) => { const i = 4 * (y * l + x); return (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) * d[i + 3] / 255 + 255 - d[i + 3]; }, l, h, +q[1], +q[2]);
+      if(!boucles.length) throw new Error("rien de plus sombre que ce seuil");
+      const v = c.v(), L = v(op.largeur), mm = L / l, x0 = v(op.x ?? 0), y0 = v(op.y ?? 0), H = mm * h;
+      const prims = boucles.flatMap(b => b.map((p, i) => { const s = b[(i + 1) % b.length], u = (a) => [x0 - L / 2 + a[0] * mm, y0 + H / 2 - a[1] * mm]; return { type:"ligne", a:u(p), b:u(s) }; }));
+      if(prims.length > 3000) throw new Error(`${prims.length} segments : montez la tolérance`);
+      const r = repereImage(op, v);
+      const avant = JSON.stringify(c.doc), esq = nouvelleEsquisse(c.nouvelId(), `Tracé de ${op.nom}`, op.base === "face" ? { origine:r.o, normale:r.n, xdir:r.x } : { base:op.base, decalage:op.decalage ?? "0" });
+      ajouterPrimitives(esq, prims);
+      c.inserer(esq);
+      c.memoriser(avant);
+      c.marquerModifie();
+      c.majHistorique();
+      await c.reconstruire();
+      etat(`${boucles.length} contour(s), ${prims.length} segments.`);
+    });
+  });
+
+  /* ---------------- bibliothèque de la page ---------------- */
+  si("bBibliotheque", (e) => {
+    const r = e.currentTarget.getBoundingClientRect(), liste = lireLocal(CLE_BIBLIOTHEQUE, []);
+    const garder = (l) => { try{ localStorage.setItem(CLE_BIBLIOTHEQUE, JSON.stringify(l)); return true; }catch(_){ avertir("Trop gros pour le stockage du navigateur : enregistrez plutôt une pièce."); return false; } };
+    c.menu([
+      { texte:"Y ranger les opérations choisies…", action:async () => {
+        const ids = c.selOps.size ? [...c.selOps] : c.selOp ? [c.selOp] : [];
+        const ops = c.doc.operations.filter(o => ids.includes(o.id));
+        if(!ops.length){ etat("Choisissez d'abord des opérations dans la frise."); return; }
+        const q = await demander("Bibliothèque", [{ nom:"Nom", valeur:ops[0].nom }], ([n]) => n ? null : "Donnez un nom.");
+        if(q && garder([...liste, { nom:q[0], ops }])) etat(`« ${q[0]} » rangé.`);
+      } },
+      ...liste.map(x => ({ texte:`⧉ ${x.nom}`, titre:`${x.ops.length} opération(s) : les insérer ici`, action:() => {
+        if(c.edition || c.editeur.ouvert){ etat("Terminez d'abord l'opération ou l'esquisse en cours."); return; }
+        c.modifierDoc(() => { for(const o of operationsCollees(c.doc, x.ops)) c.inserer(o); });
+      } })),
+      "-",
+      { texte:"Enregistrer la bibliothèque en fichier", action:() => telechargerFichier(JSON.stringify(liste, null, 1), "web3d-bibliotheque.json", "application/json") },
+      { texte:"Reprendre une bibliothèque…", action:() => {
+        const f = Object.assign(document.createElement("input"), { type:"file", accept:".json" });
+        f.onchange = async () => {
+          try{
+            const lu = JSON.parse(await f.files[0].text());
+            if(!Array.isArray(lu) || !lu.every(x => typeof x?.nom === "string" && Array.isArray(x.ops) && x.ops.every(o => typeof o?.type === "string" && typeof o?.id === "string"))) throw new Error("ce fichier n'est pas une bibliothèque");
+            if(garder([...liste, ...lu])) etat(`${lu.length} entrée(s) reprise(s).`);
+          }catch(err){ avertir(`Lecture impossible : ${err.message}`); }
+        };
+        f.click();
+      } },
+      ...liste.map(x => ({ texte:`✕ Retirer « ${x.nom} »`, action:() => garder(liste.filter(y => y !== x)) })),
+    ], r.left, r.bottom + 2);
+  });
+
+  /* ---------------- disposition et style ---------------- */
+  si("bDisposition", (e) => {
+    const r = e.currentTarget.getBoundingClientRect(), pan = () => [...document.querySelectorAll(".flottant[id]")];
+    c.menu([
+      { texte:"Enregistrer la disposition", action:() => {
+        const d = Object.fromEntries(pan().map(f => [f.id, { style:f.getAttribute("style") || "", replie:f.classList.contains("replie") }]));
+        try{ localStorage.setItem(CLE_DISPOSITION, JSON.stringify(d)); etat("Disposition enregistrée : elle revient au chargement."); }catch(_){ avertir("Stockage du navigateur indisponible."); }
+      } },
+      { texte:"Reprendre la disposition", action:() => appliquerDisposition() },
+      { texte:"Disposition d'origine", action:() => {
+        localStorage.removeItem(CLE_DISPOSITION);
+        for(const f of pan()){ f.removeAttribute("style"); f.classList.remove("replie"); f.querySelector(".plier")?.replaceChildren(document.createTextNode("−")); }
+      } },
+    ], r.left, r.bottom + 2);
+  });
+  appliquerDisposition();
+
+  si("bStyle", (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const poser = (filaire, rayons, aretes) => {
+      if(!!c.vue.modeFilaire !== filaire) $("bFilaire").click();
+      if(!!c.vue.modeTransparent !== rayons) $("bTransparence").click();
+      if(!!prefs.aretes !== aretes) $("bAretes").click();
+    };
+    c.menu([{ texte:"Ombré", action:() => poser(false, false, false) }, { texte:"Ombré avec arêtes", action:() => poser(false, false, true) },
+      { texte:"Filaire", action:() => poser(true, false, false) }, { texte:"Rayons X", action:() => poser(false, true, true) }], r.left, r.bottom + 2);
+  });
+
+  /* ---------------- gérer ---------------- */
 
   /* ---------------- affichage ---------------- */
   si("bNormaleA", () => {
@@ -704,6 +1056,7 @@ export function actionsEsquisse(c){
   return {
     echelle:() => ed.echelle(), deplacerEnt:() => ed.deplacerCopier(false), copierEnt:() => ed.deplacerCopier(true),
     autoContraindre:() => ed.autoContraindre(), boutsLibres:() => ed.boutsLibres(), pilotee:() => ed.basculerPilotee(), rayonDiam:() => ed.basculerRayon(),
+    retirerPoint:() => ed.retirerPoint(), inverserSpline:() => ed.inverserSpline(), raccord:() => ed.raccord(),
     courbeEquation:() => ed.courbeEquation(), bissectrice:() => ed.bissectrice(), tangentePoint:() => ed.tangentePoint(), cercleTangent:() => ed.cercleTangent(),
     peigne:() => document.querySelector('[data-action="peigne"]').classList.toggle("on", ed.basculerPeigne()),
     intersection:async () => {

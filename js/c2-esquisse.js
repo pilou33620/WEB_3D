@@ -57,8 +57,13 @@ export function repere(plan, v = Number){
 }
 
 /** L'axe d'une opération « axe de construction » : deux points, ou l'axe d'un cylindre désigné. */
-export function axeConstruction(op, v = Number){
+export function axeConstruction(op, v = Number, doc = null){
   if(!op) throw new Error("axe de construction introuvable");
+  if(op.mode === "deuxPlans"){
+    const [p, q] = plansDe(doc, [op.plan1, op.plan2], v), dir = vec.vect(p.normale, q.normale);
+    if(Math.hypot(...dir) < 1e-9) throw new Error("ces deux plans sont parallèles");
+    return { point:pointDeTroisPlans(p, q, { origine:p.origine, normale:vec.norm(dir) }), dir:vec.norm(dir) };
+  }
   if(op.mode === "cylindre"){
     if(!op.cylindre) throw new Error("face cylindrique à désigner");
     return { point:op.cylindre.point, dir:vec.norm(op.cylindre.axe) };
@@ -75,6 +80,16 @@ export function axeConstruction(op, v = Number){
 
 /** Le plan d'une opération « plan de construction » : décalé puis incliné, médian entre deux décalages, ou par trois points. */
 export function planConstruction(op, v = Number, doc = null){
+  if(op.mode === "aretes"){
+    if(op.lignes?.length !== 2) throw new Error("deux arêtes droites à désigner");
+    const [[a, b], [c, d]] = op.lignes, u = vec.norm([b[0] - a[0], b[1] - a[1], b[2] - a[2]]), w = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+    let n = vec.vect(u, w);
+    if(Math.hypot(...n) < 1e-9) n = vec.vect(u, [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+    if(Math.hypot(...n) < 1e-9) throw new Error("ces deux arêtes sont sur la même droite");
+    n = vec.norm(n);
+    if(Math.abs(vec.scal([c[0] - a[0], c[1] - a[1], c[2] - a[2]], n)) > 1e-4) throw new Error("ces deux arêtes ne sont pas dans un même plan");
+    return { origine:a, normale:n, xdir:u };
+  }
   if(op.mode === "tangent"){
     if(!op.cylindre?.surf) throw new Error("face cylindrique à désigner");
     const a = vec.norm(op.cylindre.axe), d = [0, 1, 2].map(i => op.cylindre.surf[i] - op.cylindre.point[i]);
@@ -118,6 +133,52 @@ export function planConstruction(op, v = Number, doc = null){
     return [0, 1, 2].map(i => w[i] * c + k[i] * s + autour[i] * d * (1 - c));
   };
   return { origine:r.o, normale:vec.norm(tourne(r.n)), xdir:vec.norm(tourne(r.x)) };
+}
+
+/** Les points d'un chemin 3D : « x, y, z » séparés par des points-virgules, chaque cote pouvant être une expression. */
+export function pointsChemin3d(op, v = Number){
+  const p = String(op.points ?? "").split(";").map(t => t.trim()).filter(Boolean).map(t => {
+    const c = t.split(",").map(x => x.trim());
+    if(c.length !== 3) throw new Error(`« ${t} » : trois cotes par point`);
+    return c.map(x => v(x));
+  });
+  if(p.length < 2) throw new Error("au moins deux points");
+  if(op.mode === "spline" && p.length < 3) throw new Error("une courbe passe par trois points au moins");
+  if(p.some((q, i) => i && Math.hypot(q[0] - p[i - 1][0], q[1] - p[i - 1][1], q[2] - p[i - 1][2]) < 1e-9)) throw new Error("deux points successifs sont confondus");
+  return p;
+}
+
+function plansDe(doc, ids, v){
+  return ids.map(id => {
+    const o = doc?.operations.find(x => x.id === id && x.type === "plan");
+    if(!o) throw new Error("plan de construction à choisir");
+    return planConstruction(o, v, doc);
+  });
+}
+
+/** L'intersection de trois plans { origine, normale }. */
+function pointDeTroisPlans(a, b, c){
+  const [n1, n2, n3] = [a.normale, b.normale, c.normale], d = vec.scal(n1, vec.vect(n2, n3));
+  if(Math.abs(d) < 1e-9) throw new Error("ces plans ne se coupent pas en un point");
+  const [k1, k2, k3] = [vec.scal(n1, a.origine), vec.scal(n2, b.origine), vec.scal(n3, c.origine)];
+  const v23 = vec.vect(n2, n3), v31 = vec.vect(n3, n1), v12 = vec.vect(n1, n2);
+  return [0, 1, 2].map(i => (k1 * v23[i] + k2 * v31[i] + k3 * v12[i]) / d);
+}
+
+/** La position d'une opération « point de construction » : ses coordonnées, ou une intersection. */
+export function pointConstruction(op, v = Number, doc = null){
+  if(op.mode === "troisPlans"){
+    const [a, b, c] = plansDe(doc, [op.plan1, op.plan2, op.plan3], v);
+    return pointDeTroisPlans(a, b, c);
+  }
+  if(op.mode === "axePlan"){
+    const ax = axeConstruction(doc?.operations.find(x => x.id === op.axe && x.type === "axe"), v, doc), [p] = plansDe(doc, [op.plan1], v);
+    const den = vec.scal(ax.dir, p.normale);
+    if(Math.abs(den) < 1e-9) throw new Error("cet axe est parallèle au plan");
+    const t = vec.scal([p.origine[0] - ax.point[0], p.origine[1] - ax.point[1], p.origine[2] - ax.point[2]], p.normale) / den;
+    return vec.ajout(ax.point, ax.dir, t);
+  }
+  return ["x1", "y1", "z1"].map(k => v(op[k] ?? 0));
 }
 
 /** Un point local (x, y) du plan, en coordonnées du monde. */

@@ -177,6 +177,50 @@ export function operationsCollees(doc, copiees){
   return sorties;
 }
 
+/**
+ * Le contour d'une image en polylignes : marche sur la grille des pixels plus sombres que `seuil`, le long des bords.
+ * `lum(x, y)` rend la luminosité de 0 à 255. Rend des polylignes fermées en pixels, simplifiées à `tol` pixel près.
+ */
+export function contoursImage(lum, l, h, seuil = 128, tol = 1){
+  const plein = (x, y) => x >= 0 && y >= 0 && x < l && y < h && lum(x, y) < seuil;
+  /* Chaque bord entre un pixel plein et un vide, orienté : la matière à gauche. */
+  const suivants = new Map(), pose = (a, b) => { const k = a.join(); if(!suivants.has(k)) suivants.set(k, []); suivants.get(k).push(b); };
+  for(let y = 0; y < h; y++) for(let x = 0; x < l; x++){
+    if(!plein(x, y)) continue;
+    if(!plein(x, y - 1)) pose([x, y], [x + 1, y]);
+    if(!plein(x + 1, y)) pose([x + 1, y], [x + 1, y + 1]);
+    if(!plein(x, y + 1)) pose([x + 1, y + 1], [x, y + 1]);
+    if(!plein(x - 1, y)) pose([x, y + 1], [x, y]);
+  }
+  const sortie = [];
+  while(suivants.size){
+    const debut = suivants.keys().next().value, boucle = [];
+    let k = debut;
+    while(suivants.has(k)){
+      const liste = suivants.get(k), p = liste.pop();
+      if(!liste.length) suivants.delete(k);
+      boucle.push(k.split(",").map(Number));
+      k = p.join();
+      if(k === debut) break;
+    }
+    if(boucle.length >= 4) sortie.push(simplifierContour(boucle, tol));
+  }
+  return sortie.filter(b => b.length >= 3);
+}
+
+/** Douglas-Peucker sur un contour fermé : coupé en deux au point le plus loin du premier. */
+function simplifierContour(pts, tol){
+  const loin = pts.reduce((m, p, i) => Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1]) > Math.hypot(pts[m][0] - pts[0][0], pts[m][1] - pts[0][1]) ? i : m, 0);
+  const moitie = (a) => {
+    if(a.length < 3) return a;
+    const [x0, y0] = a[0], [x1, y1] = a[a.length - 1], L = Math.hypot(x1 - x0, y1 - y0) || 1;
+    let iMax = 0, dMax = 0;
+    for(let i = 1; i < a.length - 1; i++){ const d = Math.abs((x1 - x0) * (y0 - a[i][1]) - (x0 - a[i][0]) * (y1 - y0)) / L; if(d > dMax){ dMax = d; iMax = i; } }
+    return dMax <= tol ? [a[0], a[a.length - 1]] : [...moitie(a.slice(0, iMax + 1)).slice(0, -1), ...moitie(a.slice(iMax))];
+  };
+  return [...moitie(pts.slice(0, loin + 1)).slice(0, -1), ...moitie([...pts.slice(loin), pts[0]]).slice(0, -1)];
+}
+
 /** Une table de valeurs d'un paramètre : ce que chaque valeur donne. En CSV. */
 export function csvBalayage(nom, lignes){
   const f = (x) => x === null || x === undefined ? "" : String(+(+x).toFixed(4)).replace(".", ",");

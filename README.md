@@ -261,11 +261,11 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
   pièces récentes) ; les panneaux flottants se déplacent par leur titre.
 - **Ruban MODÈLE** — *Esquisse* ; *Créer* : extrusion (un côté, symétrique, deux côtés), révolution,
   balayage, lissage, perçage (simple, lamé, fraisé, sur les points d'une esquisse), boîte, cylindre,
-  sphère, cône, tore, tuyau, ressort, nervure, gravure, voile, solide englobant, remplissage de frontière
+  sphère, cône, tore, tuyau, ressort, nervure, gravure (aussi sur un cylindre), voile (d'une paroi à l'autre), solide englobant, remplissage de frontière
   (le volume fermé par des corps et des surfaces, autour d'un point) ; *Modifier* : tirer une face (Press Pull), congé,
   chanfrein (arêtes désignées dans la vue, ou toutes), coque (faces retirées désignées), combiner,
   dépouille, découpe par un plan, échelle ; le congé peut évoluer d'un rayon à un autre, le chanfrein être dissymétrique ; décaler des faces (planes ou cylindriques), supprimer des faces (le trou se
-  bouche, ou le corps devient une surface), remplacer une face par une surface qui traverse le corps, diviser un corps
+  bouche, ou le corps devient une surface), remplacer une face par une surface (le corps s'y arrête, ou une face plane va la rejoindre), diviser un corps
   (plan de construction, lignes d'esquisse, surface) ou une face, retirer un corps ; *Disposer* : déplacer, miroir,
   répétition linéaire ou circulaire en une ou deux directions, répétition sur un chemin, aligner ; *Habiller* : apparence ;
   *Configurer* : paramètres ; *Construire* : plans décalés et inclinés. L'extrusion va
@@ -277,10 +277,12 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
 - **Surface** — extrusion, révolution, balayage, lissage, remplissage, surface réglée et raccord entre deux séries
   d'arêtes, en surfaces sans volume ; ajuster par un volume, prolonger, coudre (fermées : un volume), décaler, épaissir,
   inverser la normale, découdre (une surface par face), détourer (refermer les trous d'une face).
-- **Assemblage** — composants (une autre pièce `.json`, intégrée au fichier), liaisons rigide, pivot, glissière,
-  cylindrique ou plan par une face de chaque corps, ou *telle quelle* (as-built : le corps reste où il est), limites
+- **Assemblage** — composants de deux sortes : une autre pièce `.json` intégrée au fichier, ou un composant *dans* la pièce
+  (navigateur : un clic l'active, ce qu'on crée y entre, le reste s'estompe ; œil ; clic droit pour renommer, y déplacer des
+  opérations, en faire une nouvelle pièce, le dissoudre), occurrences qui suivent leur composant, liens à casser ou réassigner ;
+  liaisons rigide, pivot, glissière, cylindrique, plan ou sphérique par une face de chaque corps, ou *telle quelle* (as-built : le corps reste où il est), limites
   basse et haute, liaison commandée par une autre selon une loi (`x * -0.5` pour un engrenage, `x / 360 * 2` pour une vis,
-  `5 * sin(x)` pour une came), groupe rigide, ancrage, animation d'une liaison (sans modifier la pièce), éclaté ; **étude
+  `5 * sin(x)` pour une came), groupe rigide, ancrage, recherche des butées d'une liaison, jeux de contact, animation d'une liaison (sans modifier la pièce), éclaté et ses vues nommées ; **étude
   de mouvement** : plusieurs liaisons ensemble, trajectoire d'un corps tracée dans la vue, contacts cherchés à chaque pas et
   arrêt au premier, table en CSV, images en zip ; nomenclature en CSV (pièces identiques regroupées) ; export **URDF**
   (zip : le robot et ses maillages).
@@ -292,7 +294,7 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
 - **Soudures** — profilés (tube carré ou rond, cornière, plat, poutre IPE 80 à 200) le long d'une ossature, coupés droits ou en
   onglet ; liste de débit en CSV.
 - **Autres onglets** — *Insérer* : un STEP (référence pour dessiner autour, ou corps), un DXF ou un SVG comme
-  esquisse, une image de référence sur un plan, un maillage STL, OBJ, 3MF ou glTF (5000 triangles au plus), un nuage de
+  esquisse, une image de référence sur un plan ou une face (décalque), à calibrer sur une longueur connue, à tracer en esquisse d'après ses contours, un maillage STL, OBJ, 3MF ou glTF (5000 triangles au plus ; ses triangles coplanaires peuvent ne faire qu'une face), un nuage de
   points XYZ, CSV, PTS ou PLY en texte (200 000 points gardés au plus), la visserie M2 à M12 (vis CHC, vis H, écrou,
   rondelle) ; *Inspecter* : mesure, centre de gravité, coupe, collisions, rayon minimal et jonctions tangentes ou vives
   tracées dans la vue, comparaison de deux corps, balayage d'un paramètre en CSV, zébrures, dépouille, courbure, reflets,
@@ -300,11 +302,12 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
   commande), table de configurations (valeurs et opérations suspendues), unités (les cotes acceptent `1in`, `2cm` ; l'unité
   choisie vaut pour les propriétés et le STEP), propriétés de la pièce, matériaux ajoutés, points de reprise (gardés
   jusqu'à la fermeture de la page), tout recalculer, script, réglages en fichier ; *Affichage* : regarder une face de
-  face, rotation continue, vues nommées, filtre de sélection (cliquer à travers une référence) ; *Rendu* : apparence d'un
-  corps ou d'une face (bibliothèque, couleur, métal, rugosité, opacité, matériau physique par corps), image PNG à la taille
-  voulue sans les aides de construction, fond transparent, toutes les vues enregistrées dans une archive.
-- **Plans et axes** — en plus des décalés, médians et par trois points : un plan le long d'un chemin, un plan tangent à un
-  cylindre, un axe perpendiculaire à une face, un point au centre d'un cylindre. Ctrl+C et Ctrl+V copient des opérations
+  face, rotation continue, styles, place des panneaux enregistrée, vues nommées, filtre de sélection (cliquer à travers une référence) ; *Rendu* : apparence d'un
+  corps ou d'une face (bibliothèque et favoris, couleur, métal, rugosité, opacité, matériau physique par corps), pinceau, remplacer partout, image PNG à la taille
+  voulue sans les aides de construction, fond transparent, ombres et occlusion ambiante, toutes les vues enregistrées dans une archive.
+- **Plans et axes** — en plus des décalés, médians et par trois points : un plan le long d'un chemin, tangent à un
+  cylindre ou par deux arêtes, un axe perpendiculaire à une face ou par deux plans, un point au centre d'un cylindre ou à une
+  intersection (axe et plan, trois plans), un chemin 3D par des points de l'espace, pour un tuyau ou un balayage. Ctrl+C et Ctrl+V copient des opérations
   (les renvois vers une opération copiée suivent la copie), Maj+R répète la dernière commande, le clic droit sur une
   opération montre ce qu'elle cite et ce qui s'appuie sur elle.
 - **Sur téléphone** — mêmes outils, panneaux repliés d'entrée, ruban et frise qui défilent au doigt.
@@ -312,7 +315,8 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
   arrondi), cercle (centre, deux ou trois points, tangent à deux ou trois courbes), arcs (dont tangent), polygone (inscrit,
   circonscrit, par une arête), oblong (trois façons), ellipse, conique, courbe par équation, point, spline, texte (DejaVu
   Sans), lignes de construction, bissectrice, tangente depuis un point, projection d'arêtes du modèle, intersection du
-  modèle avec le plan ; ajuster, prolonger, couper, décaler, congé et chanfrein de coin, échelle, déplacer ou copier
+  modèle avec le plan, courbe de raccord tangente, points de spline ajoutés ou retirés ; ajuster, prolonger, couper, décaler
+  (libre ou lié à l'original), congé et chanfrein de coin (dissymétrique au besoin), échelle, déplacer ou copier
   (Ctrl+C, Ctrl+V), construction, suppression, plan ; miroir, répétitions ; cotes (longueur, distance, horizontale,
   verticale, rayon, diamètre, angle), pilotées au besoin, et contraintes (horizontale, verticale, coïncidence, parallèles,
   perpendiculaires, tangence, égalité, concentriques, milieu, symétrie, point sur, fixe, colinéaires), auto-contrainte ;
@@ -376,8 +380,8 @@ qui citent les paramètres ; dans l'interface, un double-clic sur la contrainte 
 
 Limites connues : une ellipse, une conique ou une courbe par équation sont des splines : leurs axes ne se cotent pas.
 La face supprimée est bouchée, pas refaite en prolongeant ses voisines : retirer un congé laisse une petite facette.
-Décaler ajoute de la matière sur une face plane ou cylindrique seulement. Remplacer une face coupe, sans prolonger. Un voile
-s'arrête à l'encombrement du corps. Le rendu est celui de la vue (WebGL, sans lancer de rayons). Les études n'ont pas de
+Décaler ajoute de la matière sur une face plane ou cylindrique seulement. Un décalage lié suit les lignes et les centres, pas le
+rayon d'un cercle. Un chemin 3D n'a pas de contraintes : des points et des expressions. Une occurrence recopie les corps nés dans son composant. Le rendu est celui de la vue (WebGL, sans lancer de rayons). Contacts et butées se lisent sur des triangles qui se traversent : deux corps de même section qui glissent exactement l'un dans l'autre n'en montrent pas. Les études n'ont pas de
 solveur : une loi ou une valeur par liaison, à chaque pas. Une esquisse ne coupe pas ses profils qui se croisent (un contour par boucle, ajuster
 d'abord) ; deux éléments identiques et symétriques peuvent s'échanger si la pièce change beaucoup (ce n'est
 pas un nommage topologique du noyau). Le développé d'une tôle ne vaut que pour des plis partant de la tôle de
@@ -495,7 +499,7 @@ WEB_3D/
 ├── test/                         bancs d'essai : exemples, pilotage, serveur
 └── vendor/                       bibliothèques, servies en local
     ├── three/                    three.js r186 + modules d'exemples (lecteurs
-    │                              STL, 3MF, OBJ, MTL, glTF, export glTF, fflate)
+    │                              STL, 3MF, OBJ, MTL, glTF, export glTF, fflate, occlusion ambiante)
     ├── occt/                     occt-import-js 0.0.23 (+ occt-import-js.wasm)
     ├── replicad/                 replicad 1.2.0 + replicad-opencascadejs 1.1.0 (mode conception)
     ├── planegcs/                 @salusoft89/planegcs 1.3.0, solveur d'esquisse de FreeCAD

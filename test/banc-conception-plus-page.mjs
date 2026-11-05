@@ -280,8 +280,14 @@ try{
     while(!fichiers.length) await attente(50);
     const f = await sortie();
     const apres = [r0.domElement.width, r0.domElement.height, W3D.vue.annotations.visible, W3D.vue.camera().aspect];
-    return [f.nom, f.debut.slice(1, 4), JSON.stringify(avant) === JSON.stringify(apres)];
-  `), ["piece-rendu.png", "PNG", true]);
+    /* Occlusion : une autre image pour la même vue, et la vue revient encore. */
+    $("bRendu").click();
+    await repondre(["64", "32", "blanc", "non", "oui"]);
+    while(!fichiers.length) await attente(50);
+    const g = await sortie();
+    const fin = [r0.domElement.width, r0.domElement.height, W3D.vue.annotations.visible, W3D.vue.camera().aspect];
+    return [f.nom, f.debut.slice(1, 4), JSON.stringify(avant) === JSON.stringify(apres), g.debut.slice(1, 4), g.taille !== f.taille, JSON.stringify(avant) === JSON.stringify(fin)];
+  `), ["piece-rendu.png", "PNG", true, "PNG", true, true]);
 
   /* ---------------- historique, paramètres, configurations ---------------- */
   verifier("copier-coller d'opérations, reprise, tout recalculer, répéter", await page(`
@@ -356,6 +362,131 @@ try{
     r.csv = [f.nom, /^pas;Vis/.test(f.debut)];
     return r;
   `), { erreurs:0, pas:4, monte:[5, 7], piste:true, csv:["piece-etude.csv", true] });
+
+  /* ---------------- second lot ---------------- */
+  verifier("composants : créer, activer, y entrer, occurrence, extraire, dissoudre", await page(`
+    const c = W3D.conception;
+    await piece([]);
+    $("bNouveauComposant").click(); await repondre(["Capot"]); await fini();
+    const r = { actif:c.doc.composants[0].nom };
+    await c.ajouterOperation("boite", { L:"10", l:"10", h:"10" });
+    r.tag = c.doc.operations[0].composant === c.doc.composants[0].id;
+    await fini();
+    r.liste = $("navComposants").textContent;
+    /* Sortir du composant : le reste de la pièce n'y entre plus. */
+    $("navComposants").querySelector(".nv").click();
+    await c.ajouterOperation("boite", { L:"5", l:"5", h:"5", x:"30", operation:"nouveau" });
+    r.horsComposant = c.doc.operations[1].composant ?? null;
+    await c.ajouterOperation("occurrence", { source:c.doc.composants[0].id, ty:"40" });
+    await fini();
+    r.corps = c.nomsCorps.length;
+    r.erreur = c.resultat.etats[c.doc.operations[2].id]?.erreur ?? null;
+    /* Masquer le composant cache son corps, pas l'occurrence qui est hors de lui. */
+    $("navComposants").querySelector(".oeil").click();
+    await attente(30);
+    r.visibles = W3D.vue.modele.children.filter(m => m.visible).length;
+    $("navComposants").querySelector(".oeil").click();
+    /* Activer estompe le reste. */
+    $("navComposants").querySelector(".nv").click();
+    await attente(30);
+    r.estompe = W3D.vue.modele.children.filter(m => (Array.isArray(m.material) ? m.material[0] : m.material).opacity < 0.5).length;
+    $("navComposants").querySelector(".nv").click();
+    await fini();
+    $("navComposants").querySelector(".nv").dispatchEvent(new MouseEvent("contextmenu", { bubbles:true, clientX:50, clientY:50 }));
+    [...document.querySelectorAll(".menu-flottant button")].find(b => /Dissoudre/.test(b.textContent)).click();
+    await fini();
+    r.dissous = [(c.doc.composants || []).length, c.doc.operations[0].composant ?? null];
+    return r;
+  `), { actif:"Capot", tag:true, liste:"◉⧈Capot (1)", horsComposant:null, corps:3, erreur:null, visibles:2, estompe:2, dissous:[0, null] });
+
+  verifier("limites, contacts, chemin 3D, plan par deux arêtes, éclaté nommé", await page(`
+    const c = W3D.conception;
+    await piece([boite(0, { L:"10", l:"10", h:"10" }), boite(40, { L:"10", l:"6", h:"6", y:"2", z:"2" })]);
+    const r = {};
+    await c.ajouterOperation("liaison", { nom:"G", mode:"glissiere", telleQuelle:true, corpsA:"Corps 1", corpsB:"Corps 2", repereA:{ type:"cylindre", point:[0, 0, 0], axe:[-1, 0, 0] }, valeur:"0" });
+    await fini();
+    $("bContacts").click();
+    [...document.querySelectorAll(".menu-flottant button")].find(b => /Nouveau jeu/.test(b.textContent)).click();
+    await repondre(["J", "Corps 1, Corps 2"]);
+    await fini();
+    r.jeu = c.doc.contacts[0].corps.length;
+    $("bLimites").click();
+    /* Le corps 2 est à 30 mm : la butée doit tomber près de 30. */
+    await repondre([null, "0", "0", "60", "10", "J"]);
+    for(let i = 0; i < 1800 && !document.querySelector("dialog.dlg-question[open]"); i++) await attente(100);
+    await repondre();
+    await fini();
+    const op = c.doc.operations.find(o => o.nom === "G");
+    r.butee = Math.abs(+op.max - 30) < 0.5 || op.max;
+    await c.ajouterOperation("chemin3d", { points:"0,0,0; 10,0,0; 10,10,5" });
+    const tu = await c.ajouterOperation("tuyau", { chemin:c.doc.operations.at(-1).id, diametre:"2", operation:"nouveau" });
+    r.tuyau = tu.erreur;
+    await fini();
+    await piece([boite()]);
+    const p = await c.ajouterOperation("plan", { mode:"aretes", lignes:[[[0, 0, 10], [20, 0, 10]], [[0, 20, 10], [20, 20, 10]]] });
+    r.plan = p.erreur;
+    await c.ajouterEsquisse({ nom:"E", plan:{ ref:p.op.id }, primitives:[{ type:"cercle", c:[5, 5], r:2 }] });
+    const e = await c.ajouterOperation("extrusion", { esquisse:c.doc.operations.at(-1).id, distance:"3", operation:"nouveau" });
+    r.surPlan = e.erreur;
+    await fini();
+    await piece([boite(), boite(40)]);
+    $("bEclate").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /×2/.test(b.textContent)).click();
+    await attente(30);
+    $("bEclate").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /Enregistrer cet/.test(b.textContent)).click();
+    await repondre(["Écarté"]); await fini();
+    r.eclate = c.doc.eclates[0];
+    $("bEclate").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /Assemblé/.test(b.textContent)).click();
+    return r;
+  `), { jeu:2, butee:true, tuyau:null, plan:null, surPlan:null, eclate:{ nom:"Écarté", f:2 } });
+
+  verifier("pinceau, image vers esquisse, bibliothèque, disposition, style", await page(`
+    const c = W3D.conception;
+    await piece([boite(), boite(40)]);
+    const r = {};
+    W3D.arbre.selectionner(W3D.vue.modele.children[0]);
+    $("bApparence").click(); await repondre(["Laiton"]); await fini();
+    W3D.arbre.selectionner(W3D.vue.modele.children[0]);
+    $("bCopierLook").click();
+    $("bPinceau").click();
+    r.pinceau = c.pinceau;
+    /* Un clic au centre du second corps, en coordonnées d'écran. */
+    W3D.vue.ajusterVue(W3D.vue.modele); W3D.vue.rendre();
+    const p = W3D.vue.versEcran(new W3D.THREE.Vector3(40, 0, 10)), b = W3D.vue.canvas.getBoundingClientRect();
+    c.clicVue({ clientX:b.left + p.x, clientY:b.top + p.y });
+    await fini();
+    r.peint = c.doc.apparences["Corps 2"]?.couleur;
+    $("bPinceau").click();
+    /* Une image : un carré noir sur fond blanc. */
+    await piece([]);
+    const t = Object.assign(document.createElement("canvas"), { width:40, height:40 }), x = t.getContext("2d");
+    x.fillStyle = "#fff"; x.fillRect(0, 0, 40, 40); x.fillStyle = "#000"; x.fillRect(10, 10, 20, 20);
+    await c.ouvrirFichiers([new File([await new Promise(o => t.toBlob(o, "image/png"))], "carre.png")]);
+    await fini();
+    c.edition.op.largeur = "40";
+    c.validerOperation(); await fini();
+    $("bImageEsquisse").click(); await repondre(); await fini(); await attente(100);
+    const es = c.doc.operations.at(-1);
+    r.trace = [es.type, es.elements.filter(e => e.type === "ligne").length];
+    await piece([boite()]);
+    c.selOp = "op1"; c.selOps = new Set(["op1"]);
+    $("bBibliotheque").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /Y ranger/.test(b.textContent)).click();
+    await repondre(["Cube"]); await attente(50);
+    $("bBibliotheque").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /⧉ Cube/.test(b.textContent)).click();
+    await fini();
+    r.bibliotheque = c.doc.operations.length;
+    $("bBibliotheque").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /✕ Retirer/.test(b.textContent)).click();
+    $("navigateur").style.left = "33px";
+    $("bDisposition").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /Enregistrer la/.test(b.textContent)).click();
+    $("navigateur").style.left = "99px";
+    $("bDisposition").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /Reprendre/.test(b.textContent)).click();
+    r.disposition = $("navigateur").style.left;
+    $("bDisposition").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => /origine/.test(b.textContent)).click();
+    $("bStyle").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => b.textContent === "Filaire").click();
+    r.filaire = !!W3D.vue.modeFilaire;
+    $("bStyle").click(); [...document.querySelectorAll(".menu-flottant button")].find(b => b.textContent === "Ombré avec arêtes").click();
+    r.ombre = !W3D.vue.modeFilaire;
+    return r;
+  `), { pinceau:true, peint:"#c9a84a", trace:["esquisse", 4], bibliotheque:2, disposition:"33px", filaire:true, ombre:true });
 
   verifier("aucune erreur dans la page", erreurs.filter(e => !/favicon|WebGL|GPU stall|swiftshader/i.test(e)), []);
 }catch(e){

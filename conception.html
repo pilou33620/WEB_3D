@@ -124,6 +124,7 @@ try{
           <span class="replis">
             <button data-op="voile" title="Voile : des lignes épaissies, jusqu'aux bords du corps"><i>╪</i>Voile</button>
             <button data-op="englobant" title="Solide englobant : la boîte qui contient les corps choisis"><i>⬚</i>Englobant</button>
+            <button data-op="chemin3d" title="Chemin 3D : des droites ou une courbe par des points de l'espace, pour un tuyau ou un balayage"><i>⟿</i>Chemin 3D</button>
             <button data-op="cellule" title="Remplissage de frontière : le volume fermé par des corps et des surfaces, autour d'un point"><i>▦</i>Frontière</button>
           </span>
         </div><h5>Créer</h5></section>
@@ -147,6 +148,7 @@ try{
             <button data-op="diviser" title="Diviser un corps par un plan de construction, une esquisse ou une surface"><i>⫿</i>Diviser</button>
             <button data-op="diviserFace" title="Diviser des faces selon les lignes d'une esquisse"><i>⫾</i>Div. face</button>
             <button data-op="retirerCorps" title="Retirer un corps de la suite de l'historique, sans effacer ce qui l'a construit"><i>⌫</i>Retirer</button>
+            <button data-op="gravureCylindre" title="Graver une esquisse sur un cylindre : la profondeur suit la surface"><i>✎</i>Gravure sur cylindre</button>
           </span>
         </div><h5>Modifier</h5></section>
       <section><div class="btns">
@@ -222,6 +224,10 @@ try{
             <button data-outil="ligneConstruction" title="Ligne de construction"><i>┄</i>Constr.</button>
             <button data-action="bissectrice" title="Ligne de construction sur la bissectrice de deux lignes sélectionnées"><i>∠</i>Bissectrice</button>
             <button data-action="tangentePoint" title="Ligne tangente depuis le point sélectionné au cercle ou à l'arc sélectionné"><i>◡</i>Tangente</button>
+            <button data-action="raccord" title="Courbe tangente entre les deux bouts de courbes sélectionnés"><i>⌒</i>Courbe de raccord</button>
+            <button data-outil="pointSpline" title="Ajouter un point à une spline : cliquez-la"><i>∿</i>Point de spline</button>
+            <button data-action="retirerPoint" title="Retirer de sa spline le point sélectionné"><i>∿</i>Retirer le point</button>
+            <button data-action="inverserSpline" title="Inverser le sens de la spline sélectionnée"><i>⇆</i>Inverser la spline</button>
           </span>
         </div><h5>Créer</h5></section>
       <section><div class="btns">
@@ -320,6 +326,11 @@ try{
       <section><div class="btns">
           <button id="bInsererPiece" title="Insérer une autre pièce du mode conception comme composant : celle du dossier des projets reste liée à son fichier"><i>⧈</i>Composant</button>
           <button id="bMajComposants" title="Reprendre les composants et STEP dont le fichier a changé"><i>⟳</i>Mettre à jour</button>
+          <span class="pile">
+            <button id="bNouveauComposant" title="Un composant dans cette pièce : ce qu'on crée y entre tant qu'il est actif"><i>⧈</i>Nouveau</button>
+            <button data-op="occurrence" title="Une copie posée des corps d'un composant, qui le suit"><i>⧉</i>Occurrence</button>
+            <button id="bLiens" title="Casser ou réassigner le lien d'un composant ou d'un STEP"><i>⛓</i>Liens</button>
+          </span>
         </div><h5>Composants</h5></section>
       <section><div class="btns">
           <button data-op="liaison" title="Lier deux corps par une face de chacun : rigide, pivot ou glissière"><i>⚭</i>Liaison</button>
@@ -328,6 +339,10 @@ try{
       <section><div class="btns">
           <button id="bAnimer" title="Animer une liaison pivot ou glissière ; second appui : arrêter"><i>▶</i>Animer</button>
           <button id="bEclate" title="Vue éclatée : écarter les corps, à l'affichage seulement"><i>✳</i>Éclaté</button>
+          <span class="pile">
+            <button id="bLimites" title="Chercher où une liaison entre en contact, et en faire ses limites"><i>⊣</i>Limites</button>
+            <button id="bContacts" title="Jeux de contact : les corps entre lesquels on cherche les contacts"><i>✸</i>Contacts</button>
+          </span>
           <button id="bEtude" title="Étude de mouvement : plusieurs liaisons ensemble, trajectoire, contacts, table et images ; second appui : arrêter"><i>⧗</i>Étude</button>
         </div><h5>Mouvement</h5></section>
       <section><div class="btns">
@@ -342,7 +357,8 @@ try{
         </div><h5>Fichiers</h5></section>
       <section><div class="btns">
           <button id="bInsererDxf" title="Une esquisse à partir d'un DXF ou d'un SVG"><i>⬚</i>DXF / SVG</button>
-          <button id="bInsererImage" title="Une image de référence posée sur un plan, pour dessiner par-dessus"><i>▨</i>Image</button>
+          <button id="bInsererImage" title="Une image de référence posée sur un plan ou une face, pour dessiner par-dessus"><i>▨</i>Image</button>
+          <button id="bImageEsquisse" title="Tracer une esquisse d'après les contours d'une image insérée"><i>▨</i>Image → esquisse</button>
         </div><h5>2D</h5></section>
       <section><div class="btns">
           <button id="bInsererMaillage" title="Un maillage STL, OBJ, 3MF ou glTF (5000 triangles au plus) comme référence ou comme corps"><i>△</i>Maillage</button>
@@ -350,6 +366,7 @@ try{
         </div><h5>Maillages</h5></section>
       <section><div class="btns">
           <button data-op="vis" title="Vis CHC, vis H, écrou ou rondelle, de M2 à M12"><i>⊗</i>Visserie</button>
+          <button id="bBibliotheque" title="Des opérations gardées dans ce navigateur, à réinsérer dans n'importe quelle pièce"><i>⧉</i>Ma bibliothèque</button>
         </div><h5>Bibliothèque</h5></section>
     </div>
     <div class="groupes" data-volet="inspecter" hidden>
@@ -419,6 +436,10 @@ try{
           <button id="bProjection" title="Basculer perspective / orthographique — O"><i>⬚</i>Perspective</button>
           <button id="bNormaleA" title="Regarder de face la face sélectionnée"><i>⊥</i>Normale à</button>
           <button id="bRotation" title="Faire tourner la vue en continu ; second appui : arrêter"><i>↻</i>Rotation</button>
+          <span class="pile">
+            <button id="bStyle" title="Ombré, ombré avec arêtes, filaire, rayons X"><i>◐</i>Style</button>
+            <button id="bDisposition" title="Enregistrer ou reprendre la place des panneaux"><i>▤</i>Panneaux</button>
+          </span>
         </div><h5>Vue</h5></section>
       <section><div class="btns">
           <button id="bAretes" title="Arêtes du modèle — A"><i>◇</i>Arêtes</button>
@@ -482,6 +503,11 @@ try{
             <button id="bCopierLook" title="Copier l'apparence du corps sélectionné"><i>⧉</i>Copier</button>
             <button id="bCollerLook" title="La poser sur le corps sélectionné"><i>⎘</i>Coller</button>
           </span>
+          <span class="pile">
+            <button id="bPinceau" title="Pinceau : chaque corps cliqué prend l'apparence copiée"><i>🖌</i>Pinceau</button>
+            <button id="bFavoriLook" title="Garder l'apparence copiée dans la bibliothèque"><i>★</i>Favori</button>
+            <button id="bRemplacerLook" title="Partout où le corps choisi a son apparence, poser celle qui est copiée"><i>⇄</i>Remplacer</button>
+          </span>
         </div><h5>Apparences</h5></section>
       <section><div class="btns">
           <button id="bRendu" title="Une image de la vue, à la taille voulue, sans les aides de construction"><i>▣</i>Image</button>
@@ -525,6 +551,10 @@ try{
         <div class="dossier" data-dossier="vues">
           <div class="nv"><span class="fl">▸</span><span class="ic">▤</span><span class="lbl">Vues nommées</span></div>
           <div class="enfants" id="navVues" hidden></div>
+        </div>
+        <div class="dossier ouvert" data-dossier="composants">
+          <div class="nv"><span class="fl">▸</span><span class="ic">⧈</span><span class="lbl">Composants</span></div>
+          <div class="enfants" id="navComposants"></div>
         </div>
         <div class="dossier ouvert" data-dossier="corps">
           <div class="nv"><span class="fl">▾</span><span class="ic">▤</span><span class="lbl">Corps</span></div>

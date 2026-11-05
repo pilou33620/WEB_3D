@@ -24,7 +24,7 @@ import { repere, indexer, nouvelId, resoudre, milieuArc, rayonDe, cercle3Points,
 import { ajuster, decaler, casserCoin, miroir, repetitionRect, repetitionCirc } from "./c2b-outils-esquisse.js";
 import { ajouterEllipse, ajouterConique, ajouterCourbeEquation, ajouterRectangle3Points, ajouterRectangleArrondi, ajouterPolygone, ajouterCercle3Points,
          ajouterCercle2Points, ajouterLigneMilieu, ajouterArcTangent, prolonger, couper, echelleEsquisse, transformerEsquisse, copierEntites, collerEntites,
-         autoContraindre, boutsLibres, pointsTangence, bissectrice } from "./c2c-esquisse-plus.js";
+         autoContraindre, boutsLibres, pointsTangence, bissectrice, ajouterPointSpline, retirerPointSpline, inverserSpline, courbeRaccord } from "./c2c-esquisse-plus.js";
 import { echapper } from "./05-arbre.js";
 import { demander, demanderTexte } from "./c0-dialogues.js";
 
@@ -460,6 +460,12 @@ export class EditeurEsquisse {
         fini();
         return;
       }
+      case "pointSpline": {
+        const e = this.designer(ev);
+        if(e?.type !== "spline"){ this.statut("Cliquez la spline, là où ajouter un point."); return; }
+        this.transformer(() => ajouterPointSpline(this.esq, e.id, m));
+        return;
+      }
       case "prolonger": case "couper": {
         const e = this.designer(ev);
         if(!e || e.type === "point"){ this.statut(this.outil === "couper" ? "Cliquez la courbe à couper." : "Cliquez la ligne, près du bout à prolonger."); return; }
@@ -586,6 +592,24 @@ export class EditeurEsquisse {
     });
   }
 
+  retirerPoint(){
+    const { points } = this.choisis();
+    if(points.length !== 1){ this.statut("Sélectionnez un point de la spline."); return; }
+    this.transformer(() => retirerPointSpline(this.esq, points[0].id));
+  }
+
+  inverserSpline(){
+    const s = this.choisis().els.find(e => e.type === "spline");
+    if(!s){ this.statut("Sélectionnez une spline."); return; }
+    this.transformer(() => inverserSpline(this.esq, s.id));
+  }
+
+  raccord(){
+    const { points } = this.choisis();
+    if(points.length !== 2){ this.statut("Sélectionnez deux bouts de courbes."); return; }
+    this.transformer(() => courbeRaccord(this.esq, points[0].id, points[1].id));
+  }
+
   /** Le peigne de courbure des splines de l'esquisse, tant qu'il est allumé. */
   basculerPeigne(){
     this.peigne = !this.peigne;
@@ -661,15 +685,18 @@ export class EditeurEsquisse {
   }
 
   async decaler(){
-    const d = await this.nombres("Distance du décalage (mm) — positive : vers l'extérieur d'un contour :", "2", 1);
-    if(d) this.transformer(() => decaler(this.esq, [...this.selection], d[0]));
+    const r = await demander("Décaler", [{ nom:"Distance (mm), positive : vers l'extérieur d'un contour", valeur:"2" }, { nom:"Lié à l'original", valeur:"non", options:{ non:"Non : une copie libre", oui:"Oui : il suit l'original, distance cotée" } }],
+      ([t]) => { try{ return this.v(t) ? null : "Une distance non nulle."; }catch(_){ return `Valeur illisible : « ${t} ».`; } });
+    if(!r) return;
+    /* La cote du lien garde ce qui a été écrit, pour suivre un paramètre ; elle est sans signe. */
+    this.transformer(() => decaler(this.esq, [...this.selection], this.v(r[0]), r[1] === "oui" ? r[0].replace(/^-\s*/, "") : null));
   }
 
   async casserCoin(mode){
     const { points, els } = this.choisis();
     if(points.length !== 1 || els.length !== 1){ this.statut("Sélectionnez le point du coin."); return; }
-    const d = await this.nombres(mode === "conge" ? "Rayon du congé (mm) :" : "Distance du chanfrein (mm) :", "2", 1);
-    if(d) this.transformer(() => casserCoin(this.esq, points[0].id, d[0], mode));
+    const d = mode === "conge" ? await this.nombres("Rayon du congé (mm) :", "2", 1) : await this.nombres("Distance du chanfrein sur la première ligne, sur la seconde (mm) :", "2, 2", 2);
+    if(d) this.transformer(() => casserCoin(this.esq, points[0].id, d[0], mode, d[1] ?? d[0]));
   }
 
   miroir(){
@@ -1343,6 +1370,7 @@ export class EditeurEsquisse {
       ligneMilieu:"Ligne par son milieu : le milieu, puis un bout.",
       ligneConstruction:"Ligne de construction : deux points.",
       arcTangent:"Arc tangent : le bout d'une ligne ou d'un arc, puis le point d'arrivée.",
+      pointSpline:"Ajouter un point : cliquez la spline, là où il doit passer.",
       prolonger:"Prolonger : cliquez la ligne près du bout qui doit rejoindre la courbe suivante.",
       couper:"Couper : cliquez la courbe à couper à ses intersections, sans rien retirer.",
     };

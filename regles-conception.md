@@ -12,9 +12,9 @@ Les règles parlent de fonctions de CAO en général. Dans la page, elles porten
 | Ancre fixée | Ancrage |
 
 Ce que la page ne fait pas à l'identique : l'annoncer dans le plan (règle 4), avec l'adaptation retenue.
-- Composant : ici, une autre pièce du mode conception insérée dans celle-ci, et non un conteneur à l'intérieur du fichier. Rien ne range donc esquisses et corps dans un composant ni ne vide la racine (règles 7 et 9) : une pièce par fichier, regrouper dans un même fichier par les dossiers de la frise.
-- Occurrence : pas de fonction de ce nom ; insérer la même pièce par Composant.
-- Liaison : rigide, pivot, glissière, cylindrique ou plan ; « Telle quelle » est l'as-built. Pas de sphérique ; une liaison commandée par une autre porte une loi (engrenage, crémaillère, vis, came).
+- Composant : deux sortes. Un composant dans la pièce (onglet Assemblage, Nouveau) range ses esquisses, plans et corps tant qu'il est actif ; une autre pièce du mode conception s'insère aussi comme Composant. La racine ne se vide pas d'elle-même : y déplacer les opérations par le clic droit du composant.
+- Occurrence : fonction Occurrence, qui recopie et pose les corps d'un composant de la pièce, et le suit.
+- Liaison : rigide, pivot, glissière, cylindrique, plan ou sphérique ; « Telle quelle » est l'as-built ; une liaison commandée par une autre porte une loi (engrenage, crémaillère, vis, came).
 - Trou en goutte d'eau : pas de fonction dédiée ; le dessiner en esquisse.
 - Projection : les points projetés sont fixés à leurs coordonnées du moment et ne suivent pas la pièce si elle change.
 - Commentaire d'un paramètre : colonne Commentaire de la fenêtre des paramètres.

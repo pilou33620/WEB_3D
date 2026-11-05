@@ -20,7 +20,7 @@ export const TYPES_ATELIERS = {
   composant:{ nom:"Composant", icone:"⧈" }, liaison:{ nom:"Liaison", icone:"⚭" }, ancrer:{ nom:"Ancrage", icone:"⚓" },
   tole:{ nom:"Tôle", icone:"▬" }, bride:{ nom:"Bord tombé", icone:"⌐" }, ourlet:{ nom:"Ourlet", icone:"⊏" }, pli:{ nom:"Pli", icone:"⌒" },
   profile:{ nom:"Profilé", icone:"▥" }, vis:{ nom:"Visserie", icone:"⊗" }, maillage:{ nom:"Maillage inséré", icone:"△" },
-  filetage:{ nom:"Filetage", icone:"⧙" }, axe:{ nom:"Axe", icone:"╱" }, point:{ nom:"Point", icone:"•" }, image:{ nom:"Image", icone:"▨" },
+  occurrence:{ nom:"Occurrence", icone:"⧉" }, filetage:{ nom:"Filetage", icone:"⧙" }, axe:{ nom:"Axe", icone:"╱" }, point:{ nom:"Point", icone:"•" }, image:{ nom:"Image", icone:"▨" },
 };
 
 /* Visserie métrique, en mm. CHC ISO 4762 (dk tête, k hauteur, s six-pans creux) ; H ISO 4014 (s, k) ;
@@ -304,7 +304,8 @@ export function ateliers(H){
       const dA = vec.norm(a.axe || a.normale), dB = vec.norm(b.axe || b.normale);
       /* Deux plans se font face ; deux axes se superposent, au plus court. */
       const vers = a.axe && b.axe ? (vec.scal(dA, dB) < 0 ? dA.map(c => -c) : dA) : dA.map(c => -c);
-      const rot = op.telleQuelle ? null : rotationEntre(dB, vers);
+      const spherique = op.mode === "spherique";     // une rotule : seuls les points se rejoignent, l'orientation reste libre
+      const rot = op.telleQuelle || spherique ? null : rotationEntre(dB, vers);
       const dec = op.telleQuelle ? 0 : v(op.decalage ?? 0);
       const val = op.mode === "rigide" ? 0 : valeurLiaison(op, ctx);
       const val2 = v(op.valeur2 ?? 0), val3 = v(op.valeur3 ?? 0);
@@ -322,6 +323,7 @@ export function ateliers(H){
         if(rot) f = f.rotate(rot.angle, b.point, rot.axe);
         f = f.translate(t);
         if((op.mode === "pivot" || op.mode === "cylindrique") && val) f = f.rotate(val, vec.ajout(pivot, dA, op.mode === "cylindrique" ? val2 : 0), dA);
+        if(spherique) [[1, 0, 0], [0, 1, 0], [0, 0, 1]].forEach((ax, i) => { const a3 = [val, val2, val3][i]; if(a3) f = f.rotate(a3, pivot, ax); });
         if(op.mode === "plan" && val3) f = f.rotate(val3, vec.ajout(vec.ajout(pivot, axePerpendiculaire(dA), val), vec.vect(dA, axePerpendiculaire(dA)), val2), dA);
         return f;
       };
@@ -474,6 +476,13 @@ export function ateliers(H){
       return nouveauCorps(etat, f.translate(o));
     },
 
+    /* Une occurrence : les corps d'un composant, recopiés et posés ; elle suit le composant. */
+    occurrence(R, etat, op, ctx){
+      const corps = etat.corps.filter(c => c.composant === op.source && !c.occurrence);
+      if(!corps.length) throw new Error("ce composant n'a encore aucun corps");
+      return corps.reduce((s, c) => nouveauCorps(s, pose(c.shape, op, ctx.v), { composant:op.composant, occurrence:op.source }), etat);
+    },
+
     maillage(R, etat, op){
       if(!op.donnees) throw new Error("maillage absent");
       const octets = Uint8Array.from(atob(op.donnees), c => c.charCodeAt(0));
@@ -481,7 +490,9 @@ export function ateliers(H){
       const n = tris.length / 9;
       if(n > 5000) throw new Error(`maillage de ${n} triangles : 5000 au plus pour en faire un corps ; ouvrez-le dans la visionneuse`);
       const { forme, solide } = polyedre(R, [...tris]);
-      return nouveauCorps(etat, forme, { reference:!!op.reference, surface:!solide });
+      /* Convertir : les triangles d'une même face plane n'en font plus qu'une. */
+      const finale = op.fusionner && solide ? forme.simplify() : forme;
+      return nouveauCorps(etat, finale, { reference:!!op.reference, surface:!solide });
     },
 
     /**

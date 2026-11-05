@@ -21,7 +21,7 @@ export const TYPES_PLUS = {
   surfDecoudre:{ nom:"Découture", icone:"⧈" }, surfDetourer:{ nom:"Détourage", icone:"⊡" },
   bossage:{ nom:"Bossage", icone:"⊚" }, levre:{ nom:"Lèvre", icone:"⊓" }, repos:{ nom:"Repos", icone:"⊔" }, clip:{ nom:"Clip", icone:"⌐" },
   toleConvertie:{ nom:"Conversion en tôle", icone:"▭" }, brideChaine:{ nom:"Bord tombé en chaîne", icone:"⌈" }, perforation:{ nom:"Perforation", icone:"⁙" },
-  nuage:{ nom:"Nuage de points", icone:"⁖" },
+  nuage:{ nom:"Nuage de points", icone:"⁖" }, gravureCylindre:{ nom:"Gravure sur cylindre", icone:"✎" },
 };
 
 const DEG = Math.PI / 180;
@@ -105,7 +105,7 @@ export function operationsPlus(H){
    * La matière à ajouter sur une face cylindrique, entière ou non : une couronne de son angle, qui mord un peu dans
    * le corps. Deux cylindres exactement coïncidents font échouer la fusion du noyau, d'où ce recouvrement.
    */
-  const couronneCylindre = (R, corps, f, d) => {
+  const couronneCylindre = (R, corps, f, d, enlever = false) => {
     const oc = R.getOC(), s = new oc.BRepAdaptor_Surface(f.wrapped, false), cyl = s.Cylinder(), ax = cyl.Axis();
     const lieu = ax.Location(), dir = ax.Direction(), r = cyl.Radius();
     const c = [lieu.X(), lieu.Y(), lieu.Z()], axe = vec.norm([dir.X(), dir.Y(), dir.Z()]);
@@ -118,8 +118,10 @@ export function operationsPlus(H){
     const depart = signe > 0 ? pas[0] : pas[4];
     const sonde = vec.ajout(pt(f.pointOnSurface(0.5, 0.5)), rad(0.5), 0.05);
     const trou = dansMatiere(R, corps, sonde), e = 0.05;
-    if(trou && d >= r) throw new Error("le trou se refermerait : supprimez plutôt sa face");
-    const [ri, re] = trou ? [r - d, r + e] : [r - e, r + d];
+    if(trou && !enlever && d >= r) throw new Error("le trou se refermerait : supprimez plutôt sa face");
+    if(enlever && !trou && d >= r) throw new Error("plus profond que le rayon du cylindre");
+    /* Ajouter : du côté vide, en mordant dans le corps. Enlever : du côté de la matière, en dépassant dans le vide. */
+    const [ri, re] = enlever === trou ? [r - e, r + d] : [r - d, r + e];
     const entier = span > 359.9;
     const o = vec.ajout(c, axe, t0);
     const plan = new R.Plane(o, depart, vec.vect(depart, axe));
@@ -244,7 +246,15 @@ export function operationsPlus(H){
       const f = designes(R, cible.shape, "faces", op.faces?.slice(0, 1), op, ctx)[0];
       const m = R.makeVertex(pt(f.center));
       const pieces = fendre(R, cible.shape, outil.shape.faces).solids;
-      if(pieces.length < 2) throw new Error("la surface doit traverser le corps : elle coupe, elle ne prolonge pas");
+      if(pieces.length < 2){
+        /* La surface est au-delà du corps : la face plane va la rejoindre. */
+        if(f.geomType !== "PLANE") throw new Error("pour prolonger jusqu'à la surface, la face doit être plane");
+        const n = pt(f.normalAt()), D = 2 * diagonale(cible.shape.boundingBox.bounds) + 2 * diagonale(outil.shape.boundingBox.bounds);
+        const morceaux = fendre(R, R.basicFaceExtrusion(f, new R.Vector(n.map(c => c * D))), outil.shape.faces).solids;
+        const lien = morceaux.find(s => R.measureDistanceBetween(m, s) < 1e-6);
+        if(morceaux.length < 2 || !lien) throw new Error("la surface ne barre pas le chemin de cette face");
+        return remplacer(etat, cible, cible.shape.fuse(lien, { simplify:true }));
+      }
       const garde = pieces.filter(s => R.measureDistanceBetween(m, s) > 1e-6);
       if(!garde.length || garde.length === pieces.length) throw new Error("impossible de dire quel côté de la surface garder");
       return remplacer(etat, cible, garde.reduce((a, b) => a.fuse(b)));
@@ -310,7 +320,7 @@ export function operationsPlus(H){
       return remplacer(etat, cible, copies.reduce((f, c) => f.fuse(c), cible.shape));
     },
 
-    /** shortcut: le voile s'arrête à l'encombrement du corps, pas à ses parois : suffisant pour une coque, trop long ailleurs. */
+    /** Le voile s'arrête aux parois : seuls comptent les morceaux qui contiennent le milieu d'une ligne de l'esquisse. */
     voile(R, etat, op, ctx){
       const v = ctx.v, esq = chercherEsquisse(ctx, op.esquisse), cible = corpsCible(etat, op.corps), ep = v(op.epaisseur);
       if(!(ep > 0)) throw new Error("épaisseur positive");
@@ -325,8 +335,11 @@ export function operationsPlus(H){
         dessin = dessin ? dessin.fuse(d) : d;
       }
       const r = repere(esq.plan, v);
-      const outil = dessin.sketchOnPlane(new R.Plane(vec.ajout(r.o, r.n, -D), r.x, r.n)).extrude(2 * D).intersect(R.makeBox(bb[0], bb[1]));
-      return remplacer(etat, cible, cible.shape.fuse(outil));
+      const brut = dessin.sketchOnPlane(new R.Plane(vec.ajout(r.o, r.n, -D), r.x, r.n)).extrude(2 * D).intersect(R.makeBox(bb[0], bb[1]));
+      const milieux = lignes.map(s => versMonde(r, (s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2));
+      const morceaux = brut.cut(cible.shape).solids.filter(s => milieux.some(m => dansMatiere(R, s, m)));
+      if(!morceaux.length) throw new Error("le milieu des lignes doit être dans le vide du corps, là où le voile passera");
+      return remplacer(etat, cible, morceaux.reduce((f, s) => f.fuse(s), cible.shape));
     },
 
     /* ---------------- surfaces ---------------- */
@@ -462,6 +475,24 @@ export function operationsPlus(H){
       const modele = orienter(R.makeCylinder(d / 2, 2 * D, [0, 0, -D]), r.n, [0, 0, 0]);
       const copies = trous.map(([x, y]) => modele.clone().translate(versMonde(r, x, y)));
       return remplacer(etat, cible, cible.shape.cut(copies.length === 1 ? copies[0] : R.makeCompound(copies)));
+    },
+
+    /** Le dessin d'une esquisse posé sur un cylindre : la profondeur suit la surface, sur le côté tourné vers l'esquisse. */
+    gravureCylindre(R, etat, op, ctx){
+      const { v } = ctx, esq = chercherEsquisse(ctx, op.esquisse), cible = corpsCible(etat, op.corps), p = v(op.profondeur);
+      if(!(p > 0)) throw new Error("profondeur positive");
+      if(!op.cylindre?.surf) throw new Error("face cylindrique à désigner");
+      const f = designes(R, cible.shape, "faces", [op.cylindre.surf], op, ctx)[0];
+      if(f.geomType !== "CYLINDRE") throw new Error("cette face n'est pas un cylindre");
+      const relief = op.mode === "relief", r = repere(esq.plan, v);
+      const n = op.inverse ? r.n.map(c => -c) : r.n;
+      /* Le prisme part du plan et s'arrête à l'axe : l'autre côté du cylindre n'est pas touché. */
+      const c = op.cylindre.centre, D = vec.scal(moins(r.o, c), n);
+      if(D <= 0) throw new Error("le plan de l'esquisse doit être devant le cylindre, côté normale (ou cochez Inverser)");
+      const prisme = dessinRegions(R, esq, op.contours).sketchOnPlane(new R.Plane(vec.ajout(r.o, n, -D), r.x, r.n)).extrude(op.inverse ? -D : D);
+      const motif = prisme.intersect(couronneCylindre(R, cible.shape, f, p, !relief));
+      if(!motif.solids.length) throw new Error("le dessin de l'esquisse ne tombe pas sur ce cylindre");
+      return remplacer(etat, cible, relief ? cible.shape.fuse(motif) : cible.shape.cut(motif));
     },
 
     /* Rien dans le volume : le nuage est dessiné par la page. */

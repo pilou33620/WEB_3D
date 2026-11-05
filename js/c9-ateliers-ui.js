@@ -15,7 +15,7 @@ import { faceSous } from "./06-topologie.js";
 import { telechargerFichier } from "./10-export-step.js";
 import { nomProjet } from "./11-projets.js";
 import { perimerCaches } from "./13-deplacement.js";
-import { repere, profils, dedans, axeConstruction } from "./c2-esquisse.js";
+import { repere, profils, dedans, axeConstruction, pointConstruction, pointsChemin3d, axePerpendiculaire } from "./c2-esquisse.js";
 import { VISSERIE } from "./c3b-ateliers.js";
 import { lireNuage } from "./c12-exports.js";
 import { demanderTexte, avertir } from "./c0-dialogues.js";
@@ -64,7 +64,8 @@ export function champsAteliers({ NOM, MODE, CIBLE, POSITION }){
       { cle:"ep", type:"expr", nom:"Paroi (mm, 0 : plein)" }, { cle:"joint", type:"choix", nom:"Coins", options:{ onglet:"En onglet", droit:"Coupés droits" } }, { cle:"fusion", type:"case", nom:"Tout en un seul corps" }],
     vis:[NOM, { cle:"modele", type:"choix", nom:"Élément", options:{ chc:"Vis CHC (ISO 4762)", hexa:"Vis H (ISO 4014)", ecrou:"Écrou (ISO 4032)", rondelle:"Rondelle (ISO 7089)" } },
       { cle:"norme", type:"choix", nom:"Taille", options:TAILLES }, { cle:"longueur", type:"expr", nom:"Longueur sous tête (mm)", si:(o) => o.modele === "chc" || o.modele === "hexa" }, ...POSITION],
-    maillage:[NOM, { cle:"reference", type:"case", nom:"Référence (pour dessiner autour, non exportée)" }],
+    maillage:[NOM, { cle:"reference", type:"case", nom:"Référence (pour dessiner autour, non exportée)" },
+      { cle:"fusionner", type:"case", nom:"Convertir : réunir les faces planes", si:(o) => !o.reference }],
     filetage:[NOM, { cle:"corps", type:"corps", nom:"Corps" }, { cle:"cylindre", type:"designer", nom:"Face cylindrique", quoi:"cylindreAxe" },
       { cle:"taille", type:"choix", nom:"Taille", options:{ "":"D'après le diamètre", ...TAILLES } },
       { cle:"modele", type:"case", nom:"Modélisé, pour imprimer (calcul long)" },
@@ -80,7 +81,9 @@ export function champsAteliers({ NOM, MODE, CIBLE, POSITION }){
       { cle:"angle", type:"expr", nom:"Inclinaison (°)", si:(o) => !o.mode || o.mode === "decale" }, { cle:"axe", type:"choix", nom:"Autour de", options:{ x:"Axe X du plan", y:"Axe Y du plan" }, si:(o) => !o.mode || o.mode === "decale" },
       { cle:"sommets", type:"designer", nom:"Sommets du modèle", quoi:"sommets", nb:3, si:(o) => o.mode === "trois" },
       ...COORD("1", "Point 1", (o) => o.mode === "trois"), ...COORD("2", "Point 2", (o) => o.mode === "trois"), ...COORD("3", "Point 3", (o) => o.mode === "trois")],
-    image:[NOM, { cle:"base", type:"choix", nom:"Plan", options:{ XY:"XY (dessus)", XZ:"XZ (face)", YZ:"YZ (côté)" } }, { cle:"decalage", type:"expr", nom:"Décalage (mm)" },
+    image:[NOM, { cle:"base", type:"choix", nom:"Plan", options:{ XY:"XY (dessus)", XZ:"XZ (face)", YZ:"YZ (côté)", face:"Sur une face (décalque)" } },
+      { cle:"face", type:"designer", nom:"Face", quoi:"faceTiree", si:(o) => o.base === "face" }, { cle:"decalage", type:"expr", nom:"Décalage (mm)", si:(o) => o.base !== "face" },
+      { cle:"calibre", type:"designer", nom:"Calibrer : une longueur connue", quoi:"calibrer" },
       { cle:"largeur", type:"expr", nom:"Largeur (mm)" }, { cle:"x", type:"expr", nom:"Centre X du plan (mm)" }, { cle:"y", type:"expr", nom:"Centre Y du plan (mm)" }, { cle:"opacite", type:"expr", nom:"Opacité (0 à 1)" }],
   };
 }
@@ -117,12 +120,12 @@ export function defautsAteliers({ derniere, avant, mode, P, premierCorps }){
 /* -----------------------------------------------------------------------------
    Désignations dans la vue
    --------------------------------------------------------------------------- */
-export const DESIGNATIONS_UNIQUES = ["arete", "repereA", "repereB", "cylindreAxe"];
+export const DESIGNATIONS_UNIQUES = ["arete", "repereA", "repereB", "cylindreAxe", "calibrer"];
 
 export const AIDES_DESIGNATION = {
   arete:"Cliquez l'arête droite de la tôle.", repereA:"Cliquez une face plane ou cylindrique du corps fixe.",
   repereB:"Cliquez une face plane ou cylindrique du corps mobile.", cylindreAxe:"Cliquez une face cylindrique.",
-  aretes2:"Cliquez les arêtes du second côté, Échap pour finir.",
+  aretes2:"Cliquez les arêtes du second côté, Échap pour finir.", lignes:"Cliquez deux arêtes droites.", calibrer:"Cliquez les deux bouts d'une longueur connue sur l'image.",
   sommets:"Cliquez les sommets du modèle.", contourClic:"Cliquez dans un contour de l'esquisse pour le prendre ou le retirer ; Échap pour finir.",
 };
 
@@ -149,6 +152,14 @@ export function clicAtelier(c, ev){
     op.contours = a.includes(f.cle) ? a.filter(x => x !== f.cle) : [...a, f.cle];
     return true;
   }
+  if(quoi === "lignes"){
+    const t = c.toucherArete(ev);
+    if(!t) return message("Aucune arête ici.");
+    const s = c.traitDe(t), bout = (i) => s.slice(i, i + 3).map(x => +x.toFixed(5));
+    op.lignes = [...(op.lignes || []).slice(-1), [bout(0), bout(s.length - 3)]];
+    if(op.lignes.length === 2) c.designer(null);
+    return true;
+  }
   if(quoi === "aretes2"){
     const p = c.areteSous(ev);
     if(!p) return message("Aucune arête ici.");
@@ -163,6 +174,27 @@ export function clicAtelier(c, ev){
     op.arete = p;
     op.corps = t.objet.parent.name;      // plusieurs tôles : celle de l'arête cliquée, pas la dernière
     c.designer(null);
+    return true;
+  }
+  if(quoi === "calibrer"){
+    const r = repereImage(op, c.v());
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(c.vue.ndc(ev), c.vue.camera());
+    const p = ray.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...r.n), new THREE.Vector3(...r.o)), new THREE.Vector3());
+    if(!p) return true;
+    (c.pointsCalibre ||= []).push(p);
+    if(c.pointsCalibre.length < 2) return message("Second bout : cliquez-le.");
+    const d = c.pointsCalibre[0].distanceTo(c.pointsCalibre[1]);
+    c.pointsCalibre = [];
+    c.designer(null);
+    if(d < 1e-6) return message("Ces deux points sont confondus.");
+    demanderTexte("Calibrer l'image", "Longueur réelle (mm)", String(+d.toFixed(3))).then(t => {
+      const vraie = parseFloat(String(t).replace(",", "."));
+      if(!(vraie > 0) || c.edition?.op !== op) return;
+      op.largeur = String(+(c.v()(op.largeur) * vraie / d).toFixed(4));
+      c.construirePanneau();
+      c.apercu();
+    });
     return true;
   }
   const touche = c.vue.lancerRayon(ev, c.selectionnables())[0];
@@ -304,15 +336,20 @@ export function dessinerAides(c, g){
   c.doc.operations.forEach((op, i) => {
     if(op.suspendue || i >= fin) return;
     try{
-      if(op.type === "axe"){
-        const a = axeConstruction(op, v), o = new THREE.Vector3(...a.point), d = new THREE.Vector3(...a.dir);
+      if(op.type === "chemin3d"){
+        const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pointsChemin3d(op, v).map(p => new THREE.Vector3(...p))),
+          new THREE.LineBasicMaterial({ color:0xf2c744, depthTest:false, transparent:true }));
+        l.raycast = () => {};
+        g.add(l);
+      }else if(op.type === "axe"){
+        const a = axeConstruction(op, v, c.doc), o = new THREE.Vector3(...a.point), d = new THREE.Vector3(...a.dir);
         const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([o.clone().addScaledVector(d, -taille), o.clone().addScaledVector(d, taille)]),
           new THREE.LineDashedMaterial({ color:0xf2c744, dashSize:taille * 0.04, gapSize:taille * 0.02, depthTest:false, transparent:true }));
         l.computeLineDistances();
         l.raycast = () => {};
         g.add(l);
       }else if(op.type === "point"){
-        const p = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v(op.x1), v(op.y1), v(op.z1))]),
+        const p = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...pointConstruction(op, v, c.doc))]),
           new THREE.PointsMaterial({ color:0xf2c744, size:8, sizeAttenuation:false, depthTest:false }));
         p.raycast = () => {};
         g.add(p);
@@ -342,7 +379,7 @@ export function dessinerAides(c, g){
       }else if(op.type === "image" && String(op.donnees).startsWith("data:image/")){     // jamais une adresse : un fichier reçu ne doit rien aller chercher
         const tex = texture(c, op);
         const asp = tex.image?.width ? tex.image.height / tex.image.width : 1;
-        const r = repere({ base:op.base, decalage:op.decalage ?? 0 }, v), L = v(op.largeur);
+        const r = repereImage(op, v), L = v(op.largeur);
         const m = new THREE.Mesh(new THREE.PlaneGeometry(L, L * asp), new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:v(op.opacite ?? 0.6), side:THREE.DoubleSide, depthWrite:false }));
         const M = new THREE.Matrix4().makeBasis(new THREE.Vector3(...r.x), new THREE.Vector3(...r.y), new THREE.Vector3(...r.n));
         const o = new THREE.Vector3(...r.o).addScaledVector(new THREE.Vector3(...r.x), v(op.x ?? 0)).addScaledVector(new THREE.Vector3(...r.y), v(op.y ?? 0));
@@ -353,6 +390,12 @@ export function dessinerAides(c, g){
       }
     }catch(_){ /* cote illisible : l'aide n'est pas dessinée, le panneau le signale */ }
   });
+}
+
+/** Le plan d'une image : un plan de base, ou une face désignée (décalque). */
+export function repereImage(op, v){
+  if(op.base === "face" && op.face) return repere({ origine:op.face.point, normale:op.face.normale, xdir:axePerpendiculaire(op.face.normale) }, v);
+  return repere({ base:op.base === "face" ? "XY" : op.base, decalage:op.decalage ?? 0 }, v);
 }
 
 const TEXTURES = new Map();
@@ -372,9 +415,7 @@ function insererOp(c, type, champs){
   if(c.edition || c.editeur.ouvert) throw new Error("terminez d'abord l'opération ou l'esquisse en cours");
   const avant = JSON.stringify(c.doc);
   const op = { id:c.nouvelId(), type, ...champs };
-  const fin = c.doc.curseur ?? c.doc.operations.length;
-  c.doc.operations.splice(fin, 0, op);
-  if(c.doc.curseur !== undefined) c.doc.curseur++;
+  c.inserer(op);
   c.ouvrirPanneau(op, avant, true);
 }
 
@@ -608,11 +649,15 @@ export function brancherAteliers(c){
   };
   $("bEclate").onclick = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
-    c.menu([0, 0.5, 1, 2].map(f => ({ texte:`${(c.eclate || 0) === f ? "✓ " : ""}${f ? "Écarter ×" + f : "Assemblé"}`, action:() => {
-      c.eclate = f;
-      $("bEclate").classList.toggle("on", !!f);
-      appliquerEclate(c);
-    } })), r.left, r.bottom + 2);
+    const poser = (f) => { c.eclate = f; $("bEclate").classList.toggle("on", !!f); appliquerEclate(c); };
+    const vues = c.doc.eclates || [];
+    c.menu([...[0, 0.5, 1, 2].map(f => ({ texte:`${(c.eclate || 0) === f ? "✓ " : ""}${f ? "Écarter ×" + f : "Assemblé"}`, action:() => poser(f) })),
+      ...vues.map(x => ({ texte:`${c.eclate === x.f ? "✓ " : ""}${x.nom} (×${x.f})`, action:() => poser(x.f) })),
+      "-", { texte:"Enregistrer cet écart sous un nom…", desactive:!c.eclate, action:async () => {
+        const n = await demanderTexte("Vue éclatée", "Nom", `Éclaté ${vues.length + 1}`);
+        if(n?.trim()) c.modifierDoc(() => { (c.doc.eclates ||= []).push({ nom:n.trim(), f:c.eclate }); });
+      } },
+      ...(vues.length ? [{ texte:"Oublier les vues éclatées", action:() => c.modifierDoc(() => { c.doc.eclates = []; }) }] : [])], r.left, r.bottom + 2);
   };
   $("bDeplier").onclick = () => {
     c.plat = !c.plat;

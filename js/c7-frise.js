@@ -25,7 +25,8 @@ export function dependances(op, ops = []){
   const createurs = ops.filter(o => o !== op && noms.includes(o.corpsNom)).map(o => o.id);
   const axe = typeof op.axe === "string" && op.axe.startsWith("ref:") ? op.axe.slice(4) : null;
   const planVise = op.type === "diviser" && op.mode === "plan" ? op.plan : null;
-  return [op.esquisse, op.chemin, op.plan?.ref, axe, op.pilote, planVise, ...(op.esquisses || []), ...createurs].filter(Boolean);
+  const construction = ["axe", "point", "plan"].includes(op.type) ? [op.plan1, op.plan2, op.plan3, op.type === "point" ? op.axe : null] : [];
+  return [op.esquisse, op.chemin, op.plan?.ref, axe, op.pilote, planVise, ...construction, ...(op.esquisses || []), ...createurs].filter(Boolean);
 }
 
 /** L'ordre des opérations après avoir déplacé celle d'indice `de` à l'indice `vers`. */

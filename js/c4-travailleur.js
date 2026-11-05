@@ -109,7 +109,7 @@ function mailler(c, finesse, transferts, apparence = null){
   catch(e){ if(e instanceof WebAssembly.RuntimeError) throw e; /* sinon la mesure ajustera sur les triangles */ }
   const peintes = couleursFaces(c, m, apparence?.faces);
   return {
-    nom:c.nom, reference:!!c.reference, surface:!!c.surface, couleur:couleurRvb(apparence?.couleur), position, normale, index,
+    nom:c.nom, composant:c.composant ?? null, reference:!!c.reference, surface:!!c.surface, couleur:couleurRvb(apparence?.couleur), position, normale, index,
     /* start/count comptent des indices de sommets ; la visionneuse attend des triangles */
     faces:m.faceGroups.map(f => ({ premier:f.start / 3, dernier:(f.start + f.count) / 3 - 1, couleur:peintes.get(f.faceId) ?? null })),
     aretes:e, proprietes, surfaces,

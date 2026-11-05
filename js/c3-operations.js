@@ -18,7 +18,7 @@
 "use strict";
 
 import { evaluateur, evaluerParametres, NOM_PARAMETRE } from "./c1-expressions.js";
-import { repere, versMonde, vec, profils, indexer, controlesSpline, axeConstruction } from "./c2-esquisse.js";
+import { repere, versMonde, vec, profils, indexer, controlesSpline, axeConstruction, axePerpendiculaire, pointsChemin3d } from "./c2-esquisse.js";
 import { ateliers, TYPES_ATELIERS } from "./c3b-ateliers.js";
 import { operationsPlus, TYPES_PLUS } from "./c3d-operations-plus.js";
 import { retrouver } from "./c3c-references.js";
@@ -47,6 +47,7 @@ export const TYPES = {
   echelle:{ nom:"Échelle", icone:"⤢" },
   conge:{ nom:"Congé", icone:"◜" },
   chanfrein:{ nom:"Chanfrein", icone:"◸" },
+  chemin3d:{ nom:"Chemin 3D", icone:"⟿" },
   coque:{ nom:"Coque", icone:"▢" },
   combiner:{ nom:"Combiner", icone:"⊕" },
   deplacer:{ nom:"Déplacer", icone:"✥" },
@@ -273,6 +274,14 @@ function revolutionProfil(R, pts){
   return pen.close().sketchOnPlane("XZ").revolve([0, 0, 1], { origin:[0, 0, 0] });
 }
 
+/** Le fil d'un chemin 3D : des droites entre ses points, ou une courbe qui les approche. */
+function fil3d(R, op, v){
+  const p = pointsChemin3d(op, v);
+  const bords = op.mode === "spline" ? [R.makeBSplineApproximation(p)] : p.slice(1).map((q, i) => R.makeLine(p[i], q));
+  const d = p[1].map((c, i) => c - p[0][i]);
+  return { fil:R.assembleWire(bords), depart:p[0], tangente:vec.norm(d) };
+}
+
 /* -----------------------------------------------------------------------------
    Les opérations
    --------------------------------------------------------------------------- */
@@ -319,7 +328,7 @@ const OPERATIONS = {
     let origine = r.o, dir = r.x;
     if(op.axe === "y") dir = r.y;
     else if(op.axe?.startsWith("ref:")){
-      const a = axeConstruction(ctx.doc.operations.find(o => o.id === op.axe.slice(4)), v);
+      const a = axeConstruction(ctx.doc.operations.find(o => o.id === op.axe.slice(4)), v, ctx.doc);
       origine = a.point; dir = a.dir;
     }else if(op.axe && op.axe !== "x"){
       const l = indexer(esq).get(op.axe), idx = indexer(esq);
@@ -333,9 +342,12 @@ const OPERATIONS = {
   },
 
   balayage(R, etat, op, ctx){
-    const v = ctx.v, esq = chercherEsquisse(ctx, op.esquisse), chem = chercherEsquisse(ctx, op.chemin);
+    const v = ctx.v, esq = chercherEsquisse(ctx, op.esquisse);
     const profil = dessinRegions(R, esq).sketchOnPlane(planNoyau(R, esq, v).plan);
     if(!profil.wire) throw new Error("le profil d'un balayage doit être un seul contour, sans trou");
+    const c3 = ctx.doc.operations.find(o => o.id === op.chemin && o.type === "chemin3d");
+    if(c3) return appliquer(etat, R.genericSweep(profil.wire, fil3d(R, c3, v).fil, { frenet:true }), op);
+    const chem = chercherEsquisse(ctx, op.chemin);
     const { ouverts, regions } = profils(chem);
     const suite = ouverts[0] || regions[0]?.exterieur;
     if(!suite?.segments) throw new Error(`« ${chem.nom} » n'a pas de chemin (lignes et arcs bout à bout)`);
@@ -449,10 +461,23 @@ const OPERATIONS = {
     return appliquer(etat, dessin.sketchOnPlane(plan).extrude(h), { operation:"joindre", corps:op.corps });
   },
 
+  /* Rien dans le volume : le fil sert aux balayages et aux tuyaux, la page le dessine. */
+  chemin3d:(R, etat, op, { v }) => { pointsChemin3d(op, v); return etat; },
+
   tuyau(R, etat, op, ctx){
-    const v = ctx.v, chem = chercherEsquisse(ctx, op.chemin);
+    const v = ctx.v;
     const de = v(op.diametre), ep = v(op.paroi ?? 0);
     if(!(de > 0 && ep >= 0 && ep * 2 < de)) throw new Error("diamètre positif, et paroi plus petite que le rayon");
+    const c3 = ctx.doc.operations.find(o => o.id === op.chemin && o.type === "chemin3d");
+    if(c3){
+      if(ctx.ignorees.has(c3.id)) throw new Error(`« ${c3.nom} » est suspendu ou après le curseur`);
+      const { fil, depart, tangente } = fil3d(R, c3, v);
+      const x = axePerpendiculaire(tangente);
+      const balayer3d = (d) => R.genericSweep(R.drawCircle(d / 2).sketchOnPlane(new R.Plane(depart, x, tangente)).wire, fil, { frenet:true });
+      const plein3d = balayer3d(de);
+      return appliquer(etat, ep > 0 ? plein3d.cut(balayer3d(de - 2 * ep)) : plein3d, op);
+    }
+    const chem = chercherEsquisse(ctx, op.chemin);
     const { ouverts, regions } = profils(chem);
     const suite = ouverts[0] || regions[0]?.exterieur;
     if(!suite?.segments) throw new Error(`« ${chem.nom} » n'a pas de chemin (lignes et arcs bout à bout)`);
@@ -590,7 +615,7 @@ const OPERATIONS = {
     const { v } = ctx;
     const cible = corpsCible(etat, op.corps), n = Math.round(v(op.nombre));
     if(!(n >= 2 && n <= 500)) throw new Error("nombre d'exemplaires entre 2 et 500");
-    const ref = op.axe?.startsWith("ref:") ? axeConstruction(ctx.doc.operations.find(o => o.id === op.axe.slice(4)), v) : null;
+    const ref = op.axe?.startsWith("ref:") ? axeConstruction(ctx.doc.operations.find(o => o.id === op.axe.slice(4)), v, ctx.doc) : null;
     const axe = ref ? ref.dir : AXES[op.axe || "X"];
     const pivot = ref ? ref.point : [0, 0, 0];
     let pas;
@@ -675,7 +700,10 @@ export async function construire(R, doc, cache = [], oc = null, options = {}){
       try{
         if(!f) throw new Error(`opération inconnue « ${op.type} »`);
         options.surOperation?.(op.id);
+        const avant = op.composant ? new Set(etat.corps) : null;
         etat = await f(R, etat, op, ctx);
+        /* Un corps né dans un composant lui appartient ; une opération ne change pas le composant d'un corps existant. */
+        if(avant) etat = { ...etat, corps:etat.corps.map(c => c.composant || avant.has(c) || [...avant].some(a => a.nom === c.nom) ? c : { ...c, composant:op.composant }) };
       }catch(e){
         if(estFatale(e, oc)){ e.opId = op.id; throw e; }     // le noyau est mort : continuer sur son tas abîmé serait pire
         note.erreur = messageErreur(e, oc);

@@ -402,4 +402,73 @@ export function bissectrice(esq, idA, idB){
   return { o:O, fin:{ x:O.x + dir[0] / n * Math.max(la, lb), y:O.y + dir[1] / n * Math.max(la, lb) } };
 }
 
+/* -----------------------------------------------------------------------------
+   Splines
+   --------------------------------------------------------------------------- */
+/** Ajoute un point à la travée la plus proche du clic. */
+export function ajouterPointSpline(esq, id, m){
+  const idx = indexer(esq), e = idx.get(id);
+  if(e?.type !== "spline") return "Cliquez une spline.";
+  let rang = 0, dMin = Infinity;
+  for(let i = 0; i < e.pts.length - 1; i++){
+    const a = idx.get(e.pts[i]), b = idx.get(e.pts[i + 1]), dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((m.x - a.x) * dx + (m.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    const d = Math.hypot(m.x - a.x - t * dx, m.y - a.y - t * dy);
+    if(d < dMin){ dMin = d; rang = i; }
+  }
+  e.pts.splice(rang + 1, 0, pointNeuf(esq, m.x, m.y));
+  return null;
+}
+
+/** Retire un point d'une spline ; un bout retiré laisse le point voisin comme nouveau bout. */
+export function retirerPointSpline(esq, idPoint){
+  const e = esq.elements.find(x => x.type === "spline" && x.pts.includes(idPoint));
+  if(!e) return "Sélectionnez un point d'une spline.";
+  const ferme = e.p1 === e.p2;
+  if(e.pts.length - 1 < (ferme ? 4 : 2)) return "Il ne resterait pas assez de points.";
+  e.pts = e.pts.filter(q => q !== idPoint);
+  if(ferme && !e.pts.includes(e.pts[e.pts.length - 1], 0)) e.pts.push(e.pts[0]);
+  if(ferme && e.pts[0] !== e.pts[e.pts.length - 1]) e.pts.push(e.pts[0]);
+  e.p1 = e.pts[0]; e.p2 = e.pts[e.pts.length - 1];
+  nettoyer(esq);
+  return null;
+}
+
+export function inverserSpline(esq, id){
+  const e = indexer(esq).get(id);
+  if(e?.type !== "spline") return "Sélectionnez une spline.";
+  e.pts.reverse();
+  e.p1 = e.pts[0]; e.p2 = e.pts[e.pts.length - 1];
+  return null;
+}
+
+/** Le sens où une courbe quitte son bout `id`, vers l'extérieur. */
+function tangenteBout(esq, id){
+  const idx = indexer(esq), P = idx.get(id);
+  const e = esq.elements.find(x => !x.constr && ["ligne", "arc", "spline"].includes(x.type) && (x.p1 === id || x.p2 === id));
+  if(!e) return null;
+  let t;
+  if(e.type === "ligne"){ const o = idx.get(e.p1 === id ? e.p2 : e.p1); t = [P.x - o.x, P.y - o.y]; }
+  else if(e.type === "arc"){ const c = idx.get(e.c), r = [P.x - c.x, P.y - c.y]; t = e.p2 === id ? [-r[1], r[0]] : [r[1], -r[0]]; }
+  else{ const o = idx.get(e.p1 === id ? e.pts[1] : e.pts[e.pts.length - 2]); t = [P.x - o.x, P.y - o.y]; }
+  const L = Math.hypot(...t) || 1;
+  return [t[0] / L, t[1] / L];
+}
+
+/** Une courbe de raccord entre deux bouts de courbes, tangente aux deux (Hermite, échantillonnée en spline). */
+export function courbeRaccord(esq, idA, idB){
+  const idx = indexer(esq), A = idx.get(idA), B = idx.get(idB), ta = tangenteBout(esq, idA), tb = tangenteBout(esq, idB);
+  if(!ta || !tb) return "Sélectionnez deux bouts de courbes.";
+  const L = Math.hypot(B.x - A.x, B.y - A.y);
+  if(L < 1e-6) return "Ces deux bouts sont confondus.";
+  const pts = [idA];
+  for(let i = 1; i < 8; i++){
+    const u = i / 8, u2 = u * u, u3 = u2 * u, h = [2 * u3 - 3 * u2 + 1, u3 - 2 * u2 + u, -2 * u3 + 3 * u2, u3 - u2];
+    pts.push(pointNeuf(esq, h[0] * A.x + h[1] * L * ta[0] + h[2] * B.x - h[3] * L * tb[0], h[0] * A.y + h[1] * L * ta[1] + h[2] * B.y - h[3] * L * tb[1]));
+  }
+  pts.push(idB);
+  esq.elements.push({ id:nouvelId(esq, "s"), type:"spline", pts, p1:idA, p2:idB });
+  return null;
+}
+
 export { rayonDe, ajouterPrimitives };

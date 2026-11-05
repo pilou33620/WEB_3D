@@ -17,23 +17,20 @@ Côté pilotage par Claude (MCP), les fonctionnalités possibles sont listées d
 
 **Faisable, pas encore fait :**
 
-- Esquisse : esquisses 3D, contrainte de courbure (G2), courbe de raccord, projection sur une surface, décalage et projection
-  qui restent liés à leur source, ajout ou retrait d'un point de spline, chanfrein de coin dissymétrique.
-- Solides : vraie gravure sur une face courbe (la gravure actuelle part d'un plan), décaler en ajoutant de la matière sur
-  une face autre que plane ou cylindrique, remplacer une face en prolongeant le corps, voile arrêté aux parois.
-- Surfaces : lissage (fair), accord (match), congé de surfaces, retour à la surface d'origine au-delà du contour.
-- Construction : plan par deux arêtes, axe par deux plans, points d'intersection (arête et plan, deux arêtes, trois plans).
-- Assemblage : composants à l'intérieur d'une pièce (éditer sur place, déplacer corps et opérations entre composants, occurrences,
-  remplacer ou réassigner un lien), jeux de contact nommés, chercher les limites d'une liaison, liaison sphérique, vues éclatées nommées.
-- Apparences : pinceau, favoris, sélection par apparence, remplacer une apparence partout. Calque de référence (canvas) : calibrer,
-  décalque, image vers esquisse.
-- Fichiers : maillage vers solide paramétrique (mesh.convert), plusieurs brouillons à récupérer, bibliothèque de pièces.
-- Interface : dispositions de panneaux enregistrées, styles d'affichage nommés, occlusion ambiante, onglets au clavier.
+- Projection d'arêtes qui reste liée à sa source : les points projetés sont fixés à leur place du moment. Il faudrait que le noyau
+  renvoie leur nouvelle position à la page à chaque reconstruction.
+- Sélectionner tous les corps de même apparence : l'arbre ne sélectionne qu'un corps à la fois.
+- Conversion d'un maillage en vrai solide paramétrique (cylindres reconnus, cotes) : aujourd'hui les faces planes sont seulement réunies.
 
 **Écarté, avec la raison :**
 
-- Écrire de l'IGES : l'écrivain n'est pas compilé dans le noyau `replicad_single.wasm`, comme la suppression de face exacte
-  (`BRepAlgoAPI_Defeaturing`). Il faudrait recompiler OpenCascade.
+- Absent du noyau compilé `replicad_single.wasm`, il faudrait recompiler OpenCascade : écriture IGES ; suppression de face exacte
+  (`BRepAlgoAPI_Defeaturing`) : la face est bouchée, pas refaite ; projection sur une surface (aucune classe de projection) ;
+  lissage de surface (`TColgp_Array2OfPnt`, sans quoi `GeomAPI_PointsToBSplineSurface` ne reçoit pas ses points).
+- Booléens du noyau : décalage d'un corps entier et ajout sur une face coïncidente rendent un volume nul sur les faces courbes. D'où la
+  gravure limitée aux cylindres, et l'ajout de matière aux faces planes et cylindriques.
+- Contrainte de courbure (G2) et esquisses 3D contraintes : le solveur planegcs n'a ni l'une ni les autres ; le chemin 3D en tient lieu, sans contraintes.
+- Accord de surfaces (match) : pas tenté, faute de pouvoir lui donner une surface de départ lissée. Congé de surfaces : solidcraft ne l'a pas non plus (prévu chez lui).
 - Lire FreeCAD et Rhino : solidcraft passe par cadmpeg, à intégrer à part.
 - Envoyer au trancheur : une page ne lance pas un logiciel du poste ; exporter en 3MF.
 - Atelier de rendu réaliste (lancer de rayons, HDRI, textures, lots de plans, environ 70 commandes) : trop lourd pour un

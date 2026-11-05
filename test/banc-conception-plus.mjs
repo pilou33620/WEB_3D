@@ -263,6 +263,128 @@ async function bati(ops, id, parametres = []){
   verifier("sans règle : rien à signaler", controlerRegles({ parametres:[], operations:[] }, { gcs, procede:"injection" }).controles.find(k => k.nom.startsWith("Plastique")).ok, true);
 }
 
+/* ---------------- second lot : noyau ---------------- */
+{
+  const { pointConstruction, planConstruction, axeConstruction } = await import("../js/c2-esquisse.js");
+  const px = (id, d, base = "XY") => ({ id, type:"plan", mode:"decale", base, decalage:String(d), angle:"0", axe:"x" });
+  const docP = { operations:[px("a", 3), px("b", 4, "YZ"), px("c", 5, "XZ")] };
+  /* XZ a pour normale -Y : décalé de 5, il passe par Y = -5. */
+  verifier("point à l'intersection de trois plans", pointConstruction({ mode:"troisPlans", plan1:"a", plan2:"b", plan3:"c" }, Number, docP).map(Math.round), [4, -5, 3]);
+  const ax2 = axeConstruction({ mode:"deuxPlans", plan1:"a", plan2:"b" }, Number, docP);
+  verifier("axe par deux plans", [ax2.dir.map(Math.abs), Math.round(ax2.point[0]), Math.round(ax2.point[2])], [[0, 1, 0], 4, 3]);
+  const docA = { operations:[...docP.operations, { id:"z", type:"axe", mode:"normale", face:{ point:[1, 2, 0], normale:[0, 0, 1] } }] };
+  verifier("point d'un axe et d'un plan", pointConstruction({ mode:"axePlan", axe:"z", plan1:"a" }, Number, docA), [1, 2, 3]);
+  const leve = (f) => { try{ f(); return ""; }catch(e){ return e.message; } };
+  vrai("axe par deux plans parallèles : refusé", /parallèles/.test(leve(() => axeConstruction({ mode:"deuxPlans", plan1:"a", plan2:"a" }, Number, docP))));
+  const docB = { operations:[...docP.operations, { id:"z", type:"axe", mode:"normale", face:{ point:[1, 2, 0], normale:[0, 0, 1] } }, { ...px("v", 0, "YZ") }] };
+  vrai("point : un axe parallèle au plan est refusé", /parallèle/.test(leve(() => pointConstruction({ mode:"axePlan", axe:"z", plan1:"v" }, Number, docB))));
+  const p2a = planConstruction({ mode:"aretes", lignes:[[[0, 0, 5], [10, 0, 5]], [[0, 10, 5], [10, 10, 5]]] });
+  verifier("plan par deux arêtes parallèles", [p2a.normale.map(Math.abs), p2a.origine[2]], [[0, 0, 1], 5]);
+  vrai("plan par deux arêtes : gauches, refusé", /même plan/.test(leve(() => planConstruction({ mode:"aretes", lignes:[[[0, 0, 0], [10, 0, 0]], [[0, 5, 5], [0, 15, 5]]] }))));
+
+  const fil = (extra = {}) => ({ id:"c", type:"chemin3d", nom:"C", points:"0,0,0; 20,0,0; 20,20,10", mode:"lignes", ...extra });
+  const tu = await bati([fil(), { id:"s", type:"tuyau", chemin:"c", diametre:"2", paroi:"0", operation:"nouveau" }], "s");
+  const L = 20 + Math.hypot(20, 10);
+  vrai("tuyau sur un chemin 3D : volume proche de la section par la longueur", !tu.erreur && Math.abs(tu.vol() - Math.PI * L) < 0.08 * Math.PI * L, tu.erreur || String(tu.vol()));
+  const tc = await bati([fil({ mode:"spline", points:"0,0,0; 10,5,2; 20,0,5; 30,-5,8" }), { id:"s", type:"tuyau", chemin:"c", diametre:"2", paroi:"0.5", operation:"nouveau" }], "s");
+  vrai("tuyau creux sur une courbe 3D", !tc.erreur && tc.vol() > 0, tc.erreur);
+  const tv = await bati([{ id:"c", type:"chemin3d", nom:"C", points:"0,0,0" }], "c");
+  vrai("chemin 3D : au moins deux points", /deux points/.test(tv.erreur || ""));
+  const tp = await bati([fil({ points:"0,0,0; L,0,0" })], "c", [{ nom:"L", expr:"30" }]);
+  verifier("chemin 3D : les cotes citent les paramètres", tp.erreur, undefined);
+
+  const cy = { id:"c", type:"cylindre", diametre:"20", h:"30", axe:"Z", x:"0", y:"0", z:"0", operation:"nouveau" };
+  const motif = esqu("e", { origine:[0, 0, 0], normale:[1, 0, 0], xdir:[0, 1, 0] }, rect(-2, 10, 2, 20));
+  motif.plan = { origine:[20, 0, 0], normale:[1, 0, 0], xdir:[0, 1, 0] };
+  const gv = await bati([cy, motif, { id:"s", type:"gravureCylindre", esquisse:"e", corps:"", cylindre:{ surf:[10, 0, 15], centre:[0, 0, 15] }, mode:"creux", profondeur:"1" }], "s");
+  const v0 = Math.PI * 100 * 30;
+  vrai("gravure sur cylindre : enlève, de l'ordre de la surface par la profondeur", !gv.erreur && v0 - gv.vol() > 25 && v0 - gv.vol() < 45, gv.erreur || String(v0 - gv.vol()));
+  const gr = await bati([cy, motif, { id:"s", type:"gravureCylindre", esquisse:"e", corps:"", cylindre:{ surf:[10, 0, 15], centre:[0, 0, 15] }, mode:"relief", profondeur:"1" }], "s");
+  vrai("gravure sur cylindre : en relief, ajoute", !gr.erreur && gr.vol() - v0 > 25 && gr.vol() - v0 < 50, gr.erreur || String(gr.vol() - v0));
+
+  /* Une surface au-delà du corps : la face va la rejoindre. */
+  const nappe = [boite("b", 10, 10, 10), ligneEsq("e", XY, [-20, -20], [20, -20]), { id:"sx", type:"surfExtrusion", esquisse:"e", distance:"40" },
+    { id:"dep", type:"deplacer", corps:"Corps 2", tx:"0", ty:"35", tz:"-15", rx:"0", ry:"0", rz:"0" }];
+  const ral = await bati([...nappe, { id:"s", type:"remplacerFace", corps:"Corps 1", outil:"Corps 2", faces:[[5, 10, 5]] }], "s");
+  verifier("remplacer une face : elle s'allonge jusqu'à la surface", [ral.erreur, Math.round(ral.vol())], [undefined, 10 * 15 * 10]);
+
+  /* Deux murs intérieurs : le voile s'arrête à eux, sans aller au bord de la pièce. */
+  const socle = [boite("s", 40, 20, 2), boite("m1", 2, 20, 10, 8, 0, 2), boite("m2", 2, 20, 10, 30, 0, 2),
+    { id:"j1", type:"combiner", cible:"Corps 1", outils:["Corps 2", "Corps 3"], operation:"joindre" }];
+  const avantVoile = await bati(socle, "j1");
+  const vm = await bati([...socle, ligneEsq("e", { base:"XY", decalage:"5" }, [15, 10], [25, 10]), { id:"v", type:"voile", esquisse:"e", corps:"", epaisseur:"2" }], "v");
+  verifier("voile : d'un mur à l'autre", [vm.erreur, Math.round(vm.vol() - avantVoile.vol())], [undefined, 20 * 2 * 10]);
+
+  const deux = [boite("a", 10, 10, 10), boite("b", 10, 10, 10, 50, 50, 50)];
+  const rot = await bati([...deux, { id:"s", type:"liaison", mode:"spherique", corpsA:"Corps 1", corpsB:"Corps 2", repereA:{ type:"plan", point:[0, 0, 10], normale:[0, 0, 1] }, repereB:{ type:"plan", point:[50, 50, 50], normale:[0, 0, -1] }, decalage:"0", valeur:"0", valeur2:"0", valeur3:"90" }], "s");
+  const br = rot.corps[1].shape.boundingBox.bounds;
+  verifier("liaison sphérique : le point rejoint, la rotation autour de lui", [rot.erreur, ...br[0].map(x => Math.round(x))], [undefined, -10, 0, 10]);
+
+  /* Composants et occurrences */
+  const cmp = await construire(R, { operations:[{ ...boite("a", 10, 10, 10), composant:"K" }, boite("b", 5, 5, 5, 40), { id:"o", type:"occurrence", source:"K", tx:"0", ty:"30", tz:"0", rx:"0", ry:"0", rz:"0" }] }, [], oc);
+  verifier("composant : le corps né dedans lui appartient, l'occurrence le recopie", [cmp.etats.o.erreur, cmp.corps.map(c => c.composant ?? null), Math.round(cmp.corps[2].shape.boundingBox.bounds[0][1])], [undefined, ["K", null, null], 30]);
+  const cmp2 = await construire(R, { operations:[{ ...boite("a", 10, 10, 10), composant:"K" }, { id:"c", type:"chanfrein", corps:"", distance:"1", toutes:true, composant:"L" }, { id:"o", type:"occurrence", source:"K", tx:"0", ty:"30", tz:"0", rx:"0", ry:"0", rz:"0" }] }, [], oc);
+  vrai("occurrence : elle suit le composant", !cmp2.etats.o.erreur && Math.abs(Math.abs(R.measureVolume(cmp2.corps[1].shape)) - Math.abs(R.measureVolume(cmp2.corps[0].shape))) < 1e-6 && Math.abs(R.measureVolume(cmp2.corps[0].shape)) < 1000);
+  const cvid = await bati([{ id:"o", type:"occurrence", source:"Z" }], "o");
+  vrai("occurrence : un composant vide le dit", /aucun corps/.test(cvid.erreur || ""));
+
+  const cube = [0,0,0, 1,1,0, 1,0,0, 0,0,0, 0,1,0, 1,1,0, 0,0,1, 1,0,1, 1,1,1, 0,0,1, 1,1,1, 0,1,1, 0,0,0, 1,0,0, 1,0,1, 0,0,0, 1,0,1, 0,0,1, 1,1,0, 0,1,0, 0,1,1, 1,1,0, 0,1,1, 1,1,1, 0,1,0, 0,0,0, 0,0,1, 0,1,0, 0,0,1, 0,1,1, 1,0,0, 1,1,0, 1,1,1, 1,0,0, 1,1,1, 1,0,1];
+  const b64 = Buffer.from(new Float32Array(cube).buffer).toString("base64");
+  const brut = await bati([{ id:"m", type:"maillage", donnees:b64 }], "m");
+  const fus = await bati([{ id:"m", type:"maillage", donnees:b64, fusionner:true }], "m");
+  verifier("maillage converti : les triangles coplanaires ne font qu'une face", [brut.faces(), fus.erreur, fus.faces(), Math.round(fus.vol())], [12, undefined, 6, 1]);
+}
+
+/* ---------------- second lot : esquisse ---------------- */
+{
+  const { init_planegcs_module, GcsWrapper } = await import("../vendor/planegcs/index.js");
+  const mod = await init_planegcs_module({ locateFile:() => ici("../vendor/planegcs/planegcs_dist/planegcs.wasm") });
+  const gcs = new GcsWrapper(new mod.GcsSystem(), mod);
+  gcs.debug_mode = 0;
+  const { decaler, casserCoin } = await import("../js/c2b-outils-esquisse.js");
+  const nouvelle = () => ({ id:"e", type:"esquisse", nom:"e", plan:XY, elements:[], contraintes:[], compteur:0 });
+  const P = (esq, id) => esq.elements.find(e => e.id === id);
+  const sp = nouvelle();
+  sp.elements.push({ id:"a", type:"point", x:0, y:0 }, { id:"b", type:"point", x:10, y:0 }, { id:"c", type:"point", x:20, y:0 }, { id:"s", type:"spline", pts:["a", "b", "c"], p1:"a", p2:"c" });
+  verifier("spline : un point ajouté, à sa place", [Plus.ajouterPointSpline(sp, "s", { x:5, y:3 }), P(sp, "s").pts.length, P(sp, P(sp, "s").pts[1]).x], [null, 4, 5]);
+  verifier("spline : retirer un point du milieu", [Plus.retirerPointSpline(sp, "b"), P(sp, "s").pts.includes("b"), !!P(sp, "b")], [null, false, false]);
+  verifier("spline : retirer un bout déplace le bout", [Plus.retirerPointSpline(sp, "a"), P(sp, "s").p1 === P(sp, "s").pts[0], P(sp, "s").pts.length], [null, true, 2]);
+  vrai("spline : pas moins de deux points", /assez/.test(Plus.retirerPointSpline(sp, "c") || ""));
+  const inv = nouvelle();
+  inv.elements.push({ id:"a", type:"point", x:0, y:0 }, { id:"b", type:"point", x:10, y:0 }, { id:"s", type:"spline", pts:["a", "b"], p1:"a", p2:"b" });
+  verifier("spline : inverser", [Plus.inverserSpline(inv, "s"), P(inv, "s").p1], [null, "b"]);
+  const ell = nouvelle();
+  Plus.ajouterEllipse(ell, { x:0, y:0 }, { x:10, y:0 }, 5);
+  const sE = ell.elements.find(e => e.type === "spline"), nE = sE.pts.length;
+  verifier("spline fermée : retirer son premier point la laisse fermée", [Plus.retirerPointSpline(ell, sE.pts[0]), sE.pts.length, sE.p1 === sE.p2], [null, nE - 1, true]);
+  vrai("spline fermée : elle fait encore un contour", profils(ell).regions.length === 1);
+
+  const rc = nouvelle();
+  rc.elements.push({ id:"a", type:"point", x:0, y:0 }, { id:"b", type:"point", x:10, y:0 }, { id:"l", type:"ligne", p1:"a", p2:"b" },
+    { id:"c", type:"point", x:20, y:10 }, { id:"d", type:"point", x:30, y:10 }, { id:"m", type:"ligne", p1:"c", p2:"d" });
+  verifier("courbe de raccord : entre les bouts", [Plus.courbeRaccord(rc, "b", "c"), rc.elements.find(e => e.type === "spline").p1], [null, "b"]);
+  const q = rc.elements.find(e => e.type === "spline").pts.map(id => P(rc, id));
+  vrai("courbe de raccord : part dans le sens de la ligne, arrive dans celui de l'autre", q[1].x > 10 && Math.abs(q[1].y) < 1 && q[7].x < 20 && Math.abs(q[7].y - 10) < 1, JSON.stringify(q[1]));
+  vrai("courbe de raccord : il faut deux bouts de courbes", /bouts/.test(Plus.courbeRaccord(rc, "x", "c") || ""));
+
+  const ch = nouvelle();
+  ch.elements.push({ id:"a", type:"point", x:10, y:0 }, { id:"o", type:"point", x:0, y:0 }, { id:"b", type:"point", x:0, y:10 }, { id:"l1", type:"ligne", p1:"a", p2:"o" }, { id:"l2", type:"ligne", p1:"o", p2:"b" });
+  casserCoin(ch, "o", 2, "chanfrein", 4);
+  const pts = ch.elements.filter(e => e.type === "point").map(p => [p.x, p.y]).sort();
+  verifier("chanfrein de coin dissymétrique", pts.some(p => p[0] === 2 && p[1] === 0) && pts.some(p => p[0] === 0 && p[1] === 4), true);
+
+  const de = nouvelle();
+  de.elements.push(...rect(0, 0, 20, 10, "z"));
+  de.contraintes.push({ id:"h", type:"horizontal", a:"zl1" }, { id:"v", type:"vertical", a:"zl2" }, { id:"lg", type:"longueur", a:"zl1", expr:"20" });
+  verifier("décaler lié : le solveur l'accepte", [decaler(de, ["zl1", "zl2", "zl3", "zl4"], 2, "2"), resoudre(gcs, de, Number).ok, de.contraintes.filter(k => k.type === "parallele").length], [null, true, 4]);
+  de.contraintes.find(k => k.id === "lg").expr = "30";
+  const ecarts = de.contraintes.filter(k => k.type === "distance").map(k => {
+    const q = P(de, k.a), l = P(de, k.b), u = P(de, l.p1), w = P(de, l.p2);
+    return +(Math.abs((w.x - u.x) * (u.y - q.y) - (u.x - q.x) * (w.y - u.y)) / Math.hypot(w.x - u.x, w.y - u.y)).toFixed(4);
+  });
+  verifier("décaler lié : la copie suit l'original, toujours à sa distance", [resoudre(gcs, de, Number).ok, ecarts, Math.round(Math.hypot(P(de, P(de, "zl1").p2).x - P(de, P(de, "zl1").p1).x, P(de, P(de, "zl1").p2).y - P(de, P(de, "zl1").p1).y))], [true, [2, 2, 2, 2], 30]);
+}
+
 /* ---------------- analyses ---------------- */
 {
   const f = R.makeBox([0, 0, 0], [20, 20, 20]).fillet(2, e => e.inDirection("Z"));
@@ -303,6 +425,13 @@ async function bati(ops, id, parametres = []){
   vrai("URDF : une glissière a des limites", /limites/.test(leve(() => ecrireUrdf("r", corps, [{ ...pivot, mode:"glissiere" }]))));
   vrai("URDF : racines multiples tenues par une base", ecrireUrdf("r", corps, []).includes('<link name="base"/>'));
 
+  const { contoursImage } = await import("../js/c12-exports.js");
+  const carreImg = (x, y) => (x >= 2 && x < 8 && y >= 2 && y < 8) ? 0 : 255;
+  const ct = contoursImage(carreImg, 10, 10);
+  verifier("image vers contour : un carré, quatre sommets", [ct.length, ct[0].length, Math.max(...ct[0].map(p => p[0])), Math.min(...ct[0].map(p => p[1]))], [1, 4, 8, 2]);
+  const anneauImg = (x, y) => { const d = Math.hypot(x - 15, y - 15); return d < 12 && d > 6 ? 0 : 255; };
+  verifier("image vers contour : un anneau a deux bords", contoursImage(anneauImg, 30, 30).length, 2);
+  verifier("image vers contour : rien de sombre, rien", contoursImage(() => 255, 5, 5), []);
   const { lireNuage } = await import("../js/c12-exports.js");
   verifier("nuage XYZ", Array.from(lireNuage("1 2 3\n4,5,6\n# rien\n7;8;9").points), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
   verifier("nuage PLY en texte", Array.from(lireNuage("ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nend_header\n1 2 3 255\nfin").points), [1, 2, 3]);

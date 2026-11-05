@@ -39,7 +39,7 @@ import { ANALYSES, appliquerAnalyse } from "./c8-analyses.js";
 import { controlerRegles, PROCEDES } from "./c10-regles.js";
 import { champsAteliers, defautsAteliers, brancherAteliers, clicAtelier, poigneeBas, marquesAteliers, dessinerAides,
          fichierAtelier, appliquerEclate, verifierLiens, DESIGNATIONS_UNIQUES, AIDES_DESIGNATION } from "./c9-ateliers-ui.js";
-import { champsPlus, defautsPlus, completerChamps, brancherPlus, actionsEsquisse, apresAffichage, copierOperations, collerOperations, matiereDe } from "./c11-plus-ui.js";
+import { champsPlus, defautsPlus, completerChamps, brancherPlus, actionsEsquisse, apresAffichage, copierOperations, collerOperations, matiereDe, majComposants } from "./c11-plus-ui.js";
 import { init_planegcs_module, GcsWrapper } from "../vendor/planegcs/index.js";
 
 const $ = (id) => document.getElementById(id);
@@ -184,7 +184,7 @@ function nouvelleOperation(type, ctrl){
   const P = { x:"0", y:"0", z:"0" };
   const defauts = {
     ...defautsAteliers({ derniere, avant:esquisses[esquisses.length - 2]?.id || "", mode, P, premierCorps:ctrl.nomsCorps[0] || "" }),
-    ...defautsPlus({ derniere, mode }),
+    ...defautsPlus({ derniere, mode, composants:ctrl.doc.composants || [] }),
     extrusion:{ esquisse:derniere, distance:"10", sens:"un", operation:mode, corps:"" },
     revolution:{ esquisse:derniere, axe:"y", angle:"360", operation:mode, corps:"" },
     balayage:{ esquisse:esquisses[esquisses.length - 2]?.id || "", chemin:derniere, operation:mode, corps:"" },
@@ -390,7 +390,15 @@ class Conception {
       if(k === "v" && !e.altKey) return this.editeur.ouvert ? this.editeur.coller() : collerOperations(this);
       return false;
     }
-    if(e.altKey) return false;
+    if(e.altKey){
+      /* Le navigateur garde Ctrl+Tab : on passe d'une pièce ouverte à l'autre par Alt+Page. */
+      if((k === "pagedown" || k === "pageup") && this.onglets.length > 1){
+        const n = this.onglets.length;
+        this.activerOnglet((this.ongletActif + (k === "pagedown" ? 1 : n - 1)) % n);
+        return true;
+      }
+      return false;
+    }
     if(e.shiftKey && k === "r" && this.derniereCommande && !this.editeur.ouvert){ this.creer(this.derniereCommande); return true; }
     if(k === "s"){ $("rechCommande").focus(); return true; }
     if(k === "escape" && this.designation){ this.designer(null); return true; }
@@ -1260,6 +1268,7 @@ class Conception {
       };
       return d;
     };
+    majComposants(this, $("navComposants"));
     $("navVues").replaceChildren(...(this.doc.vues || []).map(v => {
       const d = document.createElement("div");
       d.className = "nv"; d.title = "Revenir à cette vue — clic droit : renommer, supprimer";
@@ -1407,6 +1416,7 @@ class Conception {
      ========================================================================== */
   /** Une opération de plus, au marqueur. */
   inserer(op){
+    if(this.doc.composantActif && !op.composant) op.composant = this.doc.composantActif;
     const fin = this.doc.curseur ?? this.doc.operations.length;
     this.doc.operations.splice(fin, 0, op);
     if(this.doc.curseur !== undefined) this.doc.curseur++;
@@ -1518,7 +1528,9 @@ class Conception {
         break;
       }
       case "esquisse": {
-        const s = select([["", "— choisir —"], ...esquissesAvant().map(e => [e.id, e.nom])], lire());
+        /* Un chemin peut aussi être un chemin 3D. */
+        const chemins3d = ch.cle === "chemin" && (op.type === "tuyau" || op.type === "balayage") ? this.doc.operations.slice(0, this.doc.operations.indexOf(op)).filter(o => o.type === "chemin3d") : [];
+        const s = select([["", "— choisir —"], ...[...esquissesAvant(), ...chemins3d].map(e => [e.id, e.nom])], lire());
         s.onchange = () => { if(ch.cle === "esquisse") delete op.contours; ecrire(s.value); this.construirePanneau(); };
         val.appendChild(s);
         break;
@@ -1775,6 +1787,10 @@ class Conception {
   /** Un clic dans la vue, sans outil : la face sous la souris, ou le corps si le filtre ne prend pas les faces. */
   clicVue(ev){
     const touche = this.vue.lancerRayon(ev, this.selectionnables())[0];
+    if(this.pinceau && this.lookCopie){
+      if(touche) this.modifierDoc(() => { const t = (this.doc.apparences ||= {}); t[touche.object.name] = { ...t[touche.object.name], ...this.lookCopie }; });
+      return;
+    }
     const f = touche && this.filtre.faces ? faceSous(this.vue, touche) : null;
     this.arbre.selectionner(null);
     if(!f){ this.arbre.selectionner(touche?.object || null); return; }
