@@ -17,7 +17,13 @@ function boite(titre, { texte = "", champs = [], oui = "OK", non = "Annuler", va
     if(texte) form.appendChild(Object.assign(document.createElement("p"), { className:"aide", textContent:texte }));
     const entrees = champs.map((c) => {
       const l = document.createElement("label");
-      const e = Object.assign(document.createElement("input"), { type:"text", value:c.valeur ?? "" });
+      /* `options` : une liste de choix ; `type` : un autre genre de champ (couleur…). */
+      let e;
+      if(c.options){
+        e = document.createElement("select");
+        for(const [v, t] of Object.entries(c.options)) e.add(new Option(t, v));
+        e.value = c.valeur ?? "";
+      }else e = Object.assign(document.createElement("input"), { type:c.type || "text", value:c.valeur ?? "" });
       l.append(Object.assign(document.createElement("span"), { textContent:c.nom }), e);
       form.appendChild(l);
       return e;
@@ -38,7 +44,7 @@ function boite(titre, { texte = "", champs = [], oui = "OK", non = "Annuler", va
     dlg.appendChild(form);
     document.body.appendChild(dlg);
     dlg.showModal();
-    entrees[0]?.select();
+    entrees[0]?.select?.();
   });
 }
 

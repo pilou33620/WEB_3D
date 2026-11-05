@@ -90,7 +90,7 @@ de la page 3D, sur une vraie scène. Les trois bancs — exemples, pilotage et
 
 ### Ouvrir
 - **Formats** : `.stp`, `.step`, `.igs`, `.iges`, `.brep` (OpenCascade),
-  `.3mf`, `.obj` et `.stl` (lecteurs three.js). Un `.stpz` (STEP compressé en
+  `.3mf`, `.obj`, `.stl`, `.glb` et `.gltf` (lecteurs three.js). Un `.stpz` (STEP compressé en
   gzip, sortie de NX ou CATIA) est décompressé par le navigateur puis lu comme
   un `.stp`.
 - Glisser-déposer n'importe où dans la fenêtre, ou `Ctrl+O`. Plusieurs fichiers
@@ -246,9 +246,9 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
 
 - **Disposition** — celle de solidcraft, aux couleurs de la suite : barre fine en haut (menu
   *Fichier*, enregistrer, annuler / refaire, nom de la pièce), atelier *Design* et ruban à onglets
-  (Modèle, Surface, Assemblage, Insérer, Inspecter, Gérer, Affichage, Tôlerie ; Surface, Assemblage
-  et Tôlerie grisés, à venir), dont chaque titre de groupe ouvre la liste de ses commandes, et
-  recherche de commandes (touche **S**) ; **navigateur** flottant (pièce, paramètres, origine et ses
+  (Modèle, Surface, Assemblage, Insérer, Inspecter, Gérer, Affichage, Tôlerie, Plastique, Rendu,
+  Soudures), dont chaque titre de groupe ouvre la liste de ses commandes (toutes n'ont pas leur bouton dans
+  le ruban, qui doit tenir dans l'écran), et recherche de commandes (touche **S**) ; **navigateur** flottant (pièce, paramètres, origine et ses
   plans — un clic ouvre une esquisse dessus —, corps, esquisses avec leur œil, opérations) ;
   propriétés et panneau d'opération flottants à droite ; barre de navigation en bas au centre
   (orbite, ajuster, accueil, vues, projection, affichage) ; **frise d'historique** tout en bas.
@@ -261,35 +261,62 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
   pièces récentes) ; les panneaux flottants se déplacent par leur titre.
 - **Ruban MODÈLE** — *Esquisse* ; *Créer* : extrusion (un côté, symétrique, deux côtés), révolution,
   balayage, lissage, perçage (simple, lamé, fraisé, sur les points d'une esquisse), boîte, cylindre,
-  sphère, cône, tore, tuyau, ressort, nervure, gravure ; *Modifier* : tirer une face (Press Pull), congé,
+  sphère, cône, tore, tuyau, ressort, nervure, gravure, voile, solide englobant, remplissage de frontière
+  (le volume fermé par des corps et des surfaces, autour d'un point) ; *Modifier* : tirer une face (Press Pull), congé,
   chanfrein (arêtes désignées dans la vue, ou toutes), coque (faces retirées désignées), combiner,
-  dépouille, découpe par un plan, échelle ; *Disposer* : déplacer, miroir, répétition linéaire ou
-  circulaire ; *Configurer* : paramètres ; *Construire* : plans décalés et inclinés. L'extrusion va
+  dépouille, découpe par un plan, échelle ; le congé peut évoluer d'un rayon à un autre, le chanfrein être dissymétrique ; décaler des faces (planes ou cylindriques), supprimer des faces (le trou se
+  bouche, ou le corps devient une surface), remplacer une face par une surface qui traverse le corps, diviser un corps
+  (plan de construction, lignes d'esquisse, surface) ou une face, retirer un corps ; *Disposer* : déplacer, miroir,
+  répétition linéaire ou circulaire en une ou deux directions, répétition sur un chemin, aligner ; *Habiller* : apparence ;
+  *Configurer* : paramètres ; *Construire* : plans décalés et inclinés. L'extrusion va
   à une distance ou jusqu'à une face ; on y coche ou on clique les contours à prendre, et une poignée se
   tire dans la vue pour régler la distance (extrusion, Tirer). Plans, axes et points de construction :
   décalés, médians, par trois points, par l'axe d'un cylindre ; les axes servent aux révolutions et répétitions. Le perçage propose les
   tailles M2 à M12 (taraudé ou passage) : le filetage est cosmétique, dessiné dans la vue, absent du
   volume et du STEP. Une esquisse sur une face peut la suivre quand la pièce change.
-- **Surface** — extrusion, révolution, balayage, lissage et remplissage en surfaces sans volume ; ajuster par
-  un volume, prolonger, coudre (fermées : un volume), décaler, épaissir.
-- **Assemblage** — composants (une autre pièce `.json`, intégrée au fichier), liaisons rigide, pivot ou
-  glissière par une face de chaque corps, ancrage, animation d'une liaison (sans modifier la pièce), éclaté.
-- **Tôlerie** — tôle plane (épaisseur, rayon, facteur K), bord tombé, ourlet, pli le long d'une ligne ; dépliage
-  à l'écran, développé DXF (contour et lignes de pli sur leur calque), table de pliage en CSV.
-- **Soudures** — profilés (tube carré ou rond, cornière, plat) le long d'une ossature, coupés droits ou en
+- **Surface** — extrusion, révolution, balayage, lissage, remplissage, surface réglée et raccord entre deux séries
+  d'arêtes, en surfaces sans volume ; ajuster par un volume, prolonger, coudre (fermées : un volume), décaler, épaissir,
+  inverser la normale, découdre (une surface par face), détourer (refermer les trous d'une face).
+- **Assemblage** — composants (une autre pièce `.json`, intégrée au fichier), liaisons rigide, pivot, glissière,
+  cylindrique ou plan par une face de chaque corps, ou *telle quelle* (as-built : le corps reste où il est), limites
+  basse et haute, liaison commandée par une autre selon une loi (`x * -0.5` pour un engrenage, `x / 360 * 2` pour une vis,
+  `5 * sin(x)` pour une came), groupe rigide, ancrage, animation d'une liaison (sans modifier la pièce), éclaté ; **étude
+  de mouvement** : plusieurs liaisons ensemble, trajectoire d'un corps tracée dans la vue, contacts cherchés à chaque pas et
+  arrêt au premier, table en CSV, images en zip ; nomenclature en CSV (pièces identiques regroupées) ; export **URDF**
+  (zip : le robot et ses maillages).
+- **Tôlerie** — tôle plane (épaisseur, rayon, facteur K, ou une règle d'acier, d'alu ou d'inox), conversion d'une plaque
+  déjà modélisée, bord tombé seul ou en chaîne, ourlet, pli le long d'une ligne, perforation (grille carrée ou en quinconce
+  dans un contour) ; dépliage à l'écran, développé DXF (contour et lignes de pli sur leur calque), table de pliage en CSV.
+- **Plastique** — bossage (fût percé, dépouille, nervures), lèvre et rainure pour fermer deux demi-coques, repos, clip
+  (crochet flexible et son logement) ; une règle (paroi, dépouille, rayon) que le contrôle *Injection* vérifie.
+- **Soudures** — profilés (tube carré ou rond, cornière, plat, poutre IPE 80 à 200) le long d'une ossature, coupés droits ou en
   onglet ; liste de débit en CSV.
 - **Autres onglets** — *Insérer* : un STEP (référence pour dessiner autour, ou corps), un DXF ou un SVG comme
-  esquisse, une image de référence sur un plan, un maillage STL, OBJ ou 3MF (5000 triangles au plus), la
-  visserie M2 à M12 (vis CHC, vis H, écrou, rondelle) ; *Inspecter* : mesure, coupe, collisions, zébrures,
-  dépouille, courbure ; *Gérer* : paramètres (import et export CSV), table de configurations, unités (les
-  cotes acceptent `1in`, `2cm` ; l'unité choisie vaut pour les propriétés et le STEP) ; *Affichage* : vues
-  nommées, filtre de sélection (cliquer à travers une référence).
+  esquisse, une image de référence sur un plan, un maillage STL, OBJ, 3MF ou glTF (5000 triangles au plus), un nuage de
+  points XYZ, CSV, PTS ou PLY en texte (200 000 points gardés au plus), la visserie M2 à M12 (vis CHC, vis H, écrou,
+  rondelle) ; *Inspecter* : mesure, centre de gravité, coupe, collisions, rayon minimal et jonctions tangentes ou vives
+  tracées dans la vue, comparaison de deux corps, balayage d'un paramètre en CSV, zébrures, dépouille, courbure, reflets,
+  isocourbes, accessibilité depuis +Z ; *Gérer* : paramètres (import et export CSV, favoris, commentaires, ce que chacun
+  commande), table de configurations (valeurs et opérations suspendues), unités (les cotes acceptent `1in`, `2cm` ; l'unité
+  choisie vaut pour les propriétés et le STEP), propriétés de la pièce, matériaux ajoutés, points de reprise (gardés
+  jusqu'à la fermeture de la page), tout recalculer, script, réglages en fichier ; *Affichage* : regarder une face de
+  face, rotation continue, vues nommées, filtre de sélection (cliquer à travers une référence) ; *Rendu* : apparence d'un
+  corps ou d'une face (bibliothèque, couleur, métal, rugosité, opacité, matériau physique par corps), image PNG à la taille
+  voulue sans les aides de construction, fond transparent, toutes les vues enregistrées dans une archive.
+- **Plans et axes** — en plus des décalés, médians et par trois points : un plan le long d'un chemin, un plan tangent à un
+  cylindre, un axe perpendiculaire à une face, un point au centre d'un cylindre. Ctrl+C et Ctrl+V copient des opérations
+  (les renvois vers une opération copiée suivent la copie), Maj+R répète la dernière commande, le clic droit sur une
+  opération montre ce qu'elle cite et ce qui s'appuie sur elle.
 - **Sur téléphone** — mêmes outils, panneaux repliés d'entrée, ruban et frise qui défilent au doigt.
-- **Ruban ESQUISSE** (pendant l'édition) — ligne, rectangle (deux coins ou centré), cercle, arcs,
-  polygone, oblong, point, spline, texte (DejaVu Sans), projection d'arêtes du modèle ; ajuster, décaler,
-  congé et chanfrein de coin, construction, suppression, plan ; miroir, répétitions ; cotes (longueur, distance, horizontale,
-  verticale, rayon, diamètre, angle) et contraintes (horizontale, verticale, coïncidence, parallèles,
-  perpendiculaires, tangence, égalité, concentriques, milieu, symétrie, point sur, fixe), résolues
+- **Ruban ESQUISSE** (pendant l'édition) — ligne (ou par son milieu), rectangle (deux coins, centré, trois points,
+  arrondi), cercle (centre, deux ou trois points, tangent à deux ou trois courbes), arcs (dont tangent), polygone (inscrit,
+  circonscrit, par une arête), oblong (trois façons), ellipse, conique, courbe par équation, point, spline, texte (DejaVu
+  Sans), lignes de construction, bissectrice, tangente depuis un point, projection d'arêtes du modèle, intersection du
+  modèle avec le plan ; ajuster, prolonger, couper, décaler, congé et chanfrein de coin, échelle, déplacer ou copier
+  (Ctrl+C, Ctrl+V), construction, suppression, plan ; miroir, répétitions ; cotes (longueur, distance, horizontale,
+  verticale, rayon, diamètre, angle), pilotées au besoin, et contraintes (horizontale, verticale, coïncidence, parallèles,
+  perpendiculaires, tangence, égalité, concentriques, milieu, symétrie, point sur, fixe, colinéaires), auto-contrainte ;
+  bouts libres, peigne de courbure, DXF de l'esquisse ; résolues
   par le solveur de FreeCAD (planegcs). Les points accrochés sont partagés : les contours se ferment
   seuls. Un cercle dans un rectangle est un trou.
 - **Paramètres** — `L = 40`, puis `L/2`, `2*e + 1`, `sqrt(L^2 + l^2)` dans n'importe quelle cote.
@@ -300,7 +327,7 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
   centre de gravité, encombrement.
 - **Fichiers** — la pièce est un `.json` (la recette, rouvrable et modifiable) rangé dans le dossier
   des projets : *Enregistrer* remplace le fichier ouvert, *Enregistrer sous…* ne remplace jamais.
-  Un brouillon est gardé dans le navigateur. Export **STEP** (exact) et **STL** des corps visibles.
+  Un brouillon est gardé dans le navigateur. Export **STEP** (exact), **STL**, **3MF** et **OBJ** des corps visibles, et **DXF de la vue** (arêtes vues et cachées sur leurs calques).
   Dans *🗂 Projets…* de la visionneuse, une pièce `.json` s'ouvre dans la conception.
 
 **Solidité.** Une arête ou une face désignée est retrouvée par sa description (nature, direction, faces
@@ -347,11 +374,15 @@ Une esquisse est `{ type:"esquisse", plan:{ base:"XY", decalage:"0" }, elements,
 `{ type:"spline", pts }` et `{ type:"texte", p, contenu, h }`, où `p1`, `c`, `pts`… sont des identifiants de points. Un point fixé (`{ type:"fixe", a, x, y }`) accepte des expressions
 qui citent les paramètres ; dans l'interface, un double-clic sur la contrainte les règle.
 
-Limites connues : une esquisse ne coupe pas ses profils qui se croisent (un contour par boucle, ajuster
+Limites connues : une ellipse, une conique ou une courbe par équation sont des splines : leurs axes ne se cotent pas.
+La face supprimée est bouchée, pas refaite en prolongeant ses voisines : retirer un congé laisse une petite facette.
+Décaler ajoute de la matière sur une face plane ou cylindrique seulement. Remplacer une face coupe, sans prolonger. Un voile
+s'arrête à l'encombrement du corps. Le rendu est celui de la vue (WebGL, sans lancer de rayons). Les études n'ont pas de
+solveur : une loi ou une valeur par liaison, à chaque pas. Une esquisse ne coupe pas ses profils qui se croisent (un contour par boucle, ajuster
 d'abord) ; deux éléments identiques et symétriques peuvent s'échanger si la pièce change beaucoup (ce n'est
 pas un nommage topologique du noyau). Le développé d'une tôle ne vaut que pour des plis partant de la tôle de
 base ; un pli oblique garde une couronne à bouts droits. Les liaisons se résolvent une à une, dans l'ordre
-de l'historique : pas de solveur de mécanisme fermé. Sans lien (composant ou STEP pris depuis un fichier), une
+de l'historique : pas de solveur de mécanisme fermé ; l'URDF refuse les liaisons cylindrique et plan, qu'il ne sait pas dire. Sans lien (composant ou STEP pris depuis un fichier), une
 pièce insérée ne suit pas l'original.
 
 ### Exporter
@@ -464,7 +495,7 @@ WEB_3D/
 ├── test/                         bancs d'essai : exemples, pilotage, serveur
 └── vendor/                       bibliothèques, servies en local
     ├── three/                    three.js r186 + modules d'exemples (lecteurs
-    │                              STL, 3MF, OBJ, MTL, export glTF, fflate)
+    │                              STL, 3MF, OBJ, MTL, glTF, export glTF, fflate)
     ├── occt/                     occt-import-js 0.0.23 (+ occt-import-js.wasm)
     ├── replicad/                 replicad 1.2.0 + replicad-opencascadejs 1.1.0 (mode conception)
     ├── planegcs/                 @salusoft89/planegcs 1.3.0, solveur d'esquisse de FreeCAD
@@ -492,7 +523,7 @@ WEB_3D/
 | `js/pilote.js` | canal de pilotage côté page : relais entre onglets, panneau « Claude », cartes, interrupteur. **Copie** de `web_suite/lanceur/pilote.js`, à ne pas modifier ici |
 | `pilote.py` | canal de pilotage côté serveur : file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement. Copie de `web_suite/lanceur/pilote.py` |
 | `appairage.py` | le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste. Copie commune aux web tools |
-| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures), `banc-conception-retours.mjs` (désignation, mesure, boîtes de question, cube, maillage, échec de construction, script ; même lancement ; lancement commun dans `harnais-page.mjs`) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
+| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures), `banc-conception-retours.mjs` (désignation, mesure, boîtes de question, cube, maillage, échec de construction, script ; même lancement ; lancement commun dans `harnais-page.mjs`), `banc-conception-plus.mjs` (commandes ajoutées, sur le noyau, valeurs calculées à la main) et `banc-conception-plus-page.mjs` (les mêmes, par les vrais boutons) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 | `js/c1-expressions.js` | conception : paramètres et expressions des cotes (analyseur maison, jamais `eval`) |
 | `js/c2-esquisse.js` | conception : modèle d'esquisse, traduction pour le solveur planegcs, contours et trous, import DXF / SVG |
@@ -502,6 +533,10 @@ WEB_3D/
 | `js/c6-conception.js` | conception : démarrage de la page, ruban et recherche de commandes, navigateur, menus, panneau d'opération, paramètres, fichiers |
 | `js/c3c-references.js` | conception : retrouver une arête ou une face désignée quand la pièce a changé |
 | `js/c3b-ateliers.js` | conception : surface, assemblage, tôlerie, soudures, visserie, maillages |
+| `js/c3d-operations-plus.js` | conception : solides et surfaces ajoutés, plastique, conversion et perforation de tôle ; analyses (rayons, jonctions, comparaison, coupe, arêtes vues) |
+| `js/c2c-esquisse-plus.js` | conception : tracés et outils d'esquisse ajoutés (ellipse, équation, polygones, prolonger, couper, échelle, auto-contrainte, bouts libres, copier-coller) |
+| `js/c11-plus-ui.js` | conception : champs des opérations ajoutées, apparences, rendu, études de mouvement, exports, points de reprise |
+| `js/c12-exports.js` | conception : OBJ, 3MF, URDF, DXF, nomenclature, nuage de points, copie d'opérations ; sans écran, vérifiés sous Node |
 | `js/c9-ateliers-ui.js` | conception : champs et désignations des ateliers, poignée, animation, éclaté, développé, aides dessinées |
 | `js/c2b-outils-esquisse.js` | conception : ajuster, décaler, congé et chanfrein de coin, miroir, répétitions |
 | `js/c10-regles.js` | conception : le contrôle des règles vérifiables (esquisses contraintes, noms des paramètres, grille FDM) |
@@ -517,7 +552,7 @@ Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution.
 
 | Bibliothèque | Version | Licence | Rôle |
 | :--- | :--- | :--- | :--- |
-| [three.js](https://threejs.org) | r186 | MIT | rendu WebGL, lecteurs STL / 3MF / OBJ / MTL, export glTF |
+| [three.js](https://threejs.org) | r186 | MIT | rendu WebGL, lecteurs STL / 3MF / OBJ / MTL / glTF, export glTF |
 | [fflate](https://github.com/101arrowz/fflate) | livré avec three.js | MIT | décompression du 3MF (une archive ZIP) |
 | [occt-import-js](https://github.com/kovacsv/occt-import-js) | 0.0.23 | LGPL-2.1 | OpenCascade en WebAssembly : lecture STEP / IGES / BREP |
 | [replicad](https://replicad.xyz) | 1.2.0 | MIT | modélisation B-Rep du mode conception |

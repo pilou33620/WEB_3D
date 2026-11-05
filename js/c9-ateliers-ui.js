@@ -17,6 +17,7 @@ import { nomProjet } from "./11-projets.js";
 import { perimerCaches } from "./13-deplacement.js";
 import { repere, profils, dedans, axeConstruction } from "./c2-esquisse.js";
 import { VISSERIE } from "./c3b-ateliers.js";
+import { lireNuage } from "./c12-exports.js";
 import { demanderTexte, avertir } from "./c0-dialogues.js";
 
 const $ = (id) => document.getElementById(id);
@@ -121,6 +122,7 @@ export const DESIGNATIONS_UNIQUES = ["arete", "repereA", "repereB", "cylindreAxe
 export const AIDES_DESIGNATION = {
   arete:"Cliquez l'arête droite de la tôle.", repereA:"Cliquez une face plane ou cylindrique du corps fixe.",
   repereB:"Cliquez une face plane ou cylindrique du corps mobile.", cylindreAxe:"Cliquez une face cylindrique.",
+  aretes2:"Cliquez les arêtes du second côté, Échap pour finir.",
   sommets:"Cliquez les sommets du modèle.", contourClic:"Cliquez dans un contour de l'esquisse pour le prendre ou le retirer ; Échap pour finir.",
 };
 
@@ -145,6 +147,14 @@ export function clicAtelier(c, ev){
     if(!f) return message("Aucun contour ici.");
     const a = op.contours || [];
     op.contours = a.includes(f.cle) ? a.filter(x => x !== f.cle) : [...a, f.cle];
+    return true;
+  }
+  if(quoi === "aretes2"){
+    const p = c.areteSous(ev);
+    if(!p) return message("Aucune arête ici.");
+    const l = op.aretes2 || (op.aretes2 = []);
+    const i = l.findIndex(q => Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) < 1e-3);
+    if(i >= 0) l.splice(i, 1); else l.push(p);
     return true;
   }
   if(quoi === "arete"){
@@ -172,6 +182,8 @@ export function clicAtelier(c, ev){
     if(e?.type !== "cylindre") return message("Cette face n'est pas cylindrique.");
     op.cylindre = { point:arrondi(e.point), axe:e.axe.toArray(), rayon:e.rayon, hauteur:e.hauteur, centre:arrondi(e.centre), surf:arrondi(touche.point) };
     if("corps" in op) op.corps = touche.object.name;
+    /* Le point de construction se pose au centre du cylindre désigné. */
+    if(op.type === "point") ["x1", "y1", "z1"].forEach((k, i) => { op[k] = String(+e.centre.getComponent(i).toFixed(4)); });
     c.designer(null);
     return true;
   }
@@ -280,7 +292,7 @@ export function marquesAteliers(c, op){
     g.add(pointe);
   }
 }
-const CONTOURS_POSSIBLES = { extrusion:{ contours:1 }, revolution:{ contours:1 }, gravure:{ contours:1 }, surfRemplissage:{ contours:1 }, tole:{ contours:1 } };
+const CONTOURS_POSSIBLES = { extrusion:{ contours:1 }, revolution:{ contours:1 }, gravure:{ contours:1 }, surfRemplissage:{ contours:1 }, tole:{ contours:1 }, levre:{ contours:1 }, repos:{ contours:1 } };
 
 /* -----------------------------------------------------------------------------
    Ce que le noyau ne construit pas : axes, points, filetages, images
@@ -304,6 +316,12 @@ export function dessinerAides(c, g){
           new THREE.PointsMaterial({ color:0xf2c744, size:8, sizeAttenuation:false, depthTest:false }));
         p.raycast = () => {};
         g.add(p);
+      }else if(op.type === "nuage" && op.donnees){
+        const octets = Uint8Array.from(atob(op.donnees), x => x.charCodeAt(0));
+        const pts = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(octets.buffer), 3)),
+          new THREE.PointsMaterial({ color:0x8af0ff, size:v(op.taille ?? 2), sizeAttenuation:false }));
+        pts.raycast = () => {};
+        g.add(pts);
       }else if(op.type === "filetage" && op.cylindre && !op.modele){
         /* Cosmétique : des anneaux pointillés le long du cylindre, comme le trait fin d'un plan. */
         const cy = op.cylindre, axe = new THREE.Vector3(...cy.axe).normalize(), cen = new THREE.Vector3(...cy.centre);
@@ -376,7 +394,13 @@ export async function fichierAtelier(c, f, ext, lien = {}){
     insererOp(c, "composant", { nom:f.name.replace(/\.json$/i, ""), donnees:texte, tx:"0", ty:"0", tz:"0", rx:"0", ry:"0", rz:"0", ...lien });
     return true;
   }
-  if(["stl", "obj", "3mf"].includes(ext)){
+  if(["xyz", "csv", "pts", "ply", "txt"].includes(ext)){
+    const { points, reduit, total } = lireNuage(await f.text());
+    insererOp(c, "nuage", { nom:f.name, taille:"2", donnees:b64(new Uint8Array(points.buffer)) });
+    if(reduit) $("etatSel").textContent = `${total} points : un sur ${reduit} gardé, pour que la pièce reste légère.`;
+    return true;
+  }
+  if(["stl", "obj", "3mf", "glb", "gltf"].includes(ext)){
     /* Les lecteurs de la visionneuse donnent les triangles, quel que soit le format. */
     const { groupes } = await lireMaillages([f]);
     const tris = [];
@@ -574,7 +598,7 @@ export function brancherAteliers(c){
   $("bAnimer").onclick = (e) => {
     if(c.animation){ c.animation = false; return; }
     const r = e.currentTarget.getBoundingClientRect();
-    const liaisons = c.doc.operations.filter(o => o.type === "liaison" && o.mode !== "rigide");
+    const liaisons = c.doc.operations.filter(o => o.type === "liaison" && o.mode !== "rigide" && !o.pilote);
     if(!liaisons.length){ $("etatSel").textContent = "Aucune liaison pivot ou glissière à animer."; return; }
     c.menu(liaisons.map(o => ({ texte:o.nom, action:async () => {
       const t = await demanderTexte("Animer la liaison", "Valeur de départ, d'arrivée, nombre de pas", o.mode === "pivot" ? "0, 360, 24" : "0, 50, 20");

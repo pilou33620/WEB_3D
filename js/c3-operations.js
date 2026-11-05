@@ -20,6 +20,7 @@
 import { evaluateur, evaluerParametres, NOM_PARAMETRE } from "./c1-expressions.js";
 import { repere, versMonde, vec, profils, indexer, controlesSpline, axeConstruction } from "./c2-esquisse.js";
 import { ateliers, TYPES_ATELIERS } from "./c3b-ateliers.js";
+import { operationsPlus, TYPES_PLUS } from "./c3d-operations-plus.js";
 import { retrouver } from "./c3c-references.js";
 
 /* Les opérations, leur nom affiché et leur icône : l'historique et le ruban les lisent. */
@@ -519,18 +520,32 @@ const OPERATIONS = {
 
   conge(R, etat, op, ctx){
     const { v } = ctx;
-    const cible = corpsCible(etat, op.corps), rayon = v(op.rayon);
-    if(!(rayon > 0)) throw new Error("rayon positif");
+    const cible = corpsCible(etat, op.corps), r1 = v(op.rayon);
+    if(!(r1 > 0)) throw new Error("rayon positif");
+    /* Un second rayon : le congé évolue de l'un à l'autre le long de l'arête. */
+    const r2 = op.rayon2 !== undefined && String(op.rayon2).trim() !== "" ? v(op.rayon2) : null;
+    if(r2 !== null && !(r2 > 0)) throw new Error("second rayon positif");
+    const rayon = r2 === null ? r1 : [r1, r2];
     const forme = op.toutes ? cible.shape.fillet(rayon)
       : cible.shape.fillet(rayon, (e) => e.inList(designes(R, cible.shape, "aretes", op.aretes, op, ctx)));
     return remplacer(etat, cible, forme);
   },
   chanfrein(R, etat, op, ctx){
     const { v } = ctx;
-    const cible = corpsCible(etat, op.corps), d = v(op.distance);
-    if(!(d > 0)) throw new Error("distance positive");
-    const forme = op.toutes ? cible.shape.chamfer(d)
-      : cible.shape.chamfer(d, (e) => e.inList(designes(R, cible.shape, "aretes", op.aretes, op, ctx)));
+    const cible = corpsCible(etat, op.corps), d1 = v(op.distance);
+    if(!(d1 > 0)) throw new Error("distance positive");
+    /* Une seconde distance : un chanfrein dissymétrique ; le noyau compte la première depuis une face que toutes les arêtes bordent. */
+    const d2 = op.distance2 !== undefined && String(op.distance2).trim() !== "" ? v(op.distance2) : null;
+    if(d2 !== null && !(d2 > 0)) throw new Error("seconde distance positive");
+    let forme;
+    if(d2 !== null){
+      if(op.toutes) throw new Error("un chanfrein dissymétrique vise des arêtes désignées");
+      const aretes = designes(R, cible.shape, "aretes", op.aretes, op, ctx);
+      const porte = cible.shape.faces.find(f => { const bords = f.edges.map(e => e.hashCode); return aretes.every(a => bords.includes(a.hashCode)); });
+      if(!porte) throw new Error("les arêtes d'un chanfrein dissymétrique doivent border une même face");
+      forme = cible.shape.chamfer({ radius:{ distances:[d1, d2], selectedFace:(f) => f.inList([porte]) }, filter:new R.EdgeFinder().inList(aretes) });
+    }else forme = op.toutes ? cible.shape.chamfer(d1)
+      : cible.shape.chamfer(d1, (e) => e.inList(designes(R, cible.shape, "aretes", op.aretes, op, ctx)));
     return remplacer(etat, cible, forme);
   },
   coque(R, etat, op, ctx){
@@ -585,9 +600,15 @@ const OPERATIONS = {
     }else pas = v(op.pas);
     const copies = [];
     let suite = etat;
-    for(let i = 1; i < n; i++){
-      const copie = op.mode === "circulaire" ? cible.shape.clone().rotate(pas * i, pivot, axe)
-                                            : cible.shape.clone().translate(axe.map(c => c * pas * i));
+    /* Une seconde direction : une grille, ou plusieurs tours autour de l'axe décalés le long d'un autre. */
+    const n2 = op.axe2 ? Math.round(v(op.nombre2 ?? 1)) : 1;
+    if(!(n2 >= 1 && n * n2 <= 500)) throw new Error("500 exemplaires au plus, deux directions comprises");
+    const axe2 = op.axe2 ? AXES[op.axe2] : null, pas2 = op.axe2 ? v(op.pas2 ?? 0) : 0;
+    for(let j = 0; j < n2; j++) for(let i = 0; i < n; i++){
+      if(!i && !j) continue;
+      let copie = op.mode === "circulaire" ? cible.shape.clone().rotate(pas * i, pivot, axe)
+                                           : cible.shape.clone().translate(axe.map(c => c * pas * i));
+      if(j) copie = copie.translate(axe2.map(c => c * pas2 * j));
       if(op.separe) suite = nouveauCorps(suite, copie);
       else copies.push(copie);
     }
@@ -609,9 +630,10 @@ const OPERATIONS = {
  * Rejoue l'historique. `cache` (tableau gardé par l'appelant) évite de refaire
  * le début inchangé. Rend { corps, etats:{ idOp:{ erreur? } }, erreursParametres }.
  */
-Object.assign(TYPES, TYPES_ATELIERS);
-Object.assign(OPERATIONS, ateliers({ corpsCible, remplacer, nouveauCorps, appliquer, chercherEsquisse, plusProches, planNoyau,
-  tracer, dessinRegions, revolutionProfil, orienter, construire, designes }));
+Object.assign(TYPES, TYPES_ATELIERS, TYPES_PLUS);
+const AIDES_OPERATIONS = { corpsCible, remplacer, nouveauCorps, appliquer, chercherEsquisse, plusProches, planNoyau,
+  tracer, dessinRegions, revolutionProfil, orienter, construire, designes, faceSuivie };
+Object.assign(OPERATIONS, ateliers(AIDES_OPERATIONS), operationsPlus(AIDES_OPERATIONS));
 
 /** options.plat : les plis de tôle restent à plat (développé). */
 export async function construire(R, doc, cache = [], oc = null, options = {}){

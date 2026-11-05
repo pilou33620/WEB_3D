@@ -73,6 +73,8 @@ function intersections(f, g){
   return res.filter(p => surCourbe(f, p) !== null && surCourbe(g, p) !== null);
 }
 
+export { forme as formeCourbe, intersections as intersectionsCourbes };
+
 /* -----------------------------------------------------------------------------
    Ajuster : retire le morceau de courbe compris entre deux intersections
    --------------------------------------------------------------------------- */

@@ -139,6 +139,8 @@ export function appliquerConfiguration(doc, nom){
   const c = (doc.configurations || []).find(x => x.nom === nom);
   if(!c) return false;
   for(const p of doc.parametres) if(c.valeurs[p.nom] !== undefined) p.expr = c.valeurs[p.nom];
+  /* Une configuration qui dit ses opérations suspendues les règle toutes ; les autres n'y touchent pas. */
+  if(c.suspendues) for(const o of doc.operations || []){ if(c.suspendues.includes(o.id)) o.suspendue = true; else delete o.suspendue; }
   doc.configActive = nom;
   return true;
 }

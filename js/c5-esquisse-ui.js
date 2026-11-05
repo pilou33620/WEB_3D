@@ -22,6 +22,9 @@
 import * as THREE from "three";
 import { repere, indexer, nouvelId, resoudre, milieuArc, rayonDe, cercle3Points, echantillonSpline, COTES, NOMS_CONTRAINTES } from "./c2-esquisse.js";
 import { ajuster, decaler, casserCoin, miroir, repetitionRect, repetitionCirc } from "./c2b-outils-esquisse.js";
+import { ajouterEllipse, ajouterConique, ajouterCourbeEquation, ajouterRectangle3Points, ajouterRectangleArrondi, ajouterPolygone, ajouterCercle3Points,
+         ajouterCercle2Points, ajouterLigneMilieu, ajouterArcTangent, prolonger, couper, echelleEsquisse, transformerEsquisse, copierEntites, collerEntites,
+         autoContraindre, boutsLibres, pointsTangence, bissectrice } from "./c2c-esquisse-plus.js";
 import { echapper } from "./05-arbre.js";
 import { demander, demanderTexte } from "./c0-dialogues.js";
 
@@ -374,7 +377,221 @@ export class EditeurEsquisse {
         fini();
         return;
       }
+      case "oblongCentre": {     // le centre de l'oblong, un bout, puis la largeur
+        if(c.length < 2){ c.push(m); return; }
+        const A = { x:2 * c[0].x - c[1].x, y:2 * c[0].y - c[1].y, id:null };
+        modifier(() => this.oblong(A, c[1], m));
+        fini();
+        return;
+      }
+      case "oblongHorsTout": {   // les deux bouts extrêmes de l'oblong, puis la largeur
+        if(c.length < 2){ c.push(m); return; }
+        const L = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y);
+        const u = { x:(c[1].x - c[0].x) / (L || 1), y:(c[1].y - c[0].y) / (L || 1) };
+        const w = Math.abs((m.x - c[0].x) * -u.y + (m.y - c[0].y) * u.x);
+        if(2 * w >= L){ this.statut("L'oblong doit être plus long que large."); return; }
+        modifier(() => this.oblong({ x:c[0].x + u.x * w, y:c[0].y + u.y * w, id:null }, { x:c[1].x - u.x * w, y:c[1].y - u.y * w, id:null }, m));
+        fini();
+        return;
+      }
+      case "cercle3": {
+        if(c.length < 2){ c.push(m); return; }
+        if(!cercle3Points(c[0], c[1], m)){ this.statut("Ces trois points sont alignés."); return; }
+        modifier(() => ajouterCercle3Points(this.esq, c[0], c[1], m));
+        fini();
+        return;
+      }
+      case "cercle2": {
+        if(!c.length){ c.push(m); return; }
+        modifier(() => ajouterCercle2Points(this.esq, c[0], m));
+        fini();
+        return;
+      }
+      case "rectangle3": {
+        if(c.length < 2){ c.push(m); return; }
+        modifier(() => ajouterRectangle3Points(this.esq, c[0], c[1], m));
+        fini();
+        return;
+      }
+      case "rectangleArrondi": {
+        if(!c.length){ c.push(m); return; }
+        const coin = c[0];
+        fini();
+        this.nombres("Rayon des coins (mm) :", "2", 1).then((r) => { if(r) this.transformer(() => ajouterRectangleArrondi(this.esq, coin, m, r[0])); });
+        return;
+      }
+      case "polygoneCirc": case "polygoneArete": {
+        if(!c.length){ c.push(m); return; }
+        modifier(() => ajouterPolygone(this.esq, c[0], m, this.nbCotes, this.outil === "polygoneCirc" ? "circonscrit" : "arete"));
+        fini();
+        return;
+      }
+      case "ellipse": {
+        if(c.length < 2){ c.push(m); return; }
+        const a = Math.atan2(c[1].y - c[0].y, c[1].x - c[0].x);
+        const b = Math.abs((m.x - c[0].x) * -Math.sin(a) + (m.y - c[0].y) * Math.cos(a));
+        modifier(() => ajouterEllipse(this.esq, c[0], c[1], b));
+        fini();
+        return;
+      }
+      case "conique": {
+        if(c.length < 2){ c.push(m); return; }
+        const [a, b] = c;
+        fini();
+        this.nombres("Rho (entre 0 et 1 ; 0,5 : parabole) :", "0.5", 1).then((r) => { if(r) this.transformer(() => { ajouterConique(this.esq, a, b, m, r[0]); }); });
+        return;
+      }
+      case "ligneMilieu": case "ligneConstruction": {
+        if(!c.length){ c.push(m); return; }
+        if(this.outil === "ligneMilieu") modifier(() => ajouterLigneMilieu(this.esq, c[0], m));
+        else modifier(() => this.ligne(this.point(c[0]), this.point(m), { constr:true }));
+        fini();
+        return;
+      }
+      case "arcTangent": {
+        if(!c.length){
+          if(!m.id){ this.statut("Partez du bout d'une ligne ou d'un arc."); return; }
+          c.push(m);
+          return;
+        }
+        let cree = null;
+        modifier(() => { cree = ajouterArcTangent(this.esq, c[0].id, m); });
+        if(!cree) this.statut("Pas d'arc tangent ici : ce point n'est pas un bout de courbe, ou le point d'arrivée est dans le prolongement.");
+        fini();
+        return;
+      }
+      case "prolonger": case "couper": {
+        const e = this.designer(ev);
+        if(!e || e.type === "point"){ this.statut(this.outil === "couper" ? "Cliquez la courbe à couper." : "Cliquez la ligne, près du bout à prolonger."); return; }
+        this.transformer(() => this.outil === "couper" ? couper(this.esq, e.id) : prolonger(this.esq, e.id, m));
+        return;
+      }
     }
+  }
+
+  /* ==========================================================================
+     Commandes ajoutées : modifier la sélection, contraindre d'un coup
+     ========================================================================== */
+  async echelle(){
+    if(!this.selection.size){ this.statut("Sélectionnez les éléments à mettre à l'échelle."); return; }
+    const v = await this.nombres("Facteur, centre X (mm), centre Y (mm) :", "2, 0, 0", 3);
+    if(v) this.transformer(() => echelleEsquisse(this.esq, [...this.selection], v[0], { x:v[1], y:v[2] }));
+  }
+
+  /** Déplacer ou copier, avec rotation possible ; `copie` : l'original reste. */
+  async deplacerCopier(copie){
+    if(!this.selection.size){ this.statut("Sélectionnez les éléments à déplacer."); return; }
+    const v = await this.nombres("Déplacement X (mm), Y (mm), rotation (°), centre X (mm), centre Y (mm) :", "10, 0, 0, 0, 0", 5);
+    if(v) this.transformer(() => { transformerEsquisse(this.esq, [...this.selection], { dx:v[0], dy:v[1], angle:v[2], cx:v[3], cy:v[4], copie }); return null; });
+  }
+
+  copier(){
+    if(!this.selection.size) return false;
+    this.pressePapier = copierEntites(this.esq, [...this.selection]);
+    this.statut(`${this.pressePapier.courbes.length + this.pressePapier.points.length} élément(s) copié(s) : Ctrl+V pour coller.`);
+    return true;
+  }
+
+  coller(){
+    if(!this.pressePapier) return false;
+    const pas = this.ctx.vue.rayonModele ? this.ctx.vue.rayonModele / 20 : 5;
+    this.transformer(() => { collerEntites(this.esq, this.pressePapier, { dx:pas, dy:-pas }); return null; });
+    return true;
+  }
+
+  /** Le dessin dit déjà ce qu'il veut : points confondus, lignes droites. Refusé en bloc si le solveur n'en veut pas. */
+  autoContraindre(){
+    let n = 0;
+    this.transformer(() => { n = autoContraindre(this.esq); return null; });
+    this.statut(n ? `${n} contrainte(s) posée(s).` : "Aucune contrainte à ajouter.");
+  }
+
+  /** Sélectionne ce qui empêche un contour de se fermer. */
+  boutsLibres(){
+    const b = boutsLibres(this.esq);
+    this.selection = new Set(b);
+    this.redessiner();
+    this.statut(b.length ? `${b.length} bout(s) libre(s) : sélectionnés dans la vue.` : "Aucun bout libre : toutes les chaînes sont fermées.");
+  }
+
+  /** La cote choisie cesse de commander, ou recommande. */
+  basculerPilotee(){
+    const { cotes } = this.choisis();
+    if(!cotes.length){ this.statut("Sélectionnez une cote."); return; }
+    this.transformer(() => {
+      for(const id of cotes){ const k = this.esq.contraintes.find(x => x.id === id); k.pilotee = !k.pilotee; if(!k.pilotee) delete k.pilotee; }
+      return null;
+    });
+  }
+
+  /** Une cote de cercle ou d'arc passe du rayon au diamètre, et réciproquement, à valeur égale sur la pièce. */
+  basculerRayon(){
+    const { cotes } = this.choisis();
+    const liste = cotes.map(id => this.esq.contraintes.find(x => x.id === id)).filter(k => k.type === "rayon" || k.type === "diametre");
+    if(!liste.length){ this.statut("Sélectionnez une cote de rayon ou de diamètre."); return; }
+    this.transformer(() => {
+      for(const k of liste){
+        const num = estNombre(k.expr), val = num ? parseFloat(String(k.expr).replace(",", ".")) : null, enRayon = k.type === "diametre";
+        k.expr = num ? String(enRayon ? val / 2 : val * 2) : enRayon ? `(${k.expr}) / 2` : `2 * (${k.expr})`;
+        k.type = enRayon ? "rayon" : "diametre";
+      }
+      return null;
+    });
+  }
+
+  async courbeEquation(){
+    const r = await demander("Courbe par équation", [{ nom:"x(t)", valeur:"20 * cos(t)" }, { nom:"y(t)", valeur:"10 * sin(t)" }, { nom:"t de", valeur:"0" }, { nom:"t à", valeur:"180" }, { nom:"Nombre de pas", valeur:"48" }],
+      ([, , de, a, pas]) => [de, a, pas].every(x => { try{ return Number.isFinite(this.v(x)); }catch(_){ return false; } }) ? null : "Les bornes et le nombre de pas sont des nombres.");
+    if(!r) return;
+    const valeur = (n) => this.v(n);
+    this.transformer(() => { ajouterCourbeEquation(this.esq, { x:r[0], y:r[1], de:this.v(r[2]), a:this.v(r[3]), pas:Math.round(this.v(r[4])) }, valeur); return null; });
+  }
+
+  /** Une ligne de construction entre deux lignes, sur leur bissectrice. */
+  bissectrice(){
+    const { lignes } = this.choisis();
+    if(lignes.length !== 2){ this.statut("Sélectionnez deux lignes."); return; }
+    const b = bissectrice(this.esq, lignes[0].id, lignes[1].id);
+    if(!b){ this.statut("Ces deux lignes sont parallèles : elles n'ont pas de bissectrice."); return; }
+    this.transformer(() => { this.ligne(this.point({ ...b.o, id:null }, { constr:true }), this.point({ ...b.fin, id:null }, { constr:true }), { constr:true }); return null; });
+  }
+
+  /** Une droite tangente à un cercle ou un arc, depuis un point choisi : contrainte, donc elle suit. */
+  tangentePoint(){
+    const { points:P, courbes:C } = this.choisis();
+    if(P.length !== 1 || C.length !== 1){ this.statut("Sélectionnez un point et un cercle ou un arc."); return; }
+    const idx = indexer(this.esq), t = pointsTangence(P[0], idx.get(C[0].c), rayonDe(idx, C[0]));
+    if(!t.length){ this.statut("Ce point n'est pas à l'extérieur du cercle."); return; }
+    this.transformer(() => {
+      const id = this.ligne(P[0].id, this.point({ ...t[0], id:null }));
+      this.contrainte({ type:"tangente", a:id, b:C[0].id });
+      return null;
+    });
+  }
+
+  /** Des cercles sélectionnés, ou un cercle neuf, tangents à ce qui est choisi : le solveur trouve la place. */
+  cercleTangent(){
+    const { lignes:L, courbes:C } = this.choisis();
+    const appuis = [...L, ...C];
+    if(appuis.length < 2 || appuis.length > 3){ this.statut("Sélectionnez deux ou trois lignes ou courbes : le cercle leur sera tangent."); return; }
+    const idx = indexer(this.esq);
+    const milieux = appuis.map(e => e.type === "ligne" ? { x:(idx.get(e.p1).x + idx.get(e.p2).x) / 2, y:(idx.get(e.p1).y + idx.get(e.p2).y) / 2 } : idx.get(e.c));
+    const m = { x:milieux.reduce((s, q) => s + q.x, 0) / milieux.length, y:milieux.reduce((s, q) => s + q.y, 0) / milieux.length };
+    const r = Math.max(1, milieux.reduce((s, q) => s + Math.hypot(q.x - m.x, q.y - m.y), 0) / milieux.length / 2);
+    this.transformer(() => {
+      const c = nouvelId(this.esq, "c");
+      this.esq.elements.push({ id:c, type:"cercle", c:this.point({ ...m, id:null }), r });
+      for(const e of appuis) this.contrainte({ type:"tangente", a:e.id, b:c });
+      return null;
+    });
+  }
+
+  /** Le peigne de courbure des splines de l'esquisse, tant qu'il est allumé. */
+  basculerPeigne(){
+    this.peigne = !this.peigne;
+    this.redessiner();
+    this.statut(this.peigne ? "Peigne de courbure : plus la dent est longue, plus la courbe tourne ; un saut trahit une rupture." : "");
+    return this.peigne;
   }
 
   /** Termine la spline en cours (Entrée, Échap ou changement d'outil). */
@@ -574,6 +791,9 @@ export class EditeurEsquisse {
       case "parallele": case "perpendiculaire":
         if(L.length === 2 && els.length === 2) k = [{ type, a:L[0].id, b:L[1].id }]; else aide = "Sélectionnez deux lignes.";
         break;
+      case "colineaire":
+        if(L.length === 2 && els.length === 2) k = [{ type, a:L[0].id, b:L[1].id }]; else aide = "Sélectionnez deux lignes.";
+        break;
       case "tangente":
         if(els.length === 2 && C.length >= 1 && !P.length) k = [{ type, a:id(els[0]), b:id(els[1]) }];
         else aide = "Sélectionnez une ligne et un cercle ou un arc, ou deux courbes.";
@@ -715,7 +935,7 @@ export class EditeurEsquisse {
      ========================================================================== */
   saisir(id){
     this.annulerSaisie();
-    const k = this.esq.contraintes.find(c => c.id === id);
+    const k = this.esq?.contraintes.find(c => c.id === id);      // appelée à l'image suivante : l'esquisse a pu se fermer entre-temps
     const et = this.cotes.get(id);
     if(!k || !et) return;
     const champ = document.createElement("input");
@@ -844,9 +1064,40 @@ export class EditeurEsquisse {
     pts.renderOrder = 11;
     this.groupe.add(pts);
 
+    if(this.peigne) this.dessinerPeigne(idx);
     this.majCotes(idx, conflits);
     this.ctx.surListe?.();
     vue.invalider();
+  }
+
+  /** Le peigne de courbure : une dent le long de la normale, proportionnelle à la courbure locale. */
+  dessinerPeigne(idx){
+    for(const e of this.esq.elements){
+      if(e.type !== "spline") continue;
+      const q = echantillonSpline(e.pts.map(id => { const p = idx.get(id); return [p.x, p.y]; }));
+      const dents = [];
+      let kMax = 0;
+      const ks = q.map((p, i) => {
+        if(i === 0 || i === q.length - 1) return null;
+        const a = q[i - 1], b = q[i + 1], u = [p[0] - a[0], p[1] - a[1]], w = [b[0] - p[0], b[1] - p[1]];
+        const c = u[0] * w[1] - u[1] * w[0], n = Math.hypot(...u) * Math.hypot(...w) * Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const k = n > 1e-12 ? 2 * c / n : 0, t = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        kMax = Math.max(kMax, Math.abs(k));
+        return { p, k, n:[-(b[1] - a[1]) / t, (b[0] - a[0]) / t] };
+      });
+      const f = kMax > 1e-9 ? this.echelle * 0.2 / kMax : 0;
+      const bord = [];
+      for(const d of ks){
+        if(!d) continue;
+        const bout = { x:d.p[0] + d.n[0] * d.k * f, y:d.p[1] + d.n[1] * d.k * f };
+        dents.push(new THREE.Vector3(d.p[0], d.p[1], 0), new THREE.Vector3(bout.x, bout.y, 0));
+        bord.push(bout);
+      }
+      const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(dents), new THREE.LineBasicMaterial({ color:0xc678dd, transparent:true, opacity:0.7, depthTest:false }));
+      l.renderOrder = 10;
+      this.groupe.add(l);
+      if(bord.length > 1) this.groupe.add(this.ligne3(bord, 0xc678dd));
+    }
   }
 
   dessinerApercu(m){
@@ -857,7 +1108,25 @@ export class EditeurEsquisse {
     const cercle = (ce, r, a1 = 0, bal = TAU) => Array.from({ length:49 }, (_, i) => ({ x:ce.x + r * Math.cos(a1 + bal * i / 48), y:ce.y + r * Math.sin(a1 + bal * i / 48) }));
     switch(this.outil){
       case "spline": A(echantillonSpline([...c, m].map(p => [p.x, p.y])).map(([x, y]) => ({ x, y }))); break;
-      case "ligne": A([c[0], m]); break;
+      case "ligne": case "ligneConstruction": case "arcTangent": case "cercle2Apercu": A([c[0], m]); break;
+      case "ligneMilieu": A([{ x:2 * c[0].x - m.x, y:2 * c[0].y - m.y }, m]); break;
+      case "cercle2": A(cercle({ x:(c[0].x + m.x) / 2, y:(c[0].y + m.y) / 2 }, Math.hypot(m.x - c[0].x, m.y - c[0].y) / 2)); break;
+      case "cercle3": {
+        if(c.length < 2){ A([c[0], m]); break; }
+        const k = cercle3Points(c[0], c[1], m);
+        if(k) A(cercle(k.c, k.r));
+        break;
+      }
+      case "rectangle3": case "conique": case "oblongCentre": case "oblongHorsTout": A([...c, m]); break;
+      case "rectangleArrondi": A([c[0], { x:m.x, y:c[0].y }, m, { x:c[0].x, y:m.y }, c[0]]); break;
+      case "polygoneCirc": case "polygoneArete": A([c[0], m]); break;
+      case "ellipse": {
+        if(c.length < 2){ A([c[0], m]); break; }
+        const a = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y), t = Math.atan2(c[1].y - c[0].y, c[1].x - c[0].x);
+        const b = Math.abs((m.x - c[0].x) * -Math.sin(t) + (m.y - c[0].y) * Math.cos(t));
+        A(Array.from({ length:49 }, (_, i) => { const u = i / 48 * TAU, x = a * Math.cos(u), y = b * Math.sin(u); return { x:c[0].x + x * Math.cos(t) - y * Math.sin(t), y:c[0].y + x * Math.sin(t) + y * Math.cos(t) }; }));
+        break;
+      }
       case "rectangle": A([c[0], { x:m.x, y:c[0].y }, m, { x:c[0].x, y:m.y }, c[0]]); break;
       case "rectangleCentre": { const o = { x:2 * c[0].x - m.x, y:2 * c[0].y - m.y }; A([o, { x:m.x, y:o.y }, m, { x:o.x, y:m.y }, o]); break; }
       case "cercle": A(cercle(c[0], Math.hypot(m.x - c[0].x, m.y - c[0].y))); break;
@@ -920,12 +1189,13 @@ export class EditeurEsquisse {
         this.cotes.set(k.id, et);
       }
       let val = NaN;
-      try{ val = this.v(k.expr); }catch(_){ /* affichée telle quelle, en rouge */ }
+      try{ val = k.pilotee ? this.mesureCote(idx, k) : this.v(k.expr); }catch(_){ /* affichée telle quelle, en rouge */ }
       const prefixe = { diametre:"⌀", rayon:"R", angle:"∠", distanceX:"↔ ", distanceY:"↕ " }[k.type] || "";
       const unite = k.type === "angle" ? "°" : "";
-      et.textContent = prefixe + (estNombre(k.expr) ? fmt(val) : `${k.expr} = ${Number.isFinite(val) ? fmt(val) : "?"}`) + unite;
-      et.title = `${NOMS_CONTRAINTES[k.type]} — double-clic pour modifier`;
+      et.textContent = k.pilotee ? `(${prefixe}${fmt(val)}${unite})` : prefixe + (estNombre(k.expr) ? fmt(val) : `${k.expr} = ${Number.isFinite(val) ? fmt(val) : "?"}`) + unite;
+      et.title = k.pilotee ? `${NOMS_CONTRAINTES[k.type]} pilotée : elle se lit sur le dessin et ne le commande pas` : `${NOMS_CONTRAINTES[k.type]} — double-clic pour modifier`;
       et.classList.toggle("sel", this.selection.has(k.id));
+      et.classList.toggle("pilotee", !!k.pilotee);
       et.classList.toggle("conflit", conflits.has(k.id) || !Number.isFinite(val));
       et.ancre = this.ancreCote(idx, k);
     }
@@ -959,6 +1229,27 @@ export class EditeurEsquisse {
     }
     for(const [id, et] of this.cotes) if(!vues.has(id)){ et.remove(); this.cotes.delete(id); }
     this.placerCotes();
+  }
+
+  /** La valeur d'une cote lue sur la géométrie : celle d'une cote pilotée. */
+  mesureCote(idx, k){
+    const P = (id) => idx.get(id);
+    const d = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+    if(k.type === "longueur"){ const l = P(k.a); return d(P(l.p1), P(l.p2)); }
+    if(k.type === "rayon") return rayonDe(idx, P(k.a));
+    if(k.type === "diametre") return 2 * rayonDe(idx, P(k.a));
+    if(k.type === "distanceX") return Math.abs(P(k.b).x - P(k.a).x);
+    if(k.type === "distanceY") return Math.abs(P(k.b).y - P(k.a).y);
+    if(k.type === "angle"){
+      const a = P(k.a), b = P(k.b), u = [P(a.p2).x - P(a.p1).x, P(a.p2).y - P(a.p1).y], w = [P(b.p2).x - P(b.p1).x, P(b.p2).y - P(b.p1).y];
+      return Math.abs(Math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1])) * 180 / Math.PI;
+    }
+    const a = P(k.a), b = P(k.b);
+    if(b.type === "ligne"){
+      const u = P(b.p1), w = P(b.p2);
+      return Math.abs((w.x - u.x) * (u.y - a.y) - (u.x - a.x) * (w.y - u.y)) / d(u, w);
+    }
+    return d(a, b);
   }
 
   ancreCote(idx, k){
@@ -1039,6 +1330,21 @@ export class EditeurEsquisse {
       ajuster:"Ajuster : cliquez le morceau de courbe à retirer.",
       spline:"Spline : cliquez les points ; Entrée ou Échap pour finir.",
       texte:"Texte : cliquez le point d'ancrage (bas gauche).",
+      oblongCentre:"Oblong par son centre : centre, un des deux centres d'arc, puis la largeur.",
+      oblongHorsTout:"Oblong hors tout : les deux bouts extrêmes, puis la largeur.",
+      cercle3:"Cercle : trois points de son contour.",
+      cercle2:"Cercle : les deux bouts d'un diamètre.",
+      rectangle3:"Rectangle incliné : les deux bouts d'un côté, puis sa hauteur.",
+      rectangleArrondi:"Rectangle arrondi : deux coins, puis le rayon.",
+      polygoneCirc:`Polygone circonscrit à ${this.nbCotes} côtés (touches 3 à 9) : centre, puis le milieu d'un côté.`,
+      polygoneArete:`Polygone à ${this.nbCotes} côtés (touches 3 à 9) : les deux bouts d'un côté.`,
+      ellipse:"Ellipse : centre, bout du grand axe, puis la largeur.",
+      conique:"Conique : les deux bouts, puis le sommet du triangle ; rho ensuite.",
+      ligneMilieu:"Ligne par son milieu : le milieu, puis un bout.",
+      ligneConstruction:"Ligne de construction : deux points.",
+      arcTangent:"Arc tangent : le bout d'une ligne ou d'un arc, puis le point d'arrivée.",
+      prolonger:"Prolonger : cliquez la ligne près du bout qui doit rejoindre la courbe suivante.",
+      couper:"Couper : cliquez la courbe à couper à ses intersections, sans rien retirer.",
     };
     this.ctx.surStatut(message || aides[this.outil] || "Cliquez pour sélectionner (Maj pour ajouter), glissez un point pour le déplacer.");
   }

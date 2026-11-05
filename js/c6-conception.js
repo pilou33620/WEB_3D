@@ -39,6 +39,7 @@ import { ANALYSES, appliquerAnalyse } from "./c8-analyses.js";
 import { controlerRegles, PROCEDES } from "./c10-regles.js";
 import { champsAteliers, defautsAteliers, brancherAteliers, clicAtelier, poigneeBas, marquesAteliers, dessinerAides,
          fichierAtelier, appliquerEclate, verifierLiens, DESIGNATIONS_UNIQUES, AIDES_DESIGNATION } from "./c9-ateliers-ui.js";
+import { champsPlus, defautsPlus, completerChamps, brancherPlus, actionsEsquisse, apresAffichage, copierOperations, collerOperations, matiereDe } from "./c11-plus-ui.js";
 import { init_planegcs_module, GcsWrapper } from "../vendor/planegcs/index.js";
 
 const $ = (id) => document.getElementById(id);
@@ -146,9 +147,9 @@ const CHAMPS = {
     { cle:"origine", type:"case", nom:"Par rapport à l'origine (sinon le centre)" }, { cle:"copie", type:"case", nom:"Copie (nouveau corps)" }],
   tirer:[NOM, { cle:"corps", type:"corps", nom:"Corps" }, { cle:"face", type:"designer", nom:"Face", quoi:"faceTiree" },
     { cle:"distance", type:"expr", nom:"Distance (mm, négative : enlève)" }],
-  conge:[NOM, { cle:"corps", type:"corps", nom:"Corps" }, { cle:"rayon", type:"expr", nom:"Rayon (mm)" },
+  conge:[NOM, { cle:"corps", type:"corps", nom:"Corps" }, { cle:"rayon", type:"expr", nom:"Rayon (mm)" }, { cle:"rayon2", type:"expr", nom:"Rayon d'arrivée (mm, vide : constant)", vide:true },
     { cle:"toutes", type:"case", nom:"Toutes les arêtes" }, { cle:"aretes", type:"designer", nom:"Arêtes", quoi:"aretes", si:(o) => !o.toutes }],
-  chanfrein:[NOM, { cle:"corps", type:"corps", nom:"Corps" }, { cle:"distance", type:"expr", nom:"Distance (mm)" },
+  chanfrein:[NOM, { cle:"corps", type:"corps", nom:"Corps" }, { cle:"distance", type:"expr", nom:"Distance (mm)" }, { cle:"distance2", type:"expr", nom:"Seconde distance (mm, vide : égale)", vide:true },
     { cle:"toutes", type:"case", nom:"Toutes les arêtes" }, { cle:"aretes", type:"designer", nom:"Arêtes", quoi:"aretes", si:(o) => !o.toutes }],
   coque:[NOM, { cle:"corps", type:"corps", nom:"Corps" }, { cle:"epaisseur", type:"expr", nom:"Épaisseur (mm)" },
     { cle:"faces", type:"designer", nom:"Faces retirées", quoi:"faces" }, { cle:"exterieur", type:"case", nom:"Épaisseur vers l'extérieur" }],
@@ -172,7 +173,8 @@ const CHAMPS = {
 };
 
 /* Les ateliers apportent leurs champs (le plan de construction y gagne ses autres modes). */
-Object.assign(CHAMPS, champsAteliers({ NOM, MODE, CIBLE, POSITION }));
+Object.assign(CHAMPS, champsAteliers({ NOM, MODE, CIBLE, POSITION }), champsPlus({ NOM, MODE, CIBLE }));
+completerChamps(CHAMPS);
 
 function nouvelleOperation(type, ctrl){
   const esquisses = ctrl.doc.operations.filter(o => o.type === "esquisse");
@@ -182,6 +184,7 @@ function nouvelleOperation(type, ctrl){
   const P = { x:"0", y:"0", z:"0" };
   const defauts = {
     ...defautsAteliers({ derniere, avant:esquisses[esquisses.length - 2]?.id || "", mode, P, premierCorps:ctrl.nomsCorps[0] || "" }),
+    ...defautsPlus({ derniere, mode }),
     extrusion:{ esquisse:derniere, distance:"10", sens:"un", operation:mode, corps:"" },
     revolution:{ esquisse:derniere, axe:"y", angle:"360", operation:mode, corps:"" },
     balayage:{ esquisse:esquisses[esquisses.length - 2]?.id || "", chemin:derniere, operation:mode, corps:"" },
@@ -341,6 +344,7 @@ class Conception {
       repRect:() => this.editeur.repetition("rect"),
       repCirc:() => this.editeur.repetition("circ"),
       projeter:() => this.designer(this.designation === "projeter" ? null : "projeter"),
+      ...actionsEsquisse(this),
     };
     for(const b of document.querySelectorAll("#ruban [data-action]")) b.onclick = () => actions[b.dataset.action]();
     for(const b of document.querySelectorAll(".ong-ruban")) b.onclick = () => this.ongletRuban(b.dataset.onglet);
@@ -348,11 +352,13 @@ class Conception {
     $("bParametres").onclick = $("bParametres2").onclick = $("navParametres").onclick = () => this.ouvrirParametres();
     this.brancherDisposition();
     brancherAteliers(this);
+    brancherPlus(this);
     $("bAjouterParametre").onclick = () => this.ajouterParametre();
     $("bInsererDxf").onclick = () => this.choisirFichier(".dxf,.svg");
     $("bFermer").onclick = () => this.nouveau();
     $("bOuvrir").onclick = () => this.choisirFichier(".json,.stp,.step,.dxf,.svg");
     $("bOuvrirRuban").onclick = () => this.choisirFichier(".json");
+    $("bInsererNuage").onclick = () => this.choisirFichier(".xyz,.csv,.pts,.ply,.txt");
     $("bEnregistrer").onclick = $("bEnregistrerMenu").onclick = () => this.enregistrer(false);
     $("bEnregistrerSous").onclick = () => this.enregistrer(true);
     $("bAnnuler").onclick = () => this.annuler();
@@ -380,9 +386,12 @@ class Conception {
       if(k === "z" && !e.shiftKey){ this.annuler(); return true; }
       if(k === "y" || (k === "z" && e.shiftKey)){ this.refaire(); return true; }
       if(k === "s"){ this.enregistrer(false); return true; }
+      if(k === "c" && !e.altKey) return this.editeur.ouvert ? this.editeur.copier() : copierOperations(this);
+      if(k === "v" && !e.altKey) return this.editeur.ouvert ? this.editeur.coller() : collerOperations(this);
       return false;
     }
     if(e.altKey) return false;
+    if(e.shiftKey && k === "r" && this.derniereCommande && !this.editeur.ouvert){ this.creer(this.derniereCommande); return true; }
     if(k === "s"){ $("rechCommande").focus(); return true; }
     if(k === "escape" && this.designation){ this.designer(null); return true; }
     if(k === "escape" && this.edition){ this.annulerOperation(); return true; }
@@ -392,7 +401,7 @@ class Conception {
       if(k === "enter" && ed.outil === "spline" && ed.clics.length){ ed.finirSpline(); return true; }
       const outils = { l:"ligne", r:"rectangle", o:"cercle", p:"point", t:"ajuster" };
       if(outils[k]){ ed.choisirOutil(outils[k]); this.majRuban(); return true; }
-      if(ed.outil === "polygone" && /^[3-9]$/.test(k)){ ed.nbCotes = +k; ed.statut(); return true; }
+      if(/^polygone/.test(ed.outil || "") && /^[3-9]$/.test(k)){ ed.nbCotes = +k; ed.statut(); return true; }
       switch(k){
         case "escape": if(!ed.echap()) this.terminerEsquisse(); this.majRuban(); return true;
         case "enter": this.terminerEsquisse(); return true;
@@ -715,14 +724,15 @@ class Conception {
     for(const op of this.doc.operations){
       if(op.type !== "esquisse" || !op.plan.ref) continue;
       const p = this.doc.operations.find(o => o.id === op.plan.ref);
-      try{ if(p) Object.assign(op.plan, planConstruction(p, v)); }catch(_){ /* cote illisible : le plan garde sa dernière position */ }
+      try{ if(p) Object.assign(op.plan, planConstruction(p, v, this.doc)); }catch(_){ /* cote illisible : le plan garde sa dernière position */ }
     }
   }
 
   /** Le document tel que le noyau doit le construire : esquisses résolues, curseur d'édition. */
   docPourNoyau(){
     const doc = this.docConstruit();
-    const a = this.valeurAnimee;      // pendant l'animation d'une liaison, sans toucher au document
+    const a = this.valeurAnimee, etude = this.valeursAnimees;      // pendant l'animation d'une liaison, sans toucher au document
+    if(etude) return { ...doc, operations:doc.operations.map(o => etude[o.id] !== undefined ? { ...o, valeur:etude[o.id] } : o) };
     return a ? { ...doc, operations:doc.operations.map(o => o.id === a.id ? { ...o, valeur:a.valeur } : o) } : doc;
   }
 
@@ -853,12 +863,20 @@ class Conception {
     vue.modele.traverse(o => { if(o.userData.estPiece) tri += o.userData.triangles; });
     $("etatStats").textContent = `${this.nomsCorps.length} corps · ${new Intl.NumberFormat("fr-FR").format(tri)} triangles · ` +
       `${(duree / 1000).toFixed(1).replace(".", ",")} s` + (erreurs ? ` · ⚠ ${erreurs} erreur${erreurs > 1 ? "s" : ""}` : "");
+    apresAffichage(this);
     ui.majEtatBoutons();
     this.majHistorique();
     this.majMessageOperation();
     this.majMarques();
     vue.invalider();
   }
+
+  copierOps(){ return copierOperations(this); }
+
+  /** Les matériaux connus de cette pièce : ceux de la page, puis les siens. */
+  materiaux(){ return [...Object.keys(MATERIAUX), ...Object.keys(this.doc.materiauxPerso || {})]; }
+  densite(nom){ return this.doc.materiauxPerso?.[nom] ?? MATERIAUX[nom] ?? 1; }
+  estReference(objet){ return !!CORPS.get(objet)?.reference; }
 
   statutErreur(message){
     $("etatStats").textContent = "⚠ " + message;
@@ -1123,6 +1141,23 @@ class Conception {
         tr.insertCell().appendChild(champ);
       }
     }
+    /* Une dernière ligne : les opérations suspendues par chaque configuration. */
+    const noms = this.doc.operations.filter(o => o.type !== "esquisse");
+    if(noms.length){
+      const tr = t.insertRow();
+      tr.insertCell().textContent = "Opérations suspendues";
+      for(const c of cfgs){
+        const boite = document.createElement("div"); boite.className = "liste-choix";
+        for(const o of noms){
+          const l = document.createElement("label"), x = document.createElement("input");
+          x.type = "checkbox"; x.checked = (c.suspendues || []).includes(o.id);
+          x.onchange = () => { const a = (c.suspendues || []).filter(i => i !== o.id); c.suspendues = x.checked ? [...a, o.id] : a; };
+          l.append(x, document.createTextNode(o.nom));
+          boite.appendChild(l);
+        }
+        tr.insertCell().appendChild(boite);
+      }
+    }
   }
 
   fermerMenus(){
@@ -1322,7 +1357,7 @@ class Conception {
     for(const op of this.doc.operations){
       if(op.type !== "plan" || op.suspendue || this.doc.operations.indexOf(op) >= (this.doc.curseur ?? Infinity)) continue;
       let p;
-      try{ p = planConstruction(op, v); }catch(_){ continue; }
+      try{ p = planConstruction(op, v, this.doc); }catch(_){ continue; }
       const n = new THREE.Vector3(...p.normale), x = new THREE.Vector3(...p.xdir);
       const M = new THREE.Matrix4().makeBasis(x, n.clone().cross(x), n).setPosition(...p.origine);
       const t = Math.max(10, (this.vue.rayonModele || 50) * 0.9);
@@ -1379,6 +1414,7 @@ class Conception {
 
   creer(type){
     if(this.edition || this.editeur.ouvert) return;
+    this.derniereCommande = type;
     const op = nouvelleOperation(type, this);
     const avant = JSON.stringify(this.doc);
     this.inserer(op);
@@ -1981,7 +2017,7 @@ class Conception {
     const corps = CORPS.has(objet) ? [CORPS.get(objet)]
       : (this.resultat?.maillages || []).filter(m => !m.reference && !m.erreur);
     if(!objet || CORPS.has(objet)) hote.innerHTML = "";     // un corps : les valeurs exactes du noyau, pas celles du maillage
-    const rho = MATERIAUX[this.doc.materiau] ?? 1;
+    const masse = corps.reduce((s, c) => s + (c.proprietes?.volume || 0) / 1000 * this.densite(matiereDe(this.doc, c.nom)), 0);
     const vol = corps.reduce((s, c) => s + (c.proprietes?.volume || 0), 0);
     const aire = corps.reduce((s, c) => s + (c.proprietes?.aire || 0), 0);
     const f = (v, d = 1) => new Intl.NumberFormat("fr-FR", { maximumFractionDigits:d }).format(v);
@@ -1993,7 +2029,7 @@ class Conception {
     let lignes = `<tr><td>Corps</td><td>${corps.length}</td></tr>
       <tr><td>Volume</td><td>${f(vol * k ** 3, 3)} ${u}³</td></tr>
       <tr><td>Surface</td><td>${f(aire * k ** 2, 3)} ${u}²</td></tr>
-      <tr><td>Masse</td><td>${f(vol / 1000 * rho, 2)} g</td></tr>`;
+      <tr><td>Masse</td><td>${f(masse, 2)} g</td></tr>`;
     if(corps.length === 1 && corps[0].proprietes){
       const c = corps[0].proprietes.centre, bb = corps[0].proprietes.boite;
       lignes += `<tr><td>Centre de gravité</td><td>${c.map(x => f(x * k, 3)).join(" · ")} ${u}</td></tr>
@@ -2001,8 +2037,8 @@ class Conception {
     }
     bloc.innerHTML = `<h4>${titre}</h4><table>${lignes}<tr><td>Matériau</td><td><select id="selMateriau"></select></td></tr></table>`;
     const s = bloc.querySelector("select");
-    for(const [nom, d] of Object.entries(MATERIAUX)){
-      const o = document.createElement("option"); o.value = nom; o.textContent = `${nom} (${d} g/cm³)`; s.appendChild(o);
+    for(const nom of this.materiaux()){
+      const o = document.createElement("option"); o.value = nom; o.textContent = `${nom} (${this.densite(nom)} g/cm³)`; s.appendChild(o);
     }
     s.value = this.doc.materiau;
     s.onchange = () => { this.memoriser(); this.doc.materiau = s.value; this.marquerModifie(); this.afficherProprietes(this.arbre.selection); };
@@ -2029,12 +2065,24 @@ class Conception {
   remplirParametres(){
     const t = $("tabParametres");
     const { valeurs, erreurs } = evaluerParametres(this.doc.parametres);
-    t.innerHTML = "<tr><th>Nom</th><th>Expression</th><th>Valeur</th><th></th></tr>";
-    this.doc.parametres.forEach((p, i) => {
+    t.innerHTML = "<tr><th></th><th>Nom</th><th>Expression</th><th>Valeur</th><th>Commentaire</th><th>Sert à</th><th></th></tr>";
+    /* Les favoris d'abord ; le rang dans le document ne change pas, l'ordre des expressions lui est égal. */
+    const ordre = this.doc.parametres.map((p, i) => [p, i]).sort((a, b) => (b[0].favori ? 1 : 0) - (a[0].favori ? 1 : 0));
+    for(const [p, i] of ordre){
       const tr = t.insertRow();
       const nom = document.createElement("input"); nom.value = p.nom;
       const expr = document.createElement("input"); expr.value = p.expr;
       const v = tr.insertCell(); tr.insertCell(0).appendChild(nom); tr.insertCell(1).appendChild(expr);
+      const fav = document.createElement("button"); fav.type = "button"; fav.className = "tb mini" + (p.favori ? " on" : ""); fav.textContent = p.favori ? "★" : "☆";
+      fav.title = "Favori : en tête de liste";
+      fav.onclick = () => { p.favori = !p.favori; if(!p.favori) delete p.favori; this.remplirParametres(); };
+      tr.insertCell(0).appendChild(fav);
+      const com = document.createElement("input"); com.value = p.commentaire || ""; com.placeholder = "Rôle du paramètre";
+      com.onchange = () => { const x = com.value.trim(); if(x) p.commentaire = x; else delete p.commentaire; };
+      tr.insertCell().appendChild(com);
+      const usages = this.usagesParametre(p.nom), us = tr.insertCell();
+      us.textContent = usages.length ? String(usages.length) : "—";
+      us.title = usages.length ? usages.join("\n") : "Aucune cote ni opération ne le cite";
       v.className = "v";
       v.textContent = erreurs[p.nom] ? "⚠" : +valeurs.get(p.nom)?.toFixed(4);
       v.title = erreurs[p.nom] || "";
@@ -2043,9 +2091,27 @@ class Conception {
       nom.onchange = () => { this.renommerParametre(p.nom, nom.value.trim()); this.remplirParametres(); };
       expr.onchange = () => { p.expr = expr.value.trim(); this.remplirParametres(); };
       const sup = document.createElement("button"); sup.type = "button"; sup.className = "tb mini"; sup.textContent = "✕";
-      sup.onclick = () => { this.doc.parametres.splice(i, 1); this.remplirParametres(); };
+      sup.onclick = async () => {
+        const u = this.usagesParametre(p.nom);
+        if(u.length && !await confirmer(`« ${p.nom} » sert à : ${u.join(", ")}. Le supprimer quand même ? (Ces cotes seront en erreur.)`, "Supprimer")) return;
+        this.doc.parametres.splice(this.doc.parametres.indexOf(p), 1);
+        this.remplirParametres();
+      };
       tr.insertCell().appendChild(sup);
-    });
+    }
+  }
+
+  /** Ce qui cite un paramètre : autres paramètres, opérations, cotes d'esquisse. */
+  usagesParametre(nom){
+    const re = new RegExp(`(^|[^\\wÀ-ÿ])${nom}(?![\\wÀ-ÿ(])`);
+    const cite = (x) => typeof x === "string" && re.test(x);
+    const sortie = this.doc.parametres.filter(p => p.nom !== nom && cite(p.expr)).map(p => `paramètre ${p.nom}`);
+    for(const op of this.doc.operations){
+      const champs = (CHAMPS[op.type] || []).filter(ch => ch.type === "expr" && !ch.get);
+      const dansCotes = op.type === "esquisse" && op.contraintes.some(k => cite(k.expr) || cite(k.x) || cite(k.y));
+      if(dansCotes || champs.some(ch => cite(op[ch.cle]))) sortie.push(op.nom);
+    }
+    return [...new Set(sortie)];
   }
 
   ajouterParametre(){

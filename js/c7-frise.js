@@ -14,17 +14,18 @@
 "use strict";
 
 import { TYPES, nomHistorique } from "./c3-operations.js";
-import { demanderTexte } from "./c0-dialogues.js";
+import { demanderTexte, avertir } from "./c0-dialogues.js";
 
 const TYPE_GLISSE = "application/x-web3d-operation";      // un fichier glissé sur la frise n'est pas une opération
 
 /** Les esquisses dont une opération a besoin : elles doivent la précéder. */
 export function dependances(op, ops = []){
   /* Les corps visés par leur nom : c'est l'opération qui les a créés (op.corpsNom) qui doit précéder. */
-  const noms = [op.corps, op.cible, op.corpsA, op.corpsB, op.outil, ...(op.outils || [])].filter(Boolean).map(n => n.split(" · ")[0]);
+  const noms = [op.corps, op.cible, op.corpsA, op.corpsB, op.outil, op.reference, ...(op.outils || []), ...(op.suiveurs || [])].filter(Boolean).map(n => n.split(" · ")[0]);
   const createurs = ops.filter(o => o !== op && noms.includes(o.corpsNom)).map(o => o.id);
   const axe = typeof op.axe === "string" && op.axe.startsWith("ref:") ? op.axe.slice(4) : null;
-  return [op.esquisse, op.chemin, op.plan?.ref, axe, ...(op.esquisses || []), ...createurs].filter(Boolean);
+  const planVise = op.type === "diviser" && op.mode === "plan" ? op.plan : null;
+  return [op.esquisse, op.chemin, op.plan?.ref, axe, op.pilote, planVise, ...(op.esquisses || []), ...createurs].filter(Boolean);
 }
 
 /** L'ordre des opérations après avoir déplacé celle d'indice `de` à l'indice `vers`. */
@@ -234,6 +235,13 @@ export class Frise {
         if(nom?.trim()) ctrl.modifierDoc(() => { op.nom = nom.trim(); });
       } },
       { texte:op.suspendue ? "Réactiver" : "Suspendre", action:() => ctrl.modifierDoc(() => { op.suspendue = !op.suspendue; }) },
+      { texte:"Inspecter : ce qu'elle cite, ce qui s'appuie sur elle", action:() => {
+        const ops = ctrl.doc.operations, nom = (id) => ops.find(o => o.id === id)?.nom;
+        const cite = dependances(op, ops).map(nom).filter(Boolean), appuis = ops.filter(o => o !== op && dependances(o, ops).includes(op.id)).map(o => o.nom);
+        const note = ctrl.resultat?.etats?.[op.id];
+        avertir(`« ${op.nom} »\nCite : ${cite.join(", ") || "rien"}\nSert à : ${appuis.join(", ") || "rien"}${note?.ms !== undefined ? `\nCalcul : ${note.ms} ms` : ""}${note?.erreur ? `\n⚠ ${note.erreur}` : ""}`);
+      } },
+      { texte:choisis.length > 1 ? `Copier les ${choisis.length} opérations (Ctrl+C)` : "Copier (Ctrl+C)", action:() => ctrl.copierOps() },
       { texte:"Placer le marqueur après", action:() => ctrl.placerCurseur(i + 1) },
       { texte:"Supprimer", action:() => ctrl.supprimerOperation(op) },
       "-",

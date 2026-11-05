@@ -7,8 +7,9 @@
    ============================================================================= */
 "use strict";
 
-import { repere, versMonde, vec, profils } from "./c2-esquisse.js";
+import { repere, versMonde, vec, profils, axePerpendiculaire } from "./c2-esquisse.js";
 import { dansMatiere } from "./c3c-references.js";
+import { evaluer } from "./c1-expressions.js";
 
 export const TYPES_ATELIERS = {
   surfExtrusion:{ nom:"Surface extrudée", icone:"⬆" }, surfRevolution:{ nom:"Surface de révolution", icone:"⟳" },
@@ -36,9 +37,38 @@ export const VISSERIE = {
   M12:{ p:1.75, d:12, dk:18, k:12, s:10, sh:18, kh:7.5, m:10.8, d1:13, d2:24, h:2.5 },
 };
 
+/* Poutres IPE (EN 10365), en mm : hauteur, largeur, âme, aile. */
+export const PROFILS_IPE = {
+  IPE80:{ h:80, b:46, tw:3.8, tf:5.2 }, IPE100:{ h:100, b:55, tw:4.1, tf:5.7 }, IPE120:{ h:120, b:64, tw:4.4, tf:6.3 }, IPE140:{ h:140, b:73, tw:4.7, tf:6.9 },
+  IPE160:{ h:160, b:82, tw:5, tf:7.4 }, IPE180:{ h:180, b:91, tw:5.3, tf:8 }, IPE200:{ h:200, b:100, tw:5.6, tf:8.5 },
+};
+
 const pt = (p) => [p.x, p.y, p.z];
 const moins = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const DEG = Math.PI / 180;
+
+/**
+ * La valeur d'une liaison : la sienne, ou la loi de sa liaison pilote (x : la valeur du pilote), qui dit un
+ * engrenage (`x * -0.5`), une crémaillère, une vis ou une came (`5 * sin(x)`). Les limites la bornent.
+ */
+export function valeurLiaison(op, ctx, vus = new Set()){
+  const { v, doc } = ctx;
+  if(vus.has(op.id)) throw new Error("liaisons pilotées en boucle");
+  vus.add(op.id);
+  let x = v(op.valeur ?? 0);
+  if(op.pilote){
+    const p = doc.operations.find(o => o.id === op.pilote && o.type === "liaison");
+    if(!p) throw new Error("la liaison pilote n'existe plus");
+    const base = valeurLiaison(p, ctx, vus);
+    x = evaluer(op.loi || "x", (n) => n === "x" ? base : v(n));
+  }
+  const borne = (t) => t !== undefined && t !== null && String(t).trim() !== "" ? v(t) : null;
+  const mi = borne(op.min), ma = borne(op.max);
+  if(mi !== null && ma !== null && mi > ma) throw new Error("limite basse plus grande que la limite haute");
+  if(mi !== null) x = Math.max(mi, x);
+  if(ma !== null) x = Math.min(ma, x);
+  return x;
+}
 
 /** Rend le DXF d'un développé : segments [[x, y], [x, y]] du contour, et lignes de pli sur leur calque. */
 export function ecrireDxf(contour, plis = []){
@@ -262,25 +292,43 @@ export function ateliers(H){
       const cible = corpsCible(etat, op.corps);
       return { ...etat, corps:etat.corps.map(c => c === cible ? { ...c, ancre:true } : c) };
     },
-    liaison(R, etat, op, { v }){
+    liaison(R, etat, op, ctx){
+      const { v } = ctx;
       const A = etat.corps.find(c => c.nom === op.corpsA), B = etat.corps.find(c => c.nom === op.corpsB);
       if(!A || !B || A === B) throw new Error("deux corps à relier : le fixe et le mobile");
       if(B.ancre) throw new Error(`« ${B.nom} » est ancré : c'est l'autre corps qui doit bouger`);
-      const a = op.repereA, b = op.repereB;
-      if(!a || !b) throw new Error("une face à désigner sur chaque corps");
+      const a = op.repereA;
+      if(!a) throw new Error("une face à désigner sur chaque corps");
+      const b = op.telleQuelle ? a : op.repereB;      // telle quelle : le corps reste où il est, seul son mouvement est décrit
+      if(!b) throw new Error("une face à désigner sur chaque corps");
       const dA = vec.norm(a.axe || a.normale), dB = vec.norm(b.axe || b.normale);
       /* Deux plans se font face ; deux axes se superposent, au plus court. */
       const vers = a.axe && b.axe ? (vec.scal(dA, dB) < 0 ? dA.map(c => -c) : dA) : dA.map(c => -c);
-      let f = B.shape.clone();
-      const rot = rotationEntre(dB, vers);
-      if(rot) f = f.rotate(rot.angle, b.point, rot.axe);
-      let t = moins(a.point, b.point);
-      t = vec.ajout(t, dA, v(op.decalage ?? 0));
-      const val = op.mode === "rigide" ? 0 : v(op.valeur ?? 0);
+      const rot = op.telleQuelle ? null : rotationEntre(dB, vers);
+      const dec = op.telleQuelle ? 0 : v(op.decalage ?? 0);
+      const val = op.mode === "rigide" ? 0 : valeurLiaison(op, ctx);
+      const val2 = v(op.valeur2 ?? 0), val3 = v(op.valeur3 ?? 0);
+      let t = op.telleQuelle ? [0, 0, 0] : moins(a.point, b.point);
+      t = vec.ajout(t, dA, dec);
       if(op.mode === "glissiere") t = vec.ajout(t, dA, val);
-      f = f.translate(t);
-      if(op.mode === "pivot" && val) f = f.rotate(val, vec.ajout(a.point, dA, v(op.decalage ?? 0)), dA);
-      return remplacer(etat, B, f);
+      if(op.mode === "cylindrique") t = vec.ajout(t, dA, val2);
+      if(op.mode === "plan"){      // val et val2 glissent dans le plan ; val3 tourne autour de sa normale
+        const u = axePerpendiculaire(dA), w = vec.vect(dA, u);
+        t = vec.ajout(vec.ajout(t, u, val), w, val2);
+      }
+      const pivot = vec.ajout(a.point, dA, dec);
+      const placer = (forme) => {
+        let f = forme.clone();
+        if(rot) f = f.rotate(rot.angle, b.point, rot.axe);
+        f = f.translate(t);
+        if((op.mode === "pivot" || op.mode === "cylindrique") && val) f = f.rotate(val, vec.ajout(pivot, dA, op.mode === "cylindrique" ? val2 : 0), dA);
+        if(op.mode === "plan" && val3) f = f.rotate(val3, vec.ajout(vec.ajout(pivot, axePerpendiculaire(dA), val), vec.vect(dA, axePerpendiculaire(dA)), val2), dA);
+        return f;
+      };
+      /* Un groupe rigide : les corps suiveurs font exactement le même mouvement. */
+      const suiveurs = new Set(op.suiveurs || []);
+      if(suiveurs.has(A.nom)) throw new Error("le corps fixe ne peut pas suivre le mobile");
+      return { ...etat, corps:etat.corps.map(c => c === B ? { ...c, shape:placer(c.shape) } : suiveurs.has(c.nom) ? { ...c, shape:placer(c.shape) } : c) };
     },
 
     tole(R, etat, op, ctx){
@@ -290,6 +338,19 @@ export function ateliers(H){
       const o = op.inverse ? vec.ajout(r.o, r.n, -ep) : r.o;
       const forme = dessinRegions(R, esq, op.contours).sketchOnPlane(new R.Plane(o, r.x, r.n)).extrude(ep);
       return nouveauCorps(etat, forme, { tole:{ ep, r:v(op.rayon), k:v(op.k), n:r.n, x:r.x, z0:vec.scal(o, r.n), plis:[] } });
+    },
+    /* Le chemin de bords tombés : le même pli sur chaque arête désignée, dans l'ordre. */
+    brideChaine(R, etat, op, ctx){
+      if(!op.aretes?.length) throw new Error("arêtes à désigner");
+      const notes = [];
+      let suite = etat;
+      for(const arete of op.aretes){
+        const une = { ...op, arete, refs:undefined };
+        suite = bride(R, suite, une, ctx);
+        notes.push(ctx.note.pli);
+      }
+      ctx.note.pli = { ...notes[0], longueur:notes.reduce((s, n) => s + n.longueur, 0) };
+      return suite;
     },
     bride:(R, etat, op, ctx) => bride(R, etat, op, ctx),
     ourlet:(R, etat, op, ctx) => bride(R, etat, op, ctx, 180),
@@ -347,10 +408,17 @@ export function ateliers(H){
       const { ouverts, faces } = profils(esq);
       const chaines = [...ouverts.map(o => ({ s:o.segments, ferme:false })), ...faces.filter(f => f.exterieur.segments).map(f => ({ s:f.exterieur.segments, ferme:true }))];
       if(!chaines.length) throw new Error(`« ${esq.nom} » : des lignes tracent l'ossature`);
-      const a = v(op.a), b = v(op.b ?? op.a), ep = v(op.ep ?? 0);
+      const ipe = op.section === "ipe" ? PROFILS_IPE[op.norme] : null;
+      if(op.section === "ipe" && !ipe) throw new Error("taille de poutre à choisir");
+      const a = ipe ? ipe.h : v(op.a), b = ipe ? ipe.b : v(op.b ?? op.a), ep = ipe ? 0 : v(op.ep ?? 0);
       if(!(a > 0 && b > 0)) throw new Error("dimensions positives");
       if(ep < 0 || (op.section !== "plat" && op.section !== "corniere" && 2 * ep >= (op.section === "rond" ? a : Math.min(a, b)))) throw new Error("paroi trop épaisse pour cette section");
       const section = () => {
+        if(ipe){      // a : hauteur, hors du plan de l'esquisse ; b : largeur des ailes. Les rayons de raccord sont omis.
+          const [h, l, tw, tf] = [ipe.h / 2, ipe.b / 2, ipe.tw / 2, ipe.tf];
+          return R.draw([-h, -l]).lineTo([-h, l]).lineTo([-h + tf, l]).lineTo([-h + tf, tw]).lineTo([h - tf, tw]).lineTo([h - tf, l]).lineTo([h, l]).lineTo([h, -l])
+            .lineTo([h - tf, -l]).lineTo([h - tf, -tw]).lineTo([-h + tf, -tw]).lineTo([-h + tf, -l]).close();
+        }
         if(op.section === "rond"){
           const d = R.drawCircle(a / 2);
           return ep > 0 ? d.cut(R.drawCircle(a / 2 - ep)) : d;

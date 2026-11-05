@@ -63,6 +63,10 @@ export function axeConstruction(op, v = Number){
     if(!op.cylindre) throw new Error("face cylindrique à désigner");
     return { point:op.cylindre.point, dir:vec.norm(op.cylindre.axe) };
   }
+  if(op.mode === "normale"){
+    if(!op.face) throw new Error("face plane à désigner");
+    return { point:op.face.point, dir:vec.norm(op.face.normale) };
+  }
   const a = ["x1", "y1", "z1"].map(c => v(op[c] ?? 0)), b = ["x2", "y2", "z2"].map(c => v(op[c] ?? 0));
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   if(Math.hypot(...d) < 1e-9) throw new Error("les deux points de l'axe sont confondus");
@@ -70,7 +74,28 @@ export function axeConstruction(op, v = Number){
 }
 
 /** Le plan d'une opération « plan de construction » : décalé puis incliné, médian entre deux décalages, ou par trois points. */
-export function planConstruction(op, v = Number){
+export function planConstruction(op, v = Number, doc = null){
+  if(op.mode === "tangent"){
+    if(!op.cylindre?.surf) throw new Error("face cylindrique à désigner");
+    const a = vec.norm(op.cylindre.axe), d = [0, 1, 2].map(i => op.cylindre.surf[i] - op.cylindre.point[i]);
+    const n = vec.norm(vec.ajout(d, a, -vec.scal(d, a)));
+    return { origine:op.cylindre.surf, normale:n, xdir:a };
+  }
+  if(op.mode === "chemin"){
+    const esq = doc?.operations.find(o => o.id === op.chemin && o.type === "esquisse");
+    if(!esq) throw new Error("chemin à choisir");
+    const suite = profils(esq).ouverts[0]?.segments ?? profils(esq).regions[0]?.exterieur?.segments;
+    if(!suite) throw new Error("ce chemin n'a pas de ligne");
+    const t = Math.max(0, Math.min(1, v(op.position ?? 0))), r = repere(esq.plan, v);
+    const longs = suite.map(s => Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1])), total = longs.reduce((x, y) => x + y, 0);
+    let reste = t * total, k = 0;
+    while(k < suite.length - 1 && reste > longs[k]){ reste -= longs[k]; k++; }
+    const s = suite[k], u = (reste / (longs[k] || 1));
+    /* shortcut: la tangente d'un arc ou d'une spline est prise sur sa corde, juste pour poser une section. */
+    const p = [s.a[0] + (s.b[0] - s.a[0]) * u, s.a[1] + (s.b[1] - s.a[1]) * u];
+    const dir = vec.norm(vec.ajout(vec.ajout([0, 0, 0], r.x, s.b[0] - s.a[0]), r.y, s.b[1] - s.a[1]));
+    return { origine:versMonde(r, p[0], p[1]), normale:dir, xdir:r.n };
+  }
   if(op.mode === "trois"){
     const P = (s) => ["x", "y", "z"].map(c => v(op[c + s] ?? 0));
     const [a, b, c] = [P("1"), P("2"), P("3")];
@@ -185,8 +210,10 @@ export function cheminsEnPolylignes(chemins, parCourbe = 6){
 
 /** Spline par points (Catmull-Rom) : les deux points de contrôle de Bézier de chaque travée. */
 export function controlesSpline(pts){
+  const n = pts.length, ferme = n > 3 && pts[0][0] === pts[n - 1][0] && pts[0][1] === pts[n - 1][1];
   return pts.slice(0, -1).map((p, i) => {
-    const a = pts[Math.max(i - 1, 0)], b = pts[i + 1], c = pts[Math.min(i + 2, pts.length - 1)];
+    /* Fermée, elle tourne sans point anguleux : le voisin du bout est l'autre bout. */
+    const a = ferme && i === 0 ? pts[n - 2] : pts[Math.max(i - 1, 0)], b = pts[i + 1], c = ferme && i === n - 2 ? pts[1] : pts[Math.min(i + 2, n - 1)];
     return { c1:[p[0] + (b[0] - a[0]) / 6, p[1] + (b[1] - a[1]) / 6], c2:[b[0] - (c[0] - p[0]) / 6, b[1] - (c[1] - p[1]) / 6], fin:b };
   });
 }
@@ -215,7 +242,7 @@ export const NOMS_CONTRAINTES = {
   coincident:"Coïncidence", horizontal:"Horizontale", vertical:"Verticale",
   parallele:"Parallèles", perpendiculaire:"Perpendiculaires", tangente:"Tangence",
   egal:"Égalité", concentrique:"Concentriques", milieu:"Milieu", symetrie:"Symétrie",
-  fixe:"Fixe", sur:"Point sur l'objet",
+  fixe:"Fixe", sur:"Point sur l'objet", colineaire:"Colinéaires",
   longueur:"Longueur", distance:"Distance", distanceX:"Distance horizontale",
   distanceY:"Distance verticale", rayon:"Rayon", diametre:"Diamètre", angle:"Angle",
 };
@@ -236,6 +263,7 @@ function traduire(k, idx, v){
       const e = E(k.a);
       return [e.type === "ligne" ? { type:"vertical_l", l_id:k.a } : { type:"vertical_pp", p1_id:k.a, p2_id:k.b }];
     }
+    case "colineaire": { const b = E(k.b); return [{ type:"point_on_line_pl", p_id:b.p1, l_id:k.a }, { type:"point_on_line_pl", p_id:b.p2, l_id:k.a }]; }
     case "parallele": return [{ type:"parallel", l1_id:k.a, l2_id:k.b }];
     case "perpendiculaire": return [{ type:"perpendicular_ll", l1_id:k.a, l2_id:k.b }];
     case "tangente": {
@@ -325,6 +353,7 @@ export function resoudre(gcs, esq, v = Number, glisse = null){
     }
   }
   for(const k of esq.contraintes){
+    if(k.pilotee) continue;      // une cote pilotée se lit sur la géométrie, elle ne la commande pas
     try{
       traduire(k, idx, v).forEach((p, i) => prims.push({ ...p, id:k.id + "~" + i }));
     }catch(err){ erreurs[k.id] = err.message; }

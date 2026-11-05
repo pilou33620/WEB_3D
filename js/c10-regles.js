@@ -84,12 +84,32 @@ function grille(doc, ops, v, valeurs, erreurs, maillages){
  * Rend { procede, ok, controles:[{ regle, nom, ok, ecarts }] }, sans toucher au document. La grille
  * se lit dans le repère de la pièce (Z = hauteur d'impression) et ne vaut qu'en FDM.
  */
+/** La règle plastique de la pièce (onglet Plastique) : paroi nominale, dépouille minimale. Un fût ne dépasse pas 60 % de la paroi. */
+function plastique(doc, ops, v){
+  const r = doc.reglesPlastique;
+  if(!r) return [];
+  const ecarts = [], paroi = v(r.paroi), dep = v(r.depouille), deg = (x) => String(+x.toFixed(2)).replace(".", ",") + " °";
+  for(const op of ops){
+    const nom = `« ${sur(op.nom)} »`;
+    try{
+      if(op.type === "bossage"){
+        if(v(op.depouille ?? 0) < dep) ecarts.push(`${nom} : dépouille de ${deg(v(op.depouille ?? 0))}, sous le minimum de ${deg(dep)}`);
+        if((v(op.de) - v(op.di)) / 2 > 0.6 * paroi) ecarts.push(`${nom} : fût de ${mm((v(op.de) - v(op.di)) / 2)}, plus de 60 % de la paroi de ${mm(paroi)} (retassure)`);
+      }
+      if(op.type === "depouille" && Math.abs(v(op.angle)) < dep) ecarts.push(`${nom} : ${deg(Math.abs(v(op.angle)))}, sous le minimum de ${deg(dep)}`);
+      if(op.type === "coque" && v(op.epaisseur) !== paroi) ecarts.push(`${nom} : épaisseur de ${mm(v(op.epaisseur))}, la paroi nominale est de ${mm(paroi)}`);
+    }catch(_){ ecarts.push(`${nom} : cote illisible, non contrôlée`); }
+  }
+  return ecarts;
+}
+
 export function controlerRegles(doc, { gcs, maillages = [], procede = "fdm" }){
   if(!Object.hasOwn(PROCEDES, procede)) throw new Error(`Procédé inconnu : ${procede} (${Object.keys(PROCEDES).join(", ")}).`);
   const { valeurs, erreurs } = evaluerParametres(doc.parametres), v = evaluateur(valeurs);
   const ops = doc.operations.filter(o => !o.suspendue);
   const lignes = [[5, "Esquisses entièrement contraintes, sans Fixe", esquisses(ops, gcs, v)],
                   [6, "Paramètres en snake_case et préfixés", parametres(doc)]];
+  if(procede === "injection") lignes.push([16, "Plastique : bossages et dépouilles selon la règle de la pièce", plastique(doc, ops, v)]);
   if(procede === "fdm") lignes.push([15, "Grille : hauteurs × 0,2 mm, parois × 0,5 mm", grille(doc, ops, v, valeurs, erreurs, maillages)]);
   const controles = lignes.map(([regle, nom, ecarts]) => ({ regle, nom, ok:!ecarts.length, ecarts }));
   return { procede, ok:controles.every(c => c.ok), controles };

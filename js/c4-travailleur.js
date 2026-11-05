@@ -10,7 +10,8 @@
    deviner sur les triangles, et que l'on désigne pour un congé.
 
    Messages reçus : { id, type:"construire", doc, finesse }
-                    { id, type:"exporter", doc, format:"step"|"stl", corps:[noms] }
+                    { id, type:"exporter", doc, format:"step"|"stl"|"obj"|"3mf"|"urdf", corps:[noms] }
+                    { id, type:"analyse"|"comparer"|"section"|"vueDxf"|"balayage"|"viderCache", … }
    ============================================================================= */
 "use strict";
 
@@ -18,6 +19,9 @@ import opencascade from "../vendor/replicad/replicad_single.js";
 import * as R from "../vendor/replicad/replicad.js";
 import { construire, messageErreur } from "./c3-operations.js";
 import { ecrireDxf } from "./c3b-ateliers.js";
+import { analyserCorps, comparerCorps, sectionPlan, arretesVue } from "./c3d-operations-plus.js";
+import { ecrireObj, ecrire3mf, ecrireUrdf, archive, dxfCalques } from "./c12-exports.js";
+import { evaluerParametres, evaluateur } from "./c1-expressions.js";
 import { cheminsEnPolylignes, vec, axePerpendiculaire } from "./c2-esquisse.js";
 
 let oc = null;
@@ -67,7 +71,24 @@ function surfacesExactes(shape, groupes){
 /* En radians : 15° entre facettes, soit 24 au moins par tour, quelle que soit la taille du cercle. */
 const ANGLE_MAILLAGE = 0.26, ANGLE_EXPORT = 0.2;
 
-function mailler(c, finesse, transferts){
+/** La couleur posée sur un corps ou sur une de ses faces, en composantes de 0 à 1 comme celles d'un STEP. */
+const couleurRvb = (hex) => hex ? [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255) : null;
+
+/** Le groupe de triangles de chaque face colorée : par le point désigné, retrouvé sur la forme actuelle. */
+function couleursFaces(c, m, liste){
+  if(!liste?.length) return new Map();
+  const faces = c.shape.faces, sortie = new Map();
+  for(const { point, couleur } of liste){
+    const v = R.makeVertex(point);
+    let mieux = null, dMin = 0.5;
+    for(const f of faces){ const d = R.measureDistanceBetween(v, f); if(d < dMin){ dMin = d; mieux = f; } }
+    v.delete();
+    if(mieux) sortie.set(mieux.hashCode, couleurRvb(couleur));
+  }
+  return sortie;
+}
+
+function mailler(c, finesse, transferts, apparence = null){
   /* La finesse suit l'encombrement du corps et non la vue : une même géométrie donne toujours le même maillage. */
   const e0 = c.shape.boundingBox.bounds;
   /* Arrondie : une fois maillé, l'encombrement du noyau bouge d'un rien, et la tolérance ne doit pas le suivre. */
@@ -86,10 +107,11 @@ function mailler(c, finesse, transferts){
   let surfaces = null;
   try{ surfaces = surfacesExactes(c.shape, m.faceGroups); }
   catch(e){ if(e instanceof WebAssembly.RuntimeError) throw e; /* sinon la mesure ajustera sur les triangles */ }
+  const peintes = couleursFaces(c, m, apparence?.faces);
   return {
-    nom:c.nom, reference:!!c.reference, surface:!!c.surface, couleur:null, position, normale, index,
+    nom:c.nom, reference:!!c.reference, surface:!!c.surface, couleur:couleurRvb(apparence?.couleur), position, normale, index,
     /* start/count comptent des indices de sommets ; la visionneuse attend des triangles */
-    faces:m.faceGroups.map(f => ({ premier:f.start / 3, dernier:(f.start + f.count) / 3 - 1, couleur:null })),
+    faces:m.faceGroups.map(f => ({ premier:f.start / 3, dernier:(f.start + f.count) / 3 - 1, couleur:peintes.get(f.faceId) ?? null })),
     aretes:e, proprietes, surfaces,
   };
 }
@@ -150,11 +172,79 @@ async function traiter(ev){
       return;
     }
     if(type === "planter") throw new WebAssembly.RuntimeError("panne simulée");     // pour le banc de la page
+    if(type === "viderCache"){
+      for(const liste of [cache, cachePlat]){
+        const formes = new Set(liste.flatMap(e => e.etat.corps.map(c => c.shape)));
+        for(const s of formes) s.delete();
+        liste.length = 0;
+      }
+      postMessage({ id, type:"ok" });
+      return;
+    }
+    if(type === "balayage"){
+      const sortie = [];
+      for(const [i, valeur] of ev.data.valeurs.entries()){
+        postMessage({ type:"progres", etape:`${ev.data.nom} = ${valeur} (${i + 1} / ${ev.data.valeurs.length})` });
+        const d = { ...doc, parametres:doc.parametres.map(p => p.nom === ev.data.nom ? { ...p, expr:String(valeur) } : p) };
+        const r = await construire(R, d, [], oc);
+        const reels = r.corps.filter(c => !c.reference);
+        const bornes = reels.map(c => c.shape.boundingBox.bounds);
+        sortie.push({ valeur, corps:reels.length, erreurs:Object.values(r.etats).filter(n => n.erreur).length,
+          volume:reels.reduce((s, c) => s + (c.surface ? 0 : Math.abs(R.measureVolume(c.shape))), 0), aire:reels.reduce((s, c) => s + R.measureArea(c.shape), 0),
+          dims:bornes.length ? [0, 1, 2].map(k => Math.max(...bornes.map(b => b[1][k])) - Math.min(...bornes.map(b => b[0][k]))) : null });
+        for(const c of r.corps) c.shape.delete();    // à part du cache : rien d'autre ne tient ces formes
+      }
+      postMessage({ id, type:"ok", lignes:sortie });
+      return;
+    }
     const res = await construire(R, doc, ev.data.plat ? cachePlat : cache, oc, { plat:!!ev.data.plat,
       surOperation:(opId) => postMessage({ type:"etape", opId }) });
+    if(type === "analyse"){
+      const sortie = {};
+      for(const c of res.corps.filter(x => ev.data.corps.includes(x.nom))) sortie[c.nom] = analyserCorps(R, c.shape);
+      postMessage({ id, type:"ok", analyses:sortie });
+      return;
+    }
+    if(type === "comparer"){
+      const [a, b] = ev.data.corps.map(n => res.corps.find(c => c.nom === n));
+      if(!a || !b) throw new Error("deux corps à comparer");
+      postMessage({ id, type:"ok", ecart:comparerCorps(R, a.shape, b.shape) });
+      return;
+    }
+    if(type === "section"){
+      postMessage({ id, type:"ok", lignes:sectionPlan(R, res.corps.filter(c => !c.reference), ev.data.repere) });
+      return;
+    }
+    if(type === "vueDxf"){
+      const formes = res.corps.filter(c => ev.data.corps.includes(c.nom)).map(c => c.shape);
+      if(!formes.length) throw new Error("aucun corps visible");
+      const { visibles, cachees } = arretesVue(R, formes, ev.data.camera);
+      postMessage({ id, type:"ok", dxf:dxfCalques(ev.data.cachees === "omises" ? { VISIBLE:visibles } : { VISIBLE:visibles, CACHEES:cachees }), nb:visibles.length });
+      return;
+    }
     if(type === "exporter"){
       const choisis = res.corps.filter(c => ev.data.corps.includes(c.nom));
       if(!choisis.length) throw new Error("aucun corps à exporter");
+      const fin = { tolerance:0.01, angularTolerance:ANGLE_EXPORT };
+      /* Un maillage neuf : un fichier à imprimer ne dépend pas de la finesse de l'affichage. */
+      const maillages = () => choisis.map(c => { const m = c.shape.mesh(fin); return { nom:c.nom, vertices:m.vertices, triangles:m.triangles }; });
+      if(ev.data.format === "obj"){ postMessage({ id, type:"fichier", blob:new Blob([ecrireObj(maillages())]) }); return; }
+      if(ev.data.format === "3mf"){ postMessage({ id, type:"fichier", blob:new Blob([ecrire3mf(maillages())]) }); return; }
+      if(ev.data.format === "urdf"){
+        const v = evaluateur(evaluerParametres(doc.parametres || []).valeurs);
+        const densite = ev.data.densites || {};
+        const corps = choisis.map(c => {
+          const p = R.measureShapeVolumeProperties(c.shape);
+          return { nom:c.nom, masse:Math.abs(p.volume) * 1e-6 * (densite[c.nom] ?? 1), centre:p.centerOfMass, boite:c.shape.boundingBox.bounds };
+        });
+        const ident = (t) => String(t).replace(/[^\w.-]+/g, "_");
+        const liaisons = doc.operations.filter(o => o.type === "liaison" && !o.suspendue && ev.data.corps.includes(o.corpsA) && ev.data.corps.includes(o.corpsB));
+        const urdf = ecrireUrdf(doc.nom || "piece", corps, liaisons, v);
+        const fichiers = { [`${ident(doc.nom || "piece")}.urdf`]:urdf };
+        for(const c of choisis) fichiers[`meshes/${ident(c.nom)}.stl`] = new Uint8Array(await c.shape.blobSTL({ ...fin, binary:true }).arrayBuffer());
+        postMessage({ id, type:"fichier", blob:new Blob([archive(fichiers)]) });
+        return;
+      }
       /* makeCompound détruit ce qu'il reçoit : jamais les formes du cache. */
       const forme = choisis.length === 1 ? choisis[0].shape : R.makeCompound(choisis.map(c => c.shape.clone()));
       const blob = ev.data.format === "stl" ? forme.blobSTL({ tolerance:0.01, angularTolerance:ANGLE_EXPORT, binary:true })
@@ -166,7 +256,7 @@ async function traiter(ev){
     const maillages = [];
     postMessage({ type:"etape", opId:null });       // le maillage n'est la faute d'aucune opération
     for(const c of res.corps){
-      try{ maillages.push(mailler(c, ev.data.finesse ?? 0.002, transferts)); }
+      try{ maillages.push(mailler(c, ev.data.finesse ?? 0.002, transferts, doc.apparences?.[c.nom])); }
       catch(e){
         if(e instanceof WebAssembly.RuntimeError) throw e;        // le noyau est mort : la page en relance un
         maillages.push({ nom:c.nom, erreur:messageErreur(e, oc) });

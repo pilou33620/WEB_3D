@@ -14,10 +14,10 @@ Les règles parlent de fonctions de CAO en général. Dans la page, elles porten
 Ce que la page ne fait pas à l'identique : l'annoncer dans le plan (règle 4), avec l'adaptation retenue.
 - Composant : ici, une autre pièce du mode conception insérée dans celle-ci, et non un conteneur à l'intérieur du fichier. Rien ne range donc esquisses et corps dans un composant ni ne vide la racine (règles 7 et 9) : une pièce par fichier, regrouper dans un même fichier par les dossiers de la frise.
 - Occurrence : pas de fonction de ce nom ; insérer la même pièce par Composant.
-- Liaison : rigide, pivot ou glissière seulement, sans cylindrique, plan ni as-built.
+- Liaison : rigide, pivot, glissière, cylindrique ou plan ; « Telle quelle » est l'as-built. Pas de sphérique ; une liaison commandée par une autre porte une loi (engrenage, crémaillère, vis, came).
 - Trou en goutte d'eau : pas de fonction dédiée ; le dessiner en esquisse.
 - Projection : les points projetés sont fixés à leurs coordonnées du moment et ne suivent pas la pièce si elle change.
-- Commentaire d'un paramètre : la page n'en a pas ; le rôle se lit dans le nom et se dit dans le compte rendu.
+- Commentaire d'un paramètre : colonne Commentaire de la fenêtre des paramètres.
 
 Contrôle automatique : bouton Règles de l'onglet Inspecter (groupe Vérifier), `W3D.conception.controlerRegles(procede)` dans la page, ou `web3d_regles` par le MCP. Il vérifie les esquisses entièrement contraintes sans Fixe posé à la main (règle 5), les noms des paramètres (règle 6) et, en FDM, la grille (règle 15). Le lancer après chaque esquisse (règle 5) et avant le compte rendu (règle 19), et y reporter son résultat. Il ne couvre pas le reste des règles.
 

@@ -43,6 +43,7 @@ export const FORMATS = {
   "3mf":"3mf",
   obj:"obj",
   stl:"stl",
+  glb:"gltf", gltf:"gltf",
 };
 
 /* Fichiers qui accompagnent un modèle sans en être un : la bibliothèque de
@@ -51,7 +52,7 @@ export const FORMATS = {
    simplement rien à afficher. */
 const ANNEXES = ["mtl", "png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
-export const LISTE_FORMATS = ".stp, .step, .stpz, .igs, .iges, .brep, .3mf, .obj, .stl";
+export const LISTE_FORMATS = ".stp, .step, .stpz, .igs, .iges, .brep, .3mf, .obj, .stl, .glb, .gltf";
 
 function extension(nomFichier){
   return (nomFichier.split(".").pop() || "").toLowerCase();
@@ -314,6 +315,21 @@ export function recenser(groupe, etat){
    Formats de maillage
    --------------------------------------------------------------------------- */
 
+/** glTF : hiérarchie, noms et matériaux. Il compte en mètres ; toute la page compte en millimètres. */
+async function lireGltf(tampon, nomFichier){
+  const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+  let scene;
+  try{ ({ scene } = await new GLTFLoader().parseAsync(tampon, "")); }
+  catch(e){ throw new Error(`${nomFichier} : glTF illisible (${e.message}). Un .gltf doit embarquer ses données, sinon utilisez un .glb.`); }
+  scene.name = nomFichier;
+  scene.scale.setScalar(1000);
+  scene.updateMatrixWorld(true);
+  const groupe = new THREE.Group();
+  groupe.name = nomFichier;
+  groupe.add(scene);
+  return groupe;
+}
+
 /** Le STL n'a ni hiérarchie, ni couleur, ni nom : un maillage, rien de plus. */
 export function lireStl(tampon, nomFichier, materiau){
   /* Le lecteur de three.js prend un texte qu'il ne reconnaît pas pour du binaire et
@@ -456,6 +472,9 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
         groupe = lireStl(tampon, fichier.name, materiau);
       }else if(format === "3mf"){
         groupe = lire3mf(tampon);
+        normaliserMateriaux(groupe);
+      }else if(format === "gltf"){
+        groupe = await lireGltf(tampon, fichier.name);
         normaliserMateriaux(groupe);
       }else{
         let texteStep = null;
