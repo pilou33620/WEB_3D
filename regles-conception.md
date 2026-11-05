@@ -16,7 +16,7 @@ Ce que la page ne fait pas à l'identique : l'annoncer dans le plan (règle 4), 
 - Occurrence : fonction Occurrence, qui recopie et pose les corps d'un composant de la pièce, et le suit.
 - Liaison : rigide, pivot, glissière, cylindrique, plan ou sphérique ; « Telle quelle » est l'as-built ; une liaison commandée par une autre porte une loi (engrenage, crémaillère, vis, came).
 - Trou en goutte d'eau : pas de fonction dédiée ; le dessiner en esquisse.
-- Projection : les points projetés sont fixés à leurs coordonnées du moment et ne suivent pas la pièce si elle change.
+- Projection : les points projetés suivent l'arête quand la pièce change ; Délier les fige. La projection d'une arête disparue s'annonce en erreur sur l'esquisse.
 - Commentaire d'un paramètre : colonne Commentaire de la fenêtre des paramètres.
 
 Contrôle automatique : bouton Règles de l'onglet Inspecter (groupe Vérifier), `W3D.conception.controlerRegles(procede)` dans la page, ou `web3d_regles` par le MCP. Il vérifie les esquisses entièrement contraintes sans Fixe posé à la main (règle 5), les noms des paramètres (règle 6) et, en FDM, la grille (règle 15). Le lancer après chaque esquisse (règle 5) et avant le compte rendu (règle 19), et y reporter son résultat. Il ne couvre pas le reste des règles.

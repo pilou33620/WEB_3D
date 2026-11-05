@@ -7,7 +7,7 @@
 "use strict";
 
 import { zipSync, strToU8 } from "../vendor/three/addons/libs/fflate.module.js";
-import { indexer, rayonDe } from "./c2-esquisse.js";
+import { indexer, rayonDe, cercle3Points, axePerpendiculaire, vec } from "./c2-esquisse.js";
 
 export const echapperXml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&apos;" })[c]);
 const nombre = (x) => String(+x.toFixed(6));
@@ -246,4 +246,138 @@ export function lireNuage(texte, plafond = 200000){
   if(!pts.length) throw new Error("aucun point lisible : trois nombres par ligne");
   const k = Math.ceil(pts.length / plafond), garde = k > 1 ? pts.filter((_, i) => i % k === 0) : pts;
   return { points:Float32Array.from(garde.flat()), total:pts.length, reduit:k > 1 ? k : 0 };
+}
+
+/* -----------------------------------------------------------------------------
+   Un maillage redevenu solide paramétrique : une section constante, extrudée
+   --------------------------------------------------------------------------- */
+/** Une boucle de points en lignes, arcs et cercles : les facettes d'une courbe retrouvent leur cercle. */
+export function ajusterBoucle(pts, tol){
+  const n = pts.length, O = (p) => ({ x:p[0], y:p[1] });
+  const surCercle = (k, p) => Math.abs(Math.hypot(p[0] - k.c.x, p[1] - k.c.y) - k.r) <= tol;
+  if(n >= 6){
+    const k = cercle3Points(O(pts[0]), O(pts[Math.floor(n / 3)]), O(pts[Math.floor(2 * n / 3)]));
+    if(k && pts.every(p => surCercle(k, p))) return [{ type:"cercle", c:[k.c.x, k.c.y], r:k.r }];
+  }
+  /* Le départ : un vrai coin, là où le contour change le plus de direction ; jamais au milieu d'un arc ou d'une ligne. */
+  const angleEn = (i) => {
+    const a = pts[(i + n - 1) % n], b = pts[i], c = pts[(i + 1) % n];
+    return Math.atan2((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]), (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]));
+  };
+  let depart = 0, ecart = -1;
+  for(let i = 0; i < n; i++){ const e = Math.abs(angleEn(i) - angleEn((i + n - 1) % n)); if(Math.abs(angleEn(i)) > 1e-3 && e > ecart){ ecart = e; depart = i; } }
+  const P = (i) => pts[(depart + i) % n], sortie = [];
+  for(let i = 0; i < n;){
+    /* Un arc : au moins trois facettes, tournant du même côté, d'un petit angle, sur un même cercle. */
+    const k = i + 2 <= n ? cercle3Points(O(P(i)), O(P(i + 1)), O(P(i + 2))) : null;
+    let j = i;
+    if(k){
+      const signe = Math.sign(angleEn((depart + i + 1) % n));
+      j = i + 2;
+      while(j < n && surCercle(k, P(j + 1)) && Math.sign(angleEn((depart + j) % n)) === signe && Math.abs(angleEn((depart + j) % n)) < Math.PI / 3) j++;
+      if(Math.abs(angleEn((depart + i + 1) % n)) >= Math.PI / 3) j = i;
+    }
+    if(k && j - i >= 3){
+      /* Le milieu suivant le sens de parcours : l'arc peut dépasser le demi-tour. */
+      const a0 = Math.atan2(P(i)[1] - k.c.y, P(i)[0] - k.c.x), signe = Math.sign(angleEn((depart + i + 1) % n));
+      let tour = 0;
+      for(let q = i; q < j; q++){
+        const u = Math.atan2(P(q)[1] - k.c.y, P(q)[0] - k.c.x), w = Math.atan2(P(q + 1)[1] - k.c.y, P(q + 1)[0] - k.c.x);
+        let d = w - u;
+        if(signe > 0 && d < 0) d += 2 * Math.PI;
+        if(signe < 0 && d > 0) d -= 2 * Math.PI;
+        tour += d;
+      }
+      sortie.push({ type:"arc", a:P(i), m:[k.c.x + k.r * Math.cos(a0 + tour / 2), k.c.y + k.r * Math.sin(a0 + tour / 2)], b:P(j) });
+      i = j;
+      continue;
+    }
+    /* Une ligne : aussi loin que les points restent alignés. */
+    let f = i + 1;
+    const dist = (a, b, q) => Math.abs((b[0] - a[0]) * (a[1] - q[1]) - (a[0] - q[0]) * (b[1] - a[1])) / (Math.hypot(b[0] - a[0], b[1] - a[1]) || 1);
+    while(f < n){
+      let droit = true;
+      for(let q = i + 1; q <= f; q++) if(dist(P(i), P(f + 1), P(q)) > tol) droit = false;
+      if(!droit) break;
+      f++;
+    }
+    sortie.push({ type:"ligne", a:P(i), b:P(f) });
+    i = f;
+  }
+  return sortie;
+}
+
+/**
+ * Reconnaît une pièce de section constante dans des triangles (9 nombres chacun) : l'axe, la hauteur, et sa section
+ * en lignes, arcs et cercles. Lève une erreur qui dit ce qui manque : une telle pièce est la seule qu'on sache rendre paramétrique.
+ */
+export function reconnaitrePrisme(t){
+  const tris = [];
+  let aireTotale = 0;
+  for(let i = 0; i + 9 <= t.length; i += 9){
+    const a = [t[i], t[i + 1], t[i + 2]], b = [t[i + 3], t[i + 4], t[i + 5]], c = [t[i + 6], t[i + 7], t[i + 8]];
+    const n = vec.vect([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]), L = Math.hypot(...n);
+    if(L < 1e-12) continue;
+    tris.push({ a, b, c, n:n.map(x => x / L), aire:L / 2 });
+    aireTotale += L / 2;
+  }
+  if(!tris.length) throw new Error("ce maillage ne contient aucun triangle");
+  /* L'axe : une normale telle que tout triangle lui soit parallèle (section) ou perpendiculaire (côté). */
+  const parNormale = new Map();
+  for(const x of tris){
+    const s = x.n.find(q => Math.abs(q) > 1e-3) > 0 ? 1 : -1, cle = x.n.map(q => (q * s).toFixed(2)).join();
+    const g = parNormale.get(cle) || { d:x.n.map(q => q * s), aire:0 };
+    g.aire += x.aire;
+    parNormale.set(cle, g);
+  }
+  const eps = 0.005;
+  const axe = [...parNormale.values()].sort((u, w) => w.aire - u.aire).slice(0, 24).find(g =>
+    tris.every(x => { const c = Math.abs(vec.scal(x.n, g.d)); return c > 1 - eps * eps || c < eps; }) && tris.some(x => vec.scal(x.n, g.d) > 1 - eps * eps) && tris.some(x => vec.scal(x.n, g.d) < -1 + eps * eps));
+  if(!axe) throw new Error("ce maillage n'a pas de section constante : il faudrait des faces toutes parallèles ou perpendiculaires à un même axe");
+  const d = vec.norm(axe.d), x = axePerpendiculaire(d), y = vec.vect(d, x);
+  const z = (p) => vec.scal(p, d), coord = tris.flatMap(q => [q.a, q.b, q.c]).map(z);
+  const bas = Math.min(...coord), haut = Math.max(...coord), h = haut - bas;
+  if(h < 1e-6) throw new Error("ce maillage n'a pas d'épaisseur");
+  const tol = Math.max(0.002, 2e-4 * h);
+  const dessus = tris.filter(q => vec.scal(q.n, d) > 0.5), dessous = tris.filter(q => vec.scal(q.n, d) < -0.5);
+  const aire = (l) => l.reduce((s, q) => s + q.aire, 0), A = aire(dessus);
+  if(dessus.some(q => [q.a, q.b, q.c].some(p => Math.abs(z(p) - haut) > tol)) || dessous.some(q => [q.a, q.b, q.c].some(p => Math.abs(z(p) - bas) > tol)))
+    throw new Error("ce maillage a plusieurs niveaux le long de son axe : ce n'est pas une seule extrusion");
+  if(Math.abs(A - aire(dessous)) > 0.01 * A) throw new Error("le dessus et le dessous n'ont pas la même aire");
+  /* Le contour de la section : les arêtes du dessus qu'un seul triangle emploie. */
+  const cle = (p) => `${vec.scal(p, x).toFixed(3)},${vec.scal(p, y).toFixed(3)}`, lieu = new Map(), compte = new Map();
+  for(const q of dessus) for(const [u, w] of [[q.a, q.b], [q.b, q.c], [q.c, q.a]]){
+    const [m, o] = [cle(u), cle(w)];
+    if(m === o) continue;
+    lieu.set(m, [vec.scal(u, x), vec.scal(u, y)]); lieu.set(o, [vec.scal(w, x), vec.scal(w, y)]);
+    const e = m < o ? `${m}|${o}` : `${o}|${m}`;
+    compte.set(e, (compte.get(e) || 0) + 1);
+  }
+  const voisins = new Map(), ajoute = (a, b) => { if(!voisins.has(a)) voisins.set(a, []); voisins.get(a).push(b); };
+  for(const [e, nb] of compte) if(nb === 1){ const [a, b] = e.split("|"); ajoute(a, b); ajoute(b, a); }
+  if([...voisins.values()].some(v => v.length !== 2)) throw new Error("le contour de la section se croise ou reste ouvert");
+  if(!voisins.size) throw new Error("la section n'a pas de contour");
+  const vues = new Set(), boucles = [];
+  for(const depart of voisins.keys()){
+    if(vues.has(depart)) continue;
+    const b = [];
+    let k = depart, avant = null;
+    while(!vues.has(k)){
+      vues.add(k); b.push(lieu.get(k));
+      const s = voisins.get(k).find(q => q !== avant && !vues.has(q)) ?? voisins.get(k).find(q => q !== avant);
+      avant = k; k = s;
+    }
+    boucles.push(b);
+  }
+  /* Les côtés doivent suivre le contour : sinon, deux sections de même aire seraient décalées l'une par rapport à l'autre. */
+  const perimetre = boucles.reduce((s, b) => s + b.reduce((m, p, i) => m + Math.hypot(p[0] - b[(i + 1) % b.length][0], p[1] - b[(i + 1) % b.length][1]), 0), 0);
+  const cotes = aireTotale - A - aire(dessous);
+  if(Math.abs(cotes - perimetre * h) > 0.03 * perimetre * h) throw new Error("les côtés ne suivent pas le contour de la section");
+  return { plan:{ origine:d.map(c => c * bas), normale:d, xdir:x }, hauteur:h, aire:A, primitives:boucles.flatMap(b => ajusterBoucle(b, tol)) };
+}
+
+/** Les corps qui ont la même apparence qu'un corps donné ; ceux sans apparence vont ensemble. */
+export function memeApparence(doc, noms, nom){
+  const look = (n) => { const a = doc.apparences?.[n]; return [a?.couleur ?? null, a?.metal ?? null, a?.rugosite ?? null, a?.opacite ?? null].join(); };
+  return noms.filter(n => look(n) === look(nom));
 }

@@ -247,8 +247,8 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
 - **Disposition** — celle de solidcraft, aux couleurs de la suite : barre fine en haut (menu
   *Fichier*, enregistrer, annuler / refaire, nom de la pièce), atelier *Design* et ruban à onglets
   (Modèle, Surface, Assemblage, Insérer, Inspecter, Gérer, Affichage, Tôlerie, Plastique, Rendu,
-  Soudures), dont chaque titre de groupe ouvre la liste de ses commandes (toutes n'ont pas leur bouton dans
-  le ruban, qui doit tenir dans l'écran), et recherche de commandes (touche **S**) ; **navigateur** flottant (pièce, paramètres, origine et ses
+  Soudures), dont chaque titre de groupe ouvre la liste de ses commandes (faute de place, le ruban passe sur une
+  seconde rangée), et recherche de commandes (touche **S**) ; **navigateur** flottant (pièce, paramètres, origine et ses
   plans — un clic ouvre une esquisse dessus —, corps, esquisses avec leur œil, opérations) ;
   propriétés et panneau d'opération flottants à droite ; barre de navigation en bas au centre
   (orbite, ajuster, accueil, vues, projection, affichage) ; **frise d'historique** tout en bas.
@@ -294,7 +294,7 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
 - **Soudures** — profilés (tube carré ou rond, cornière, plat, poutre IPE 80 à 200) le long d'une ossature, coupés droits ou en
   onglet ; liste de débit en CSV.
 - **Autres onglets** — *Insérer* : un STEP (référence pour dessiner autour, ou corps), un DXF ou un SVG comme
-  esquisse, une image de référence sur un plan ou une face (décalque), à calibrer sur une longueur connue, à tracer en esquisse d'après ses contours, un maillage STL, OBJ, 3MF ou glTF (5000 triangles au plus ; ses triangles coplanaires peuvent ne faire qu'une face), un nuage de
+  esquisse, une image de référence sur un plan ou une face (décalque), à calibrer sur une longueur connue, à tracer en esquisse d'après ses contours, un maillage STL, OBJ, 3MF ou glTF (5000 triangles au plus ; ses triangles coplanaires peuvent ne faire qu'une face, et *Convertir* rend à une pièce de section constante sa vraie forme : une esquisse de lignes, d'arcs et de cercles, une extrusion, la hauteur en paramètre), un nuage de
   points XYZ, CSV, PTS ou PLY en texte (200 000 points gardés au plus), la visserie M2 à M12 (vis CHC, vis H, écrou,
   rondelle) ; *Inspecter* : mesure, centre de gravité, coupe, collisions, rayon minimal et jonctions tangentes ou vives
   tracées dans la vue, comparaison de deux corps, balayage d'un paramètre en CSV, zébrures, dépouille, courbure, reflets,
@@ -303,7 +303,7 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
   choisie vaut pour les propriétés et le STEP), propriétés de la pièce, matériaux ajoutés, points de reprise (gardés
   jusqu'à la fermeture de la page), tout recalculer, script, réglages en fichier ; *Affichage* : regarder une face de
   face, rotation continue, styles, place des panneaux enregistrée, vues nommées, filtre de sélection (cliquer à travers une référence) ; *Rendu* : apparence d'un
-  corps ou d'une face (bibliothèque et favoris, couleur, métal, rugosité, opacité, matériau physique par corps), pinceau, remplacer partout, image PNG à la taille
+  corps ou d'une face (bibliothèque et favoris, couleur, métal, rugosité, opacité, matériau physique par corps), tous les corps de même apparence, pinceau, remplacer partout, image PNG à la taille
   voulue sans les aides de construction, fond transparent, ombres et occlusion ambiante, toutes les vues enregistrées dans une archive.
 - **Plans et axes** — en plus des décalés, médians et par trois points : un plan le long d'un chemin, tangent à un
   cylindre ou par deux arêtes, un axe perpendiculaire à une face ou par deux plans, un point au centre d'un cylindre ou à une
@@ -314,7 +314,7 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
 - **Ruban ESQUISSE** (pendant l'édition) — ligne (ou par son milieu), rectangle (deux coins, centré, trois points,
   arrondi), cercle (centre, deux ou trois points, tangent à deux ou trois courbes), arcs (dont tangent), polygone (inscrit,
   circonscrit, par une arête), oblong (trois façons), ellipse, conique, courbe par équation, point, spline, texte (DejaVu
-  Sans), lignes de construction, bissectrice, tangente depuis un point, projection d'arêtes du modèle, intersection du
+  Sans), lignes de construction, bissectrice, tangente depuis un point, projection d'arêtes du modèle (qui suivent la pièce quand elle change ; *Délier* les fige), intersection du
   modèle avec le plan, courbe de raccord tangente, points de spline ajoutés ou retirés ; ajuster, prolonger, couper, décaler
   (libre ou lié à l'original), congé et chanfrein de coin (dissymétrique au besoin), échelle, déplacer ou copier
   (Ctrl+C, Ctrl+V), construction, suppression, plan ; miroir, répétitions ; cotes (longueur, distance, horizontale,
@@ -391,7 +391,7 @@ pièce insérée ne suit pas l'original.
 
 ### Exporter
 - **PNG** de la vue courante.
-- **glTF binaire** (`.glb`) de la scène triangulée, pour une visionneuse tierce
+- **glTF binaire** (`.glb`, en mètres comme le veut le format) de la scène triangulée, pour une visionneuse tierce
   ou un moteur temps réel. Les arêtes d'affichage ne sont pas exportées.
 - **STEP** (`.stp`) d'une pièce ou d'une sélection d'un assemblage STEP, extraite du
   fichier d'origine : la géométrie exacte (B-Rep) est reprise telle quelle, sans

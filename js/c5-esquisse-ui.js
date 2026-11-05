@@ -610,6 +610,22 @@ export class EditeurEsquisse {
     this.transformer(() => courbeRaccord(this.esq, points[0].id, points[1].id));
   }
 
+  /** La géométrie projetée sélectionnée cesse de suivre son arête, et garde sa place. */
+  delierProjection(){
+    const liens = this.esq.projections || [], idx = indexer(this.esq), choisis = new Set();
+    for(const id of this.selection){
+      const e = idx.get(id);
+      if(!e) continue;
+      for(const q of [id, e.p1, e.p2, e.c, e.p, ...(e.pts || [])]) if(q) choisis.add(q);
+    }
+    const reste = liens.filter(l => !l.points.some(p => choisis.has(p)));
+    if(reste.length === liens.length){ this.statut("Sélectionnez une ligne, un arc ou un cercle projeté."); return; }
+    this.ctx.memoriser();
+    this.esq.projections = reste;
+    this.statut(`${liens.length - reste.length} projection(s) déliée(s) : elles ne suivent plus la pièce.`);
+    this.ctx.surModif();
+  }
+
   /** Le peigne de courbure des splines de l'esquisse, tant qu'il est allumé. */
   basculerPeigne(){
     this.peigne = !this.peigne;

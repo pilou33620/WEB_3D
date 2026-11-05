@@ -18,7 +18,7 @@
 "use strict";
 
 import { evaluateur, evaluerParametres, NOM_PARAMETRE } from "./c1-expressions.js";
-import { repere, versMonde, vec, profils, indexer, controlesSpline, axeConstruction, axePerpendiculaire, pointsChemin3d } from "./c2-esquisse.js";
+import { repere, versMonde, vec, profils, indexer, controlesSpline, axeConstruction, axePerpendiculaire, pointsChemin3d, cercle3Points } from "./c2-esquisse.js";
 import { ateliers, TYPES_ATELIERS } from "./c3b-ateliers.js";
 import { operationsPlus, TYPES_PLUS } from "./c3d-operations-plus.js";
 import { retrouver } from "./c3c-references.js";
@@ -274,6 +274,38 @@ function revolutionProfil(R, pts){
   return pen.close().sketchOnPlane("XZ").revolve([0, 0, 1], { origin:[0, 0, 0] });
 }
 
+/**
+ * Où sont passées les arêtes projetées dans une esquisse : retrouvées comme toute arête désignée, puis ramenées dans le
+ * plan. Le noyau ne sait pas résoudre l'esquisse : il rend les positions, la page les pose et relance la construction.
+ */
+function projectionsSuivies(R, etat, op, ctx){
+  const r = repere(op.plan, ctx.v), idx = indexer(op), sortie = [];
+  const local = (q) => { const d = [q.x - r.o[0], q.y - r.o[1], q.z - r.o[2]]; return [vec.scal(d, r.x), vec.scal(d, r.y)]; };
+  for(const lien of op.projections){
+    if(!lien.points.every(id => idx.has(id))) continue;       // la géométrie projetée a été effacée : plus rien à suivre
+    const corps = etat.corps.find(c => c.nom === lien.corps);
+    if(!corps) throw new Error(`« ${lien.corps} », dont vient une arête projetée, n'existe plus`);
+    const arete = designes(R, corps.shape, "aretes", [lien.arete], op, ctx)[0];
+    const pas = lien.points.length - 1;
+    if(lien.genre === "cercle" || lien.genre === "arc"){
+      const [a, m, b] = [0, 1 / 3, 2 / 3].map(t => local(arete.pointAt(t)));
+      const k = cercle3Points({ x:a[0], y:a[1] }, { x:m[0], y:m[1] }, { x:b[0], y:b[1] });
+      if(!k) throw new Error("une arête projetée n'est plus un cercle");
+      if(lien.genre === "cercle"){ sortie.push({ point:lien.points[0], x:k.c.x, y:k.c.y, rayon:k.r, element:lien.element }); continue; }
+      const [q0, q1] = [local(arete.pointAt(0)), local(arete.pointAt(1))];
+      const [c, u, w] = lien.points, U = idx.get(u), inverse = Math.hypot(q0[0] - U.x, q0[1] - U.y) > Math.hypot(q1[0] - U.x, q1[1] - U.y);
+      sortie.push({ point:c, x:k.c.x, y:k.c.y }, { point:u, x:(inverse ? q1 : q0)[0], y:(inverse ? q1 : q0)[1] }, { point:w, x:(inverse ? q0 : q1)[0], y:(inverse ? q0 : q1)[1] });
+      continue;
+    }
+    /* Une arête n'a pas de sens stable : on garde celui qui change le moins les points déjà posés. */
+    const pts = lien.points.map((_, i) => local(arete.pointAt(i / pas)));
+    const ecart = (l) => l.reduce((s, q, i) => { const P = idx.get(lien.points[i]); return s + Math.hypot(q[0] - P.x, q[1] - P.y); }, 0);
+    const bons = ecart(pts) <= ecart([...pts].reverse()) ? pts : [...pts].reverse();
+    bons.forEach((q, i) => sortie.push({ point:lien.points[i], x:q[0], y:q[1] }));
+  }
+  return sortie;
+}
+
 /** Le fil d'un chemin 3D : des droites entre ses points, ou une courbe qui les approche. */
 function fil3d(R, op, v){
   const p = pointsChemin3d(op, v);
@@ -287,6 +319,12 @@ function fil3d(R, op, v){
    --------------------------------------------------------------------------- */
 const OPERATIONS = {
   esquisse(R, etat, op, ctx){
+    OPERATIONS.suivrePlan(R, etat, op, ctx);
+    if(op.projections?.length) ctx.note.projections = projectionsSuivies(R, etat, op, ctx);
+    return etat;
+  },
+
+  suivrePlan(R, etat, op, ctx){
     const p = op.plan;
     if(!p.suivre || p.base) return etat;
     const f = faceSuivie(R, etat.corps.filter(c => !c.reference), { point:p.origine, normale:p.normale });

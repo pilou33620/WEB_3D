@@ -39,7 +39,7 @@ import { ANALYSES, appliquerAnalyse } from "./c8-analyses.js";
 import { controlerRegles, PROCEDES } from "./c10-regles.js";
 import { champsAteliers, defautsAteliers, brancherAteliers, clicAtelier, poigneeBas, marquesAteliers, dessinerAides,
          fichierAtelier, appliquerEclate, verifierLiens, DESIGNATIONS_UNIQUES, AIDES_DESIGNATION } from "./c9-ateliers-ui.js";
-import { champsPlus, defautsPlus, completerChamps, brancherPlus, actionsEsquisse, apresAffichage, copierOperations, collerOperations, matiereDe, majComposants } from "./c11-plus-ui.js";
+import { champsPlus, defautsPlus, completerChamps, brancherPlus, actionsEsquisse, apresAffichage, copierOperations, collerOperations, matiereDe, majComposants, oublierGroupe } from "./c11-plus-ui.js";
 import { init_planegcs_module, GcsWrapper } from "../vendor/planegcs/index.js";
 
 const $ = (id) => document.getElementById(id);
@@ -810,7 +810,9 @@ class Conception {
       if(op && n.plan) op.plan = n.plan;
       if(op && n.corpsNom) op.corpsNom = n.corpsNom;
     }
+    this.poserProjections(res);
     const selNom = arbre.selection?.name, discret = !!this.faceChoisie;
+    if(this.groupeChoisi) oublierGroupe(this);     // ses corps partent avec la pièce d'avant
     arbre.selectionner(null);
     this.montrerFace(null);           // ses triangles partent avec la pièce d'avant
     ui.mesure.annuler();
@@ -880,6 +882,28 @@ class Conception {
   }
 
   copierOps(){ return copierOperations(this); }
+
+  /** Les arêtes projetées ont bougé : leurs points suivent, l'esquisse se résout, et ce qui en dépend se reconstruit. */
+  poserProjections(res){
+    let change = false;
+    for(const [id, n] of Object.entries(res.etats)){
+      if(!n.projections) continue;
+      const esq = this.doc.operations.find(o => o.id === id);
+      if(!esq) continue;
+      for(const q of n.projections){
+        const k = esq.contraintes.find(x => x.type === "fixe" && x.a === q.point && x.projete);
+        if(!k) continue;
+        if(Math.hypot(k.x - q.x, k.y - q.y) > 1e-5){ k.x = q.x; k.y = q.y; change = true; }
+        if(q.rayon !== undefined){
+          const ky = esq.contraintes.find(x => x.type === "rayon" && x.a === q.element && x.projete);
+          if(ky && Math.abs(parseFloat(ky.expr) - q.rayon) > 1e-5){ ky.expr = String(q.rayon); change = true; }
+        }
+      }
+    }
+    /* Une seule passe de plus suffit ; le plafond garde d'un aller-retour sans fin si une arête ne se stabilise pas. */
+    this.passesProjection = change ? (this.passesProjection || 0) + 1 : 0;
+    if(change && this.passesProjection <= 3) this.relancer = true;
+  }
 
   /** Les matériaux connus de cette pièce : ceux de la page, puis les siens. */
   materiaux(){ return [...Object.keys(MATERIAUX), ...Object.keys(this.doc.materiauxPerso || {})]; }
@@ -1786,6 +1810,7 @@ class Conception {
 
   /** Un clic dans la vue, sans outil : la face sous la souris, ou le corps si le filtre ne prend pas les faces. */
   clicVue(ev){
+    if(this.groupeChoisi) oublierGroupe(this);
     const touche = this.vue.lancerRayon(ev, this.selectionnables())[0];
     if(this.pinceau && this.lookCopie){
       if(touche) this.modifierDoc(() => { const t = (this.doc.apparences ||= {}); t[touche.object.name] = { ...t[touche.object.name], ...this.lookCopie }; });
@@ -1897,10 +1922,17 @@ class Conception {
     }
     this.memoriser();
     const avant = new Set(ed.esq.elements.map(e => e.id));
-    ajouterPrimitives(ed.esq, prims);
-    for(const e of ed.esq.elements){
-      if(e.type === "point" && !avant.has(e.id)) ed.esq.contraintes.push({ id:nouvelIdEsquisse(ed.esq, "k"), type:"fixe", a:e.id, x:e.x, y:e.y, projete:true });
-    }
+    const crees = ajouterPrimitives(ed.esq, prims);
+    const neufs = ed.esq.elements.filter(e => e.type === "point" && !avant.has(e.id));
+    for(const e of neufs) ed.esq.contraintes.push({ id:nouvelIdEsquisse(ed.esq, "k"), type:"fixe", a:e.id, x:e.x, y:e.y, projete:true });
+    /* Le lien : l'esquisse se souvient de l'arête, le noyau dira où elle est partie. */
+    const lien = { arete:this.pointArete(t).map(c => +c.toFixed(5)), corps:t.objet.parent.name, genre:prims[0].type === "ligne" ? "lignes" : prims[0].type };
+    if(lien.genre === "cercle"){
+      lien.points = [crees[0].c]; lien.element = crees[0].id;
+      ed.esq.contraintes.push({ id:nouvelIdEsquisse(ed.esq, "k"), type:"rayon", a:crees[0].id, expr:String(crees[0].r), projete:true });
+    }else if(lien.genre === "arc") lien.points = [crees[0].c, crees[0].p1, crees[0].p2];
+    else lien.points = [crees[0].p1, ...crees.map(l => l.p2)];
+    (ed.esq.projections ||= []).push(lien);
     ed.resoudre();
     ed.redessiner();
     this.marquerModifie();

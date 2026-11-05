@@ -13,8 +13,9 @@ import { telechargerFichier } from "./10-export-step.js";
 import { nomProjet } from "./11-projets.js";
 import { chercherCollisions } from "./12-collisions.js";
 import { demander, avertir, confirmer } from "./c0-dialogues.js";
-import { nomenclature, operationsCollees, csvBalayage, archive, dxfEsquisse, contoursImage } from "./c12-exports.js";
-import { echantillonSpline, nouvelleEsquisse, ajouterPrimitives } from "./c2-esquisse.js";
+import { nomenclature, operationsCollees, csvBalayage, archive, dxfEsquisse, contoursImage, reconnaitrePrisme, memeApparence } from "./c12-exports.js";
+import { echantillonSpline, nouvelleEsquisse, ajouterPrimitives, resoudre, nouvelId } from "./c2-esquisse.js";
+import { autoContraindre } from "./c2c-esquisse-plus.js";
 import { repereImage } from "./c9-ateliers-ui.js";
 
 const $ = (id) => document.getElementById(id);
@@ -555,7 +556,8 @@ async function nouvelleEtude(c){
    --------------------------------------------------------------------------- */
 async function poserApparence(c){
   const face = c.faceChoisie, objet = c.arbre.selection;
-  const cibles = objet?.userData.estPiece ? [objet.name] : c.nomsCorps;
+  const groupe = c.groupeChoisi?.size ? [...c.groupeChoisi].map(m => m.name) : null;
+  const cibles = groupe || (objet?.userData.estPiece ? [objet.name] : c.nomsCorps);
   if(!cibles.length){ etat("Aucun corps à habiller."); return; }
   const base = c.doc.apparences?.[cibles[0]] || {};
   const r = await demander(face ? `Apparence de la face de « ${objet?.name} »` : cibles.length > 1 ? "Apparence de tous les corps" : `Apparence de « ${cibles[0]} »`, [
@@ -593,8 +595,65 @@ function copierLook(c){
 function collerLook(c){
   const o = c.arbre.selection;
   if(!c.lookCopie){ etat("Copiez d'abord une apparence."); return; }
-  if(!o?.userData.estPiece){ etat("Choisissez le corps à habiller."); return; }
-  c.modifierDoc(() => { const t = (c.doc.apparences ||= {}); t[o.name] = { ...t[o.name], ...c.lookCopie }; });
+  const cibles = c.groupeChoisi?.size ? [...c.groupeChoisi].map(m => m.name) : o?.userData.estPiece ? [o.name] : [];
+  if(!cibles.length){ etat("Choisissez le corps à habiller."); return; }
+  c.modifierDoc(() => { const t = (c.doc.apparences ||= {}); for(const n of cibles) t[n] = { ...t[n], ...c.lookCopie }; });
+}
+
+/** Tous les corps de la même apparence que celui qui est choisi : surlignés, et visés par Apparence et Coller. */
+function choisirMemeLook(c){
+  const o = c.arbre.selection;
+  if(!o?.userData.estPiece){ etat("Choisissez d'abord un corps."); return; }
+  const noms = memeApparence(c.doc, c.nomsCorps, o.name);
+  oublierGroupe(c);
+  c.groupeChoisi = new Set(c.vue.modele.children.filter(m => noms.includes(m.name) && m !== o));
+  for(const m of c.groupeChoisi) c.arbre.peindre(m, true);
+  c.groupeChoisi.add(o);
+  $("bMemeLook").classList.add("on");
+  etat(`${noms.length} corps de même apparence : ${noms.join(", ")}. Apparence et Coller les visent tous.`);
+  c.vue.invalider();
+}
+
+/** Rend aux corps surlignés leur matériau. */
+export function oublierGroupe(c){
+  for(const m of c.groupeChoisi || []) if(m !== c.arbre.selection && m.parent) c.arbre.peindre(m, false);
+  c.groupeChoisi = null;
+  $("bMemeLook")?.classList.remove("on");
+  c.vue.invalider();
+}
+
+/* -----------------------------------------------------------------------------
+   Maillage vers solide paramétrique
+   --------------------------------------------------------------------------- */
+/** Une esquisse et une extrusion à la place d'un maillage de section constante : la hauteur devient un paramètre. */
+function convertirMaillage(c, op){
+  const octets = Uint8Array.from(atob(op.donnees), x => x.charCodeAt(0));
+  const tris = new Float32Array(octets.buffer);
+  const pr = reconnaitrePrisme(tris);
+  const avant = JSON.stringify(c.doc);
+  const esq = nouvelleEsquisse(c.nouvelId(), `Section de ${op.nom}`, pr.plan);
+  const crees = ajouterPrimitives(esq, pr.primitives);
+  const sansCotes = JSON.stringify(esq);
+  autoContraindre(esq);
+  for(const e of crees) if(e?.type === "cercle") esq.contraintes.push({ id:nouvelId(esq, "k"), type:"diametre", a:e.id, expr:String(+(2 * e.r).toFixed(4)) });
+  /* Si le solveur refuse les contraintes devinées, la section reste juste : on les retire. */
+  if(!resoudre(c.gcs, esq, c.v()).ok) Object.assign(esq, JSON.parse(sansCotes));
+  let n = 1, nom;
+  do{ nom = `hauteur_${n++}`; }while(c.doc.parametres.some(p => p.nom === nom));
+  const ext = { id:c.nouvelId(), type:"extrusion", nom:`Extrusion de ${op.nom}`, esquisse:esq.id, distance:nom, sens:"un", operation:"nouveau", corps:"" };
+  c.doc.parametres.push({ nom, expr:String(+pr.hauteur.toFixed(4)), commentaire:`Hauteur reconnue sur ${op.nom}` });
+  op.suspendue = true;       // le maillage reste dans l'historique : on peut comparer, ou revenir en arrière
+  c.inserer(esq);
+  c.inserer(ext);
+  c.memoriser(avant);
+  c.marquerModifie();
+  c.majHistorique();
+  const volumeMaillage = Math.abs(tris.reduce((s, _, i) => {
+    if(i % 9) return s;
+    const [a, b, d] = [tris.subarray(i, i + 3), tris.subarray(i + 3, i + 6), tris.subarray(i + 6, i + 9)];
+    return s + (a[0] * (b[1] * d[2] - b[2] * d[1]) - a[1] * (b[0] * d[2] - b[2] * d[0]) + a[2] * (b[0] * d[1] - b[1] * d[0])) / 6;
+  }, 0));
+  return { ext, volumeMaillage, nb:{ lignes:crees.filter(e => e?.type === "ligne").length, arcs:crees.filter(e => e?.type === "arc").length, cercles:crees.filter(e => e?.type === "cercle").length } };
 }
 
 /* -----------------------------------------------------------------------------
@@ -871,6 +930,7 @@ export function brancherPlus(c){
   si("bApparence2", () => poserApparence(c));
   si("bCopierLook", () => copierLook(c));
   si("bCollerLook", () => collerLook(c));
+  si("bMemeLook", () => { if(c.groupeChoisi?.size) oublierGroupe(c); else choisirMemeLook(c); });
   si("bPinceau", () => {
     if(!c.pinceau && !c.lookCopie){ etat("Copiez d'abord une apparence."); return; }
     c.pinceau = !c.pinceau;
@@ -891,6 +951,24 @@ export function brancherPlus(c){
     let n = 0;
     c.modifierDoc(() => { for(const [nom, x] of Object.entries(c.doc.apparences)) if(pareil(x)){ c.doc.apparences[nom] = { ...x, ...c.lookCopie }; n++; } });
     etat(`${n} corps changé(s).`);
+  });
+
+  si("bConvertirMaillage", async () => {
+    if(c.edition || c.editeur.ouvert){ etat("Terminez d'abord l'opération ou l'esquisse en cours."); return; }
+    const mail = c.doc.operations.filter(o => o.type === "maillage" && !o.suspendue);
+    if(!mail.length){ etat("Insérez d'abord un maillage."); return; }
+    const q = await demander("Maillage vers solide paramétrique", [{ nom:"Maillage", valeur:mail[0].id, options:Object.fromEntries(mail.map(o => [o.id, o.nom])) }]);
+    if(!q) return;
+    await tache(c, "Conversion", async () => {
+      const { ext, volumeMaillage, nb } = convertirMaillage(c, mail.find(o => o.id === q[0]));
+      await c.reconstruire();
+      while(c.enCours || c.relancer) await new Promise(r => setTimeout(r, 30));
+      const err = c.resultat?.etats?.[ext.id]?.erreur;
+      if(err) throw new Error(`section reconnue, mais l'extrusion refuse : ${err}`);
+      const m = c.resultat?.maillages.find(x => x.nom === ext.corpsNom);
+      const v = m?.proprietes?.volume ?? 0;
+      etat(`Section : ${nb.lignes} lignes, ${nb.arcs} arcs, ${nb.cercles} cercles. Volume ${v.toFixed(1).replace(".", ",")} mm³, maillage ${volumeMaillage.toFixed(1).replace(".", ",")} mm³ (écart ${(100 * Math.abs(v - volumeMaillage) / (volumeMaillage || 1)).toFixed(2).replace(".", ",")} %).`);
+    });
   });
 
   /* ---------------- calque de référence ---------------- */
@@ -1056,7 +1134,7 @@ export function actionsEsquisse(c){
   return {
     echelle:() => ed.echelle(), deplacerEnt:() => ed.deplacerCopier(false), copierEnt:() => ed.deplacerCopier(true),
     autoContraindre:() => ed.autoContraindre(), boutsLibres:() => ed.boutsLibres(), pilotee:() => ed.basculerPilotee(), rayonDiam:() => ed.basculerRayon(),
-    retirerPoint:() => ed.retirerPoint(), inverserSpline:() => ed.inverserSpline(), raccord:() => ed.raccord(),
+    delierProjection:() => ed.delierProjection(), retirerPoint:() => ed.retirerPoint(), inverserSpline:() => ed.inverserSpline(), raccord:() => ed.raccord(),
     courbeEquation:() => ed.courbeEquation(), bissectrice:() => ed.bissectrice(), tangentePoint:() => ed.tangentePoint(), cercleTangent:() => ed.cercleTangent(),
     peigne:() => document.querySelector('[data-action="peigne"]').classList.toggle("on", ed.basculerPeigne()),
     intersection:async () => {

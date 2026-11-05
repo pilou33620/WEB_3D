@@ -522,7 +522,12 @@ export class Interface {
     const aretes = [];
     this.vue.modele.traverse(o => { if(o.userData.estArete && o.visible){ o.visible = false; aretes.push(o); } });
 
+    /* glTF compte en mètres, la page en millimètres. La vue ne se redessine pas tant que l'écran d'attente est là. */
+    const remettre = () => { this.vue.modele.scale.setScalar(1); this.vue.modele.updateMatrixWorld(true); };
+    this.vue.modele.scale.setScalar(0.001);
+    this.vue.modele.updateMatrixWorld(true);
     new GLTFExporter().parse(this.vue.modele, (glb) => {
+      remettre();
       for(const a of aretes) a.visible = true;
       this.attendre(false);
       const lien = document.createElement("a");
@@ -531,6 +536,7 @@ export class Interface {
       lien.click();
       setTimeout(() => URL.revokeObjectURL(lien.href), 10_000);
     }, (e) => {
+      remettre();
       for(const a of aretes) a.visible = true;
       this.attendre(false);
       this.erreur("Export glTF impossible : " + (e?.message || e));

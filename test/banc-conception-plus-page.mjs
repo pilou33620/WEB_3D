@@ -67,14 +67,29 @@ try{
     }
     return trop;
   `), {});
-  verifier("les commandes repliées sont dans la liste de leur groupe et la recherche", await page(`
-    const c = W3D.conception;
-    const titre = document.querySelector('[data-op="voile"]').closest("section").querySelector("h5");
-    titre.click();
-    const liste = [...document.querySelectorAll(".menu-flottant button")].map(b => b.textContent).join("|");
-    c.fermerMenus();
-    return [/Voile/.test(liste), !!document.querySelector('[data-op="voile"]').onclick];
-  `), [true, true]);
+  verifier("chaque bouton du ruban se voit, sur tous les onglets : aucun n'est replié ni hors de l'écran", await page(`
+    const hors = [];
+    for(const g of document.querySelectorAll("#ruban .groupes")){
+      const h = g.hidden; g.hidden = false;
+      for(const b of g.querySelectorAll("button")){
+        const r = b.getBoundingClientRect();
+        if(!r.width || !r.height || r.right > innerWidth + 1 || r.left < 0) hors.push(b.dataset.op || b.dataset.outil || b.dataset.action || b.dataset.contrainte || b.id);
+      }
+      g.hidden = h;
+    }
+    return hors;
+  `), []);
+  verifier("une pile tient trois boutons, et la vue garde de la place", await page(`
+    const trop = [...document.querySelectorAll("#ruban .pile")].filter(p => p.querySelectorAll("button").length > 3).length;
+    const hauteurs = [];
+    for(const g of document.querySelectorAll("#ruban .groupes")){
+      const h = g.hidden; g.hidden = false;
+      hauteurs.push(g.getBoundingClientRect().height);
+      g.hidden = h;
+    }
+    /* Deux rangées au plus à 1500 pixels. */
+    return [trop, Math.max(...hauteurs) < 230];
+  `), [0, true]);
   verifier("chaque opération du ruban a ses champs et son nom", await page(`
     const c = W3D.conception, sortie = [];
     for(const b of document.querySelectorAll("#ruban [data-op]")){
@@ -222,8 +237,8 @@ try{
     const r = { nuage:c.doc.operations.at(-1).type };
     /* Un glb écrit par la page, relu par la page. */
     await piece([boite()]);
-    const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
-    const octets = await new GLTFExporter().parseAsync(W3D.vue.modele, { binary:true });
+    $("bGlb").click(); while(!fichiers.length) await attente(50);
+    const octets = fichiers.pop().blob;
     await c.ouvrirFichiers([new File([octets], "cube.glb")]);
     await fini();
     const op = c.doc.operations.at(-1);
@@ -487,6 +502,95 @@ try{
     r.ombre = !W3D.vue.modeFilaire;
     return r;
   `), { pinceau:true, peint:"#c9a84a", trace:["esquisse", 4], bibliotheque:2, disposition:"33px", filaire:true, ombre:true });
+
+  /* ---------------- troisième lot ---------------- */
+  verifier("une arête projetée suit la pièce, et ce qui en dépend se refait", await page(`
+    const c = W3D.conception;
+    await piece([boite(0, { L:"L", l:"10", h:"10" })], { parametres:[{ nom:"L", expr:"10" }] });
+    W3D.vue.ajusterVue(W3D.vue.modele);
+    await c.ajouterEsquisse({ nom:"E", plan:{ base:"XY", decalage:"20" }, primitives:[] });
+    const esq = c.doc.operations[1];
+    /* Le lien, tel que le geste Projeter le pose : deux points fixés sur l'arête du bas. */
+    esq.elements.push({ id:"pa", type:"point", x:0, y:0 }, { id:"pb", type:"point", x:10, y:0 }, { id:"pc", type:"point", x:0, y:5 }, { id:"l1", type:"ligne", p1:"pa", p2:"pb" }, { id:"l2", type:"ligne", p1:"pb", p2:"pc" }, { id:"l3", type:"ligne", p1:"pc", p2:"pa" });
+    esq.contraintes.push({ id:"fa", type:"fixe", a:"pa", x:0, y:0, projete:true }, { id:"fb", type:"fixe", a:"pb", x:10, y:0, projete:true }, { id:"fc", type:"fixe", a:"pc", x:0, y:5 });
+    esq.projections = [{ arete:[5, 0, 10], corps:"Corps 1", genre:"lignes", points:["pa", "pb"] }];
+    await c.ajouterOperation("extrusion", { esquisse:esq.id, distance:"2", operation:"nouveau" });
+    await fini();
+    const r = { avant:Math.round(c.resultat.maillages[1].proprietes.volume) };
+    c.modifierDoc(() => { c.doc.parametres[0].expr = "30"; });
+    await fini(); await fini();
+    r.apres = Math.round(c.resultat.maillages[1].proprietes.volume);
+    r.point = Math.round(esq.elements.find(e => e.id === "pb").x);
+    r.passes = c.passesProjection;
+    /* Délier : le point garde sa place, la pièce ne le commande plus. */
+    c.ouvrirEsquisse(esq, JSON.stringify(c.doc)); await fini();
+    c.editeur.selection = new Set(["l1"]);
+    document.querySelector('[data-action="delierProjection"]').click();
+    r.delie = esq.projections.length;
+    c.terminerEsquisse(); await fini();
+    c.modifierDoc(() => { c.doc.parametres[0].expr = "50"; });
+    await fini(); await fini();
+    r.fige = Math.round(esq.elements.find(e => e.id === "pb").x);
+    return r;
+  `), { avant:50, apres:150, point:30, passes:0, delie:0, fige:30 });
+
+  verifier("le geste Projeter pose le lien", await page(`
+    const c = W3D.conception;
+    await piece([boite()]);
+    W3D.nav.allerVersDirection(new W3D.THREE.Vector3(0, 0, 1), false); W3D.vue.ajusterVue(W3D.vue.modele); W3D.vue.rendre();
+    await c.ajouterEsquisse({ nom:"E", plan:{ base:"XY", decalage:"30" }, primitives:[] });
+    c.ouvrirEsquisse(c.doc.operations[1], JSON.stringify(c.doc)); await fini();
+    W3D.vue.rendre();
+    const e = W3D.vue.versEcran(new W3D.THREE.Vector3(10, 0, 10)), b = W3D.vue.canvas.getBoundingClientRect();
+    c.projeterArete({ clientX:b.left + e.x, clientY:b.top + e.y });
+    const esq = c.editeur.esq, l = esq.projections?.[0];
+    const r = l ? [l.genre, l.corps, l.points.length, esq.contraintes.filter(k => k.projete).length] : "aucun lien";
+    c.terminerEsquisse(); await fini();
+    return [r, c.resultat.etats[c.doc.operations[1].id]?.erreur ?? null];
+  `), [["lignes", "Corps 1", 2, 2], null]);
+
+  verifier("maillage converti : une esquisse, une extrusion, la hauteur en paramètre", await page(`
+    const c = W3D.conception;
+    await piece([{ type:"cylindre", diametre:"20", h:"10", axe:"Z", x:"0", y:"0", z:"0", operation:"nouveau" }]);
+    $("bGlb").click(); while(!fichiers.length) await attente(50);
+    const octets = fichiers.pop().blob;
+    await piece([]);
+    await c.ouvrirFichiers([new File([octets], "cyl.glb")]);
+    await fini();
+    c.edition.op.reference = false;
+    c.validerOperation(); await fini();
+    const tailleLue = c.resultat.maillages.find(q => !q.erreur).proprietes?.boite;
+    const dimension = tailleLue ? Math.round(tailleLue[1][2] - tailleLue[0][2]) : null;
+    $("bConvertirMaillage").click(); await repondre(); 
+    for(let i = 0; i < 600 && !/Section :/.test($("etatSel").textContent); i++) await attente(100);
+    await fini();
+    const [m, s, x] = c.doc.operations;
+    const r = { dimension, types:c.doc.operations.map(o => o.type), suspendu:m.suspendue, cercles:s.elements.filter(e => e.type === "cercle").length, parametre:c.doc.parametres[0].nom === x.distance };
+    r.ecart = parseFloat(($("etatSel").textContent.match(/écart ([\\d,]+)/) || [])[1]?.replace(",", ".")) < 2 || $("etatSel").textContent;
+    /* La hauteur commande maintenant la pièce. */
+    const v0 = c.resultat.maillages.find(q => !q.erreur).proprietes.volume;
+    c.modifierDoc(() => { c.doc.parametres[0].expr = String(2 * +c.doc.parametres[0].expr); });
+    await fini();
+    r.double = Math.abs(c.resultat.maillages.find(q => !q.erreur).proprietes.volume / v0 - 2) < 0.01;
+    return r;
+  `), { dimension:10, types:["maillage", "esquisse", "extrusion"], suspendu:true, cercles:1, parametre:true, ecart:true, double:true });
+
+  verifier("tous les corps de même apparence", await page(`
+    const c = W3D.conception;
+    await piece([boite(), boite(40), boite(80)]);
+    c.doc.apparences = { "Corps 1":{ couleur:"#112233", metal:0, rugosite:0.5, opacite:1 }, "Corps 2":{ couleur:"#112233", metal:0, rugosite:0.5, opacite:1 }, "Corps 3":{ couleur:"#ff0000", metal:0, rugosite:0.5, opacite:1 } };
+    c.reconstruire(); await fini();
+    W3D.arbre.selectionner(W3D.vue.modele.children[0]);
+    $("bMemeLook").click();
+    const r = { nb:c.groupeChoisi.size, surligne:W3D.vue.modele.children.filter(m => m.userData.matSauve).length };
+    $("bApparence").click();
+    await repondre(["Laiton"]);
+    await fini();
+    r.apres = ["Corps 1", "Corps 2", "Corps 3"].map(n => c.doc.apparences[n].couleur);
+    r.oublie = c.groupeChoisi === null;
+    r.residu = W3D.vue.modele.children.filter(m => m.userData.matSauve && m !== W3D.arbre.selection).length;
+    return r;
+  `), { nb:2, surligne:2, apres:["#c9a84a", "#c9a84a", "#ff0000"], oublie:true, residu:0 });
 
   verifier("aucune erreur dans la page", erreurs.filter(e => !/favicon|WebGL|GPU stall|swiftshader/i.test(e)), []);
 }catch(e){

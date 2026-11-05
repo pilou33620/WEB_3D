@@ -385,6 +385,71 @@ async function bati(ops, id, parametres = []){
   verifier("décaler lié : la copie suit l'original, toujours à sa distance", [resoudre(gcs, de, Number).ok, ecarts, Math.round(Math.hypot(P(de, P(de, "zl1").p2).x - P(de, P(de, "zl1").p1).x, P(de, P(de, "zl1").p2).y - P(de, P(de, "zl1").p1).y))], [true, [2, 2, 2, 2], 30]);
 }
 
+/* ---------------- arêtes projetées, maillage vers solide, même apparence ---------------- */
+{
+  const { reconnaitrePrisme, ajusterBoucle, memeApparence } = await import("../js/c12-exports.js");
+  const { ajouterPrimitives } = await import("../js/c2-esquisse.js");
+
+  /* Une arête projetée suit la pièce : le noyau dit où elle est partie. */
+  const projete = (extra = {}) => ({ id:"e", type:"esquisse", nom:"E", plan:{ base:"XY", decalage:"20" }, contraintes:[], elements:[{ id:"a", type:"point", x:0, y:0 }, { id:"b", type:"point", x:10, y:0 }, { id:"l", type:"ligne", p1:"a", p2:"b" }],
+    projections:[{ arete:[5, 0, 10], corps:"Corps 1", genre:"lignes", points:["a", "b"] }], ...extra });
+  const piece = (L) => ({ parametres:[{ nom:"L", expr:String(L) }], operations:[{ id:"b", type:"boite", L:"L", l:"10", h:"10", x:"0", y:"0", z:"0", operation:"nouveau" }, projete()] });
+  const r10 = await construire(R, piece(10), [], oc);
+  verifier("projection : à sa place, rien ne bouge", [r10.etats.e.erreur, r10.etats.e.projections.map(q => [q.point, Math.round(q.x)]).sort()], [undefined, [["a", 0], ["b", 10]]]);
+  const r30 = await construire(R, piece(30), [], oc);
+  verifier("projection : l'arête s'allonge, le point suit", r30.etats.e.projections.map(q => [q.point, Math.round(q.x)]).sort(), [["a", 0], ["b", 30]]);
+  const envers = await construire(R, { ...piece(30), operations:[piece(30).operations[0], projete({ elements:[{ id:"a", type:"point", x:30, y:0 }, { id:"b", type:"point", x:0, y:0 }, { id:"l", type:"ligne", p1:"a", p2:"b" }] })] }, [], oc);
+  verifier("projection : le sens déjà posé est gardé", envers.etats.e.projections.map(q => [q.point, Math.round(q.x)]).sort(), [["a", 30], ["b", 0]]);
+  const orphelin = await construire(R, { operations:[projete({ projections:[{ arete:[5, 0, 10], corps:"Absent", genre:"lignes", points:["a", "b"] }] })] }, [], oc);
+  vrai("projection : un corps disparu est signalé", /n'existe plus/.test(orphelin.etats.e.erreur || ""));
+  const efface = await construire(R, { operations:[piece(10).operations[0], projete({ projections:[{ arete:[5, 0, 10], corps:"Corps 1", genre:"lignes", points:["a", "absent"] }] })] }, [], oc);
+  verifier("projection : une géométrie effacée n'est plus suivie", [efface.etats.e.erreur, efface.etats.e.projections], [undefined, []]);
+  const cercle = (d) => ({ operations:[{ id:"c", type:"cylindre", diametre:String(d), h:"10", axe:"Z", x:"3", y:"4", z:"0", operation:"nouveau" },
+    { id:"e", type:"esquisse", nom:"E", plan:{ base:"XY", decalage:"20" }, contraintes:[], elements:[{ id:"o", type:"point", x:3, y:4 }, { id:"k", type:"cercle", c:"o", r:5 }],
+      projections:[{ arete:[13 - 10 + d / 2, 4, 10], corps:"Corps 1", genre:"cercle", points:["o"], element:"k" }] }] });
+  const rc = await construire(R, cercle(10), [], oc);
+  const qc = rc.etats.e.projections[0];
+  verifier("projection d'un cercle : centre et rayon", [rc.etats.e.erreur, Math.round(qc.x), Math.round(qc.y), Math.round(qc.rayon)], [undefined, 3, 4, 5]);
+
+  /* Un maillage redevient une esquisse et une extrusion. */
+  const triangles = (forme) => {
+    const m = forme.mesh({ tolerance:0.01, angularTolerance:0.2 }), v = m.vertices, t = [];
+    for(const i of m.triangles) t.push(v[3 * i], v[3 * i + 1], v[3 * i + 2]);
+    return t;
+  };
+  const refaire = async (forme) => {
+    const pr = reconnaitrePrisme(triangles(forme));
+    const esq = { id:"e", type:"esquisse", nom:"E", plan:pr.plan, elements:[], contraintes:[], compteur:0 };
+    ajouterPrimitives(esq, pr.primitives);
+    const b = await bati([esq, { id:"x", type:"extrusion", esquisse:"e", distance:String(pr.hauteur), operation:"nouveau" }], "x");
+    return { pr, b, nb:(t) => pr.primitives.filter(q => q.type === t).length };
+  };
+  const plaque = R.makeBox([0, 0, 0], [40, 20, 5]).cut(R.makeCylinder(4, 5, [20, 10, 0]));
+  const vp = Math.abs(R.measureVolume(plaque));
+  const p1 = await refaire(plaque);
+  verifier("maillage : plaque percée, 4 lignes et un cercle", [p1.b.erreur, p1.nb("ligne"), p1.nb("cercle"), Math.round(p1.pr.hauteur)], [undefined, 4, 1, 5]);
+  vrai("maillage : le solide refait a le volume de l'original", Math.abs(p1.b.vol() - vp) < 0.005 * vp, `${p1.b.vol()} / ${vp}`);
+  const arrondi = R.makeBox([0, 0, 0], [40, 20, 5]).fillet(4, e => e.inDirection("Z"));
+  const va = Math.abs(R.measureVolume(arrondi));
+  const p2 = await refaire(arrondi);
+  verifier("maillage : coins arrondis, 4 lignes et 4 arcs", [p2.b.erreur, p2.nb("ligne"), p2.nb("arc")], [undefined, 4, 4]);
+  vrai("maillage : coins arrondis, même volume", Math.abs(p2.b.vol() - va) < 0.005 * va, `${p2.b.vol()} / ${va}`);
+  const axeY = R.makeCylinder(5, 20, [0, 0, 0], [0, 1, 0]);
+  const p3 = await refaire(axeY);
+  verifier("maillage : un axe quelconque, un cercle", [p3.b.erreur, p3.nb("cercle"), Math.abs(p3.pr.plan.normale[1]), Math.round(p3.pr.hauteur)], [undefined, 1, 1, 20]);
+  const leve = (f) => { try{ f(); return ""; }catch(e){ return e.message; } };
+  vrai("maillage : une sphère n'a pas de section constante", /section constante/.test(leve(() => reconnaitrePrisme(triangles(R.makeSphere(5))))));
+  const marche = R.makeBox([0, 0, 0], [20, 20, 5]).fuse(R.makeBox([0, 0, 5], [10, 20, 10]));
+  vrai("maillage : une marche a plusieurs niveaux", /niveaux|section constante|aire/.test(leve(() => reconnaitrePrisme(triangles(marche)))));
+  vrai("maillage : rien, refusé", /aucun triangle/.test(leve(() => reconnaitrePrisme([]))));
+  const carre = [[0, 0], [5, 0], [10, 0], [10, 10], [0, 10]];
+  verifier("contour : les points alignés ne font qu'une ligne", ajusterBoucle(carre, 0.01).map(q => q.type), ["ligne", "ligne", "ligne", "ligne"]);
+
+  const doc = { apparences:{ A:{ couleur:"#111111", metal:1, rugosite:0.2, opacite:1 }, B:{ couleur:"#111111", metal:1, rugosite:0.2, opacite:1, materiau:"Laiton" }, C:{ couleur:"#222222", metal:1, rugosite:0.2, opacite:1 } } };
+  verifier("même apparence : le matériau physique ne compte pas", memeApparence(doc, ["A", "B", "C", "D"], "A"), ["A", "B"]);
+  verifier("même apparence : les corps sans apparence vont ensemble", memeApparence(doc, ["A", "D", "E"], "D"), ["D", "E"]);
+}
+
 /* ---------------- analyses ---------------- */
 {
   const f = R.makeBox([0, 0, 0], [20, 20, 20]).fillet(2, e => e.inDirection("Z"));

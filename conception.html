@@ -68,8 +68,7 @@ try{
 <!-- Le ruban. Un bouton porte data-op (opération de c3-operations.js), data-outil (outil
      d'esquisse de c5-esquisse-ui.js), data-action ou data-contrainte, ou l'identifiant d'une
      commande de la visionneuse. Le titre de chaque groupe ouvre la liste de ses commandes ;
-     la recherche (S) les parcourt toutes. Un .replis n'est que dans cette liste et cette recherche :
-     il garde le ruban dans la largeur de l'écran, pour que Terminer reste visible. -->
+     la recherche (S) les parcourt toutes. Faute de place, le ruban passe sur une seconde rangée : tout reste visible. -->
 <nav id="ruban">
   <div class="atelier" title="Atelier de conception de pièces">
     <i>◩</i><b>Design</b><span>Atelier</span>
@@ -121,10 +120,12 @@ try{
             <button data-op="gravure" title="Gravure : une esquisse en creux ou en relief sur le corps"><i>✎</i>Gravure</button>
             <button data-op="filetage" title="Filetage cosmétique sur une face cylindrique : dessiné, sans matière"><i>⧙</i>Filetage</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-op="voile" title="Voile : des lignes épaissies, jusqu'aux bords du corps"><i>╪</i>Voile</button>
             <button data-op="englobant" title="Solide englobant : la boîte qui contient les corps choisis"><i>⬚</i>Englobant</button>
             <button data-op="chemin3d" title="Chemin 3D : des droites ou une courbe par des points de l'espace, pour un tuyau ou un balayage"><i>⟿</i>Chemin 3D</button>
+          </span>
+          <span class="pile">
             <button data-op="cellule" title="Remplissage de frontière : le volume fermé par des corps et des surfaces, autour d'un point"><i>▦</i>Frontière</button>
           </span>
         </div><h5>Créer</h5></section>
@@ -139,15 +140,17 @@ try{
             <button data-op="decouper" title="Découper un corps en deux par un plan"><i>⫽</i>Découpe</button>
             <button data-op="echelle" title="Mettre un corps à l'échelle"><i>⤢</i>Échelle</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-op="decalerFace" title="Décaler des faces planes ou cylindriques : ajoute ou enlève de la matière"><i>⇉</i>Décaler face</button>
             <button data-op="supprimerFace" title="Supprimer des faces : le trou se bouche, ou le corps devient une surface"><i>⊠</i>Suppr. face</button>
             <button data-op="remplacerFace" title="Remplacer une face : le corps s'arrête à une surface qui le traverse"><i>⇄</i>Rempl. face</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-op="diviser" title="Diviser un corps par un plan de construction, une esquisse ou une surface"><i>⫿</i>Diviser</button>
             <button data-op="diviserFace" title="Diviser des faces selon les lignes d'une esquisse"><i>⫾</i>Div. face</button>
             <button data-op="retirerCorps" title="Retirer un corps de la suite de l'historique, sans effacer ce qui l'a construit"><i>⌫</i>Retirer</button>
+          </span>
+          <span class="pile">
             <button data-op="gravureCylindre" title="Graver une esquisse sur un cylindre : la profondeur suit la surface"><i>✎</i>Gravure sur cylindre</button>
           </span>
         </div><h5>Modifier</h5></section>
@@ -155,11 +158,11 @@ try{
           <button data-op="deplacer" title="Déplacer ou tourner un corps"><i>✥</i>Déplacer</button>
           <button data-op="miroir" title="Symétrie d'un corps par un plan"><i>⇋</i>Miroir</button>
           <button data-op="repetition" title="Répétition linéaire ou circulaire, dans une ou deux directions"><i>⁂</i>Répétition</button>
-          <span class="replis">
+          <span class="pile">
             <button data-op="repChemin" title="Répéter un corps le long d'un chemin d'esquisse"><i>⋰</i>Sur chemin</button>
             <button data-op="aligner" title="Aligner un corps sur un autre : minimums, centres, maximums, ou posé contre"><i>⊟</i>Aligner</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button id="bApparence" title="Couleur, métal, rugosité, opacité d'un corps ou d'une face, et son matériau — sélection vide : tous les corps"><i>◐</i>Apparence</button>
           </span>
         </div><h5>Disposer</h5></section>
@@ -195,39 +198,40 @@ try{
             <button data-outil="texte" title="Texte : cliquez son point d'ancrage (police DejaVu Sans)"><i>T</i>Texte</button>
             <button data-action="projeter" title="Projeter des arêtes du modèle dans l'esquisse : cliquez-les dans la vue, Échap pour finir"><i>⇣</i>Projeter</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-outil="cercle3" title="Cercle par trois points"><i>◯</i>Cercle 3 pts</button>
             <button data-outil="cercle2" title="Cercle par les deux bouts d'un diamètre"><i>◯</i>Cercle 2 pts</button>
             <button data-action="cercleTangent" title="Cercle tangent aux deux ou trois lignes ou courbes sélectionnées"><i>◯</i>Cercle tangent</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-outil="rectangle3" title="Rectangle incliné : deux bouts d'un côté, puis sa hauteur"><i>▱</i>Rect. 3 pts</button>
             <button data-outil="rectangleArrondi" title="Rectangle aux coins arrondis et tangents"><i>▢</i>Rect. arrondi</button>
             <button data-outil="ligneMilieu" title="Ligne par son milieu et un bout"><i>╱</i>Ligne milieu</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-outil="polygoneCirc" title="Polygone circonscrit : centre, puis le milieu d'un côté (touches 3 à 9)"><i>⬡</i>Circonscrit</button>
             <button data-outil="polygoneArete" title="Polygone par les deux bouts d'un côté (touches 3 à 9)"><i>⬡</i>Par arête</button>
             <button data-outil="arcTangent" title="Arc tangent : part du bout d'une ligne ou d'un arc"><i>◠</i>Arc tangent</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-outil="oblongCentre" title="Oblong par son centre : centre, un centre d'arc, puis la largeur"><i>⊂⊃</i>Oblong centré</button>
             <button data-outil="oblongHorsTout" title="Oblong hors tout : les deux bouts extrêmes, puis la largeur"><i>⊂⊃</i>Hors tout</button>
             <button data-outil="ellipse" title="Ellipse : centre, bout du grand axe, puis la largeur"><i>⬭</i>Ellipse</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-outil="conique" title="Conique : deux bouts, sommet, puis rho"><i>⌒</i>Conique</button>
             <button data-action="courbeEquation" title="Courbe par une équation x(t), y(t), avec les paramètres de la pièce"><i>ƒ</i>Équation</button>
             <button data-action="intersection" title="La coupe du modèle par le plan de l'esquisse, en lignes de construction"><i>⫽</i>Intersection</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-outil="ligneConstruction" title="Ligne de construction"><i>┄</i>Constr.</button>
             <button data-action="bissectrice" title="Ligne de construction sur la bissectrice de deux lignes sélectionnées"><i>∠</i>Bissectrice</button>
             <button data-action="tangentePoint" title="Ligne tangente depuis le point sélectionné au cercle ou à l'arc sélectionné"><i>◡</i>Tangente</button>
+          </span>
+          <span class="pile">
             <button data-action="raccord" title="Courbe tangente entre les deux bouts de courbes sélectionnés"><i>⌒</i>Courbe de raccord</button>
             <button data-outil="pointSpline" title="Ajouter un point à une spline : cliquez-la"><i>∿</i>Point de spline</button>
             <button data-action="retirerPoint" title="Retirer de sa spline le point sélectionné"><i>∿</i>Retirer le point</button>
-            <button data-action="inverserSpline" title="Inverser le sens de la spline sélectionnée"><i>⇆</i>Inverser la spline</button>
           </span>
         </div><h5>Créer</h5></section>
       <section><div class="btns">
@@ -241,15 +245,17 @@ try{
           <span class="pile">
             <button data-action="supprimer" title="Supprimer la sélection — Suppr"><i>✕</i>Supprimer</button>
             <button data-action="plan" title="Changer le plan de l'esquisse"><i>▱</i>Plan…</button>
+            <button data-action="delierProjection" title="La géométrie projetée sélectionnée cesse de suivre son arête"><i>⛓</i>Délier</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-outil="prolonger" title="Prolonger une ligne jusqu'à la courbe suivante"><i>⇥</i>Prolonger</button>
             <button data-outil="couper" title="Couper une courbe à ses intersections, sans rien retirer"><i>⫶</i>Couper</button>
             <button data-action="echelle" title="Mettre la sélection à l'échelle : cercles et cotes numériques suivent"><i>⤢</i>Échelle</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-action="deplacerEnt" title="Déplacer et tourner la sélection"><i>✥</i>Déplacer</button>
             <button data-action="copierEnt" title="Copier la sélection, déplacée et tournée (Ctrl+C, Ctrl+V : copier et coller)"><i>⧉</i>Copier</button>
+            <button data-action="inverserSpline" title="Inverser le sens de la spline sélectionnée"><i>⇆</i>Inverser la spline</button>
           </span>
         </div><h5>Modifier</h5></section>
       <section><div class="btns">
@@ -264,6 +270,7 @@ try{
           <span class="pile">
             <button data-action="distanceX" title="Distance horizontale entre deux points (ou d'une ligne)"><i>⇿</i>Horizontale</button>
             <button data-action="distanceY" title="Distance verticale entre deux points (ou d'une ligne)"><i>↕</i>Verticale</button>
+            <button id="bEsquisseDxf" title="Enregistrer cette esquisse en DXF"><i>⬚</i>Enregistrer en DXF</button>
           </span>
           <span class="galerie">
             <button data-contrainte="horizontal" title="Horizontale (une ligne, ou deux points) — H">━</button>
@@ -279,14 +286,15 @@ try{
             <button data-contrainte="sur" title="Point sur une ligne, un cercle ou un arc">⊷</button>
             <button data-contrainte="fixe" title="Fixer des points à leur place">⚓</button>
           </span>
-          <span class="replis">
+          <span class="pile">
             <button data-action="autoContraindre" title="Poser d'un coup ce que le dessin montre : points confondus, lignes horizontales et verticales"><i>✦</i>Auto</button>
             <button data-action="pilotee" title="La cote sélectionnée se lit sur le dessin et ne le commande plus, ou l'inverse"><i>( )</i>Pilotée</button>
             <button data-action="rayonDiam" title="Passer une cote du rayon au diamètre, ou l'inverse"><i>⌀</i>R / ⌀</button>
+          </span>
+          <span class="pile">
             <button data-contrainte="colineaire" title="Deux lignes sur la même droite"><i>⫽</i>Colinéaires</button>
             <button data-action="boutsLibres" title="Sélectionner les bouts libres : ce qui empêche un contour de se fermer"><i>⚠</i>Bouts libres</button>
             <button data-action="peigne" title="Peigne de courbure des splines"><i>⌇</i>Peigne de courbure</button>
-            <button id="bEsquisseDxf" title="Enregistrer cette esquisse en DXF"><i>⬚</i>Enregistrer en DXF</button>
           </span>
         </div><h5>Contraindre</h5></section>
       <section><div class="btns">
@@ -362,6 +370,7 @@ try{
         </div><h5>2D</h5></section>
       <section><div class="btns">
           <button id="bInsererMaillage" title="Un maillage STL, OBJ, 3MF ou glTF (5000 triangles au plus) comme référence ou comme corps"><i>△</i>Maillage</button>
+          <button id="bConvertirMaillage" title="Une pièce de section constante : son maillage redevient une esquisse et une extrusion, à la hauteur en paramètre"><i>⤴</i>Convertir</button>
           <button id="bInsererNuage" title="Un nuage de points XYZ, CSV, PTS ou PLY (texte), dessiné comme référence"><i>⁖</i>Nuage</button>
         </div><h5>Maillages</h5></section>
       <section><div class="btns">
@@ -504,8 +513,11 @@ try{
             <button id="bCollerLook" title="La poser sur le corps sélectionné"><i>⎘</i>Coller</button>
           </span>
           <span class="pile">
+            <button id="bMemeLook" title="Sélectionner tous les corps de même apparence que le corps choisi : Apparence et Coller les visent ; second appui : oublier"><i>◉</i>Même apparence</button>
             <button id="bPinceau" title="Pinceau : chaque corps cliqué prend l'apparence copiée"><i>🖌</i>Pinceau</button>
             <button id="bFavoriLook" title="Garder l'apparence copiée dans la bibliothèque"><i>★</i>Favori</button>
+          </span>
+          <span class="pile">
             <button id="bRemplacerLook" title="Partout où le corps choisi a son apparence, poser celle qui est copiée"><i>⇄</i>Remplacer</button>
           </span>
         </div><h5>Apparences</h5></section>
