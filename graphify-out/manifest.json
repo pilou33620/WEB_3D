@@ -18,9 +18,9 @@
     "semantic_hash": ""
   },
   "js/02-import.js": {
-    "mtime": 1793366905.1197424,
-    "seen": 1793380751.6738608,
-    "ast_hash": "a3764627bb68354d2ac08536a3d3768b",
+    "mtime": 1793861953.6052113,
+    "seen": 1793872101.2906663,
+    "ast_hash": "5d30ac3f4a678609386f0315901b8510",
     "semantic_hash": ""
   },
   "js/03-navigation.js": {
@@ -186,15 +186,15 @@
     "semantic_hash": ""
   },
   ".github/workflows/ci.yml": {
-    "mtime": 1793799004.1529517,
-    "seen": 1793815361.4951477,
-    "ast_hash": "c2556f2700c8a8c797e7d3f1d2a71584",
+    "mtime": 1793862187.669687,
+    "seen": 1793872101.2912412,
+    "ast_hash": "a9a2b6bc783cbdf47c2cec13b33e3ae2",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793814702.2447946,
-    "seen": 1793815361.4951615,
-    "ast_hash": "2c096062b97e6b17b8c35401378bc3b9",
+    "mtime": 1793871284.8296065,
+    "seen": 1793872101.2912538,
+    "ast_hash": "6e6044c23b52876f470b6a9ad9a27f0f",
     "semantic_hash": ""
   },
   "index.html": {
@@ -246,9 +246,9 @@
     "semantic_hash": ""
   },
   "A-FAIRE.md": {
-    "mtime": 1792691820.4489028,
-    "seen": 1792732066.628787,
-    "ast_hash": "eae592e0d0f31b205c004b9756185af0",
+    "mtime": 1793862995.600548,
+    "seen": 1793872101.2912476,
+    "ast_hash": "3ff52fe80df94dc519ef7c1856add5da",
     "semantic_hash": ""
   },
   "js/telephone.js": {
@@ -264,33 +264,33 @@
     "semantic_hash": ""
   },
   "js/c1-expressions.js": {
-    "mtime": 1793775055.75767,
-    "seen": 1793797994.8242176,
-    "ast_hash": "8e396cfd69ec050781a5af8798eb65f0",
+    "mtime": 1793861834.8886595,
+    "seen": 1793872101.2907872,
+    "ast_hash": "11d96c0e9171bf71e749c141c7ab90f0",
     "semantic_hash": ""
   },
   "js/c2-esquisse.js": {
-    "mtime": 1793809435.035159,
-    "seen": 1793815361.4947574,
-    "ast_hash": "40eca3f79de715563a6e9c3810142be7",
+    "mtime": 1793861834.8985493,
+    "seen": 1793872101.2908242,
+    "ast_hash": "96ca3e0441d7453249ca364530a7c2cf",
     "semantic_hash": ""
   },
   "js/c2b-outils-esquisse.js": {
-    "mtime": 1793809435.070812,
-    "seen": 1793815361.4947646,
-    "ast_hash": "ee52c82d3ed9396ce8277c56988b563b",
+    "mtime": 1793861228.7544146,
+    "seen": 1793872101.2908309,
+    "ast_hash": "ddc8543fe5396175e7dc4db39ffe5e29",
     "semantic_hash": ""
   },
   "js/c3-operations.js": {
-    "mtime": 1793802902.8092072,
-    "seen": 1793815361.4947717,
-    "ast_hash": "1ea9ae4eed5a9988b9eb77beeb994ee4",
+    "mtime": 1793862931.0865672,
+    "seen": 1793872101.2908437,
+    "ast_hash": "27014b234cffd525df9a5ac4ed8b611c",
     "semantic_hash": ""
   },
   "js/c3b-ateliers.js": {
-    "mtime": 1793786710.0397017,
-    "seen": 1793797994.8242416,
-    "ast_hash": "0205206dbdc1adbd2f929e6165cf5ac4",
+    "mtime": 1793861834.8957694,
+    "seen": 1793872101.2908506,
+    "ast_hash": "e4935bb3a1149670efbf73054905412b",
     "semantic_hash": ""
   },
   "js/c3c-references.js": {
@@ -300,39 +300,39 @@
     "semantic_hash": ""
   },
   "js/c4-travailleur.js": {
-    "mtime": 1793810219.7328618,
-    "seen": 1793815361.4947958,
-    "ast_hash": "722c9f36ffb3b9244504decc9cc226d0",
+    "mtime": 1793861834.896168,
+    "seen": 1793872101.2908711,
+    "ast_hash": "0121d4f04fd1dabafede1bc551197918",
     "semantic_hash": ""
   },
   "js/c5-esquisse-ui.js": {
-    "mtime": 1793809435.0735357,
-    "seen": 1793815361.4948027,
-    "ast_hash": "035e04ab07bdcbc525c2de42ec7e43be",
+    "mtime": 1793863002.8296623,
+    "seen": 1793872101.2908776,
+    "ast_hash": "d409d02ddbff32d0d29c8fd6eaa0a821",
     "semantic_hash": ""
   },
   "js/c6-conception.js": {
-    "mtime": 1793814627.7601805,
-    "seen": 1793815361.4948096,
-    "ast_hash": "0a31aaa6357a1f5cdd03b9f683e4f9aa",
+    "mtime": 1793862877.036061,
+    "seen": 1793872101.290884,
+    "ast_hash": "485890c366551748a135370b78faeb93",
     "semantic_hash": ""
   },
   "js/c7-frise.js": {
-    "mtime": 1793802902.8109477,
-    "seen": 1793815361.494816,
-    "ast_hash": "0a6068f50010ef534e0a56ea58382108",
+    "mtime": 1793861922.8485608,
+    "seen": 1793872101.2908905,
+    "ast_hash": "393bd4d1dfc1850e22fd7e4a54bf66d8",
     "semantic_hash": ""
   },
   "js/c8-analyses.js": {
-    "mtime": 1793775055.7065325,
-    "seen": 1793797994.8242767,
-    "ast_hash": "f4944ab98a63891f669a04be96e2c11f",
+    "mtime": 1793861922.8551006,
+    "seen": 1793872101.2908967,
+    "ast_hash": "7aac1ea003784ed86f7ccdc33509379d",
     "semantic_hash": ""
   },
   "js/c9-ateliers-ui.js": {
-    "mtime": 1793798857.3444045,
-    "seen": 1793815361.4948306,
-    "ast_hash": "7224ff1646b84c34db98389ac81afc81",
+    "mtime": 1793861834.853606,
+    "seen": 1793872101.290903,
+    "ast_hash": "20b31f7c54d34e2c435800b6e92c6315",
     "semantic_hash": ""
   },
   "test/banc-conception-page.mjs": {
@@ -348,9 +348,9 @@
     "semantic_hash": ""
   },
   "test/banc-conception.mjs": {
-    "mtime": 1793809435.0877805,
-    "seen": 1793815361.4948957,
-    "ast_hash": "73f4d8e2271db447780c6ddb9db8d698",
+    "mtime": 1793815609.889292,
+    "seen": 1793872101.2909791,
+    "ast_hash": "111883ac451ab425a62923138b953576",
     "semantic_hash": ""
   },
   "test/banc-pieces-reference.mjs": {
@@ -456,9 +456,9 @@
     "semantic_hash": ""
   },
   "conception.html": {
-    "mtime": 1793814627.612182,
-    "seen": 1793815361.495168,
-    "ast_hash": "6a21b3a69d80f78e98b9e050fcc26d24",
+    "mtime": 1793864255.422255,
+    "seen": 1793872101.2912598,
+    "ast_hash": "d89d8349fc61a613f81742057554b70f",
     "semantic_hash": ""
   },
   "vendor/planegcs/LICENSE-planegcs.txt": {
@@ -486,15 +486,15 @@
     "semantic_hash": ""
   },
   "js/c0-dialogues.js": {
-    "mtime": 1793798779.4898865,
-    "seen": 1793815361.4947412,
-    "ast_hash": "95f5b2f5d55db98cf08ce7a285007bf3",
+    "mtime": 1793861834.8923922,
+    "seen": 1793872101.2907789,
+    "ast_hash": "769dc5bbbeda1c3b2e97b0b26bde6cba",
     "semantic_hash": ""
   },
   "test/banc-conception-retours.mjs": {
-    "mtime": 1793814672.191715,
-    "seen": 1793815361.4948885,
-    "ast_hash": "13c9b90ec7d33374317de32417b53cd0",
+    "mtime": 1793816272.1937466,
+    "seen": 1793872101.2909727,
+    "ast_hash": "10372a5b56173a3a3853a997c210e741",
     "semantic_hash": ""
   },
   "test/harnais-page.mjs": {
@@ -504,9 +504,63 @@
     "semantic_hash": ""
   },
   "regles-conception.md": {
-    "mtime": 1793814626.7881906,
-    "seen": 1793815361.4951823,
-    "ast_hash": "29934eaf6199067c8ecedbe2c1e4f1ef",
+    "mtime": 1793862812.9555023,
+    "seen": 1793872101.2912743,
+    "ast_hash": "d4c3834513afb14521899d33bd826e65",
+    "semantic_hash": ""
+  },
+  "js/c10-regles.js": {
+    "mtime": 1793862877.0254924,
+    "seen": 1793872101.2907948,
+    "ast_hash": "f0ebcafc53758aac382b29dabc277efe",
+    "semantic_hash": ""
+  },
+  "js/c11-plus-ui.js": {
+    "mtime": 1793861922.8595245,
+    "seen": 1793872101.2908108,
+    "ast_hash": "ef13d8e68856ea7c561372335d0d3b0d",
+    "semantic_hash": ""
+  },
+  "js/c12-exports.js": {
+    "mtime": 1793861834.9084814,
+    "seen": 1793872101.2908175,
+    "ast_hash": "04e7d21a9c2d79c0909373e77310e866",
+    "semantic_hash": ""
+  },
+  "js/c2c-esquisse-plus.js": {
+    "mtime": 1793861228.6184158,
+    "seen": 1793872101.290837,
+    "ast_hash": "da0485655c4c6277b0f20f14cb9f6730",
+    "semantic_hash": ""
+  },
+  "js/c3d-operations-plus.js": {
+    "mtime": 1793861834.9065475,
+    "seen": 1793872101.2908642,
+    "ast_hash": "eaf001d7f38d4efb623e72e9ae344508",
+    "semantic_hash": ""
+  },
+  "test/banc-conception-plus-page.mjs": {
+    "mtime": 1793864231.264007,
+    "seen": 1793872101.2909594,
+    "ast_hash": "8f6afbb9edd378e3deb9d84af340ad9b",
+    "semantic_hash": ""
+  },
+  "test/banc-conception-plus.mjs": {
+    "mtime": 1793862877.042575,
+    "seen": 1793872101.2909658,
+    "ast_hash": "7fa7e2a7481139427830eb6db9148a9e",
+    "semantic_hash": ""
+  },
+  "vendor/three/addons/loaders/GLTFLoader.js": {
+    "mtime": 1793861953.5594444,
+    "seen": 1793872101.291176,
+    "ast_hash": "7ab97b111a0983791ddc525895a196fb",
+    "semantic_hash": ""
+  },
+  "vendor/three/addons/utils/SkeletonUtils.js": {
+    "mtime": 1793862264.5931673,
+    "seen": 1793872101.2912116,
+    "ast_hash": "81536ba470144a5b550b4de70eeeac6d",
     "semantic_hash": ""
   }
 }
