@@ -2318,7 +2318,10 @@ class Conception {
       $("etatSel").textContent = `Enregistré : ${j.chemin}` + (!remplacer && j.chemin !== chemin ? " (nom déjà pris, renommé)" : "");
       this.sauverBrouillon();
     }catch(e){
-      avertir(`Enregistrement impossible : ${e.message}`);
+      /* fetch rejette par un TypeError quand le serveur ne répond pas ; ses refus, eux, ont un message. La copie ne compte pas comme enregistrée : la pièce reste modifiée. */
+      if(!(e instanceof TypeError)){ avertir(`Enregistrement impossible : ${e.message}`); return; }
+      if(await confirmer("Serveur injoignable : rien n'est enregistré. Votre travail reste dans cette page, ne la rechargez pas. Téléchargez une copie, ou relancez le serveur et enregistrez de nouveau.", "Télécharger une copie"))
+        telechargerFichier(texte, nomProjet(this.doc.nom + ".json"), "application/json");
     }
   }
 

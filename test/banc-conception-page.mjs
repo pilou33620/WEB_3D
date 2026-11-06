@@ -111,6 +111,18 @@ try{
   `);
   verifier("enregistrer sous, puis enregistrer remplace le même fichier", r5, { chemin:"essai.json", modifie:false });
   verifier("PROJETS : un seul fichier, à jour", [readdirSync(projets), JSON.parse(readFileSync(join(projets, "essai.json"), "utf8")).parametres[0].expr], [["essai.json"], "6"]);
+  verifier("serveur injoignable : une copie téléchargée, la pièce reste modifiée", await page(`
+    const c = W3D.conception, f = window.fetch, cou = URL.createObjectURL;
+    let copies = 0;
+    window.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+    URL.createObjectURL = (b) => { copies++; return cou.call(URL, b); };
+    c.marquerModifie();
+    await c.enregistrer(false);
+    window.fetch = f; URL.createObjectURL = cou;
+    const r = { copies, modifie:c.modifie };
+    await c.enregistrer(false);
+    return { ...r, reprise:c.modifie };
+  `), { copies:1, modifie:true, reprise:false });
 
   const r6 = await page(`
     const c = W3D.conception;
