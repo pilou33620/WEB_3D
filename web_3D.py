@@ -8,7 +8,7 @@
 # lequel affiche « Python est introuvable » et rend la main aussitôt. La
 # fenêtre se refermait donc avant d'avoir rien lancé. « /usr/bin/python3 » est
 # un nom que py.exe reconnaît et fait pointer sur le Python installé ; sous
-# Linux et macOS c'est un chemin réel, et Pyto ignore la ligne.
+# Linux et macOS c'est un chemin réel.
 #
 # Un serveur de fichiers statiques, et rien d'autre : la lecture des fichiers
 # CAO se fait entièrement dans le navigateur. Il n'existe que pour deux raisons.
@@ -20,8 +20,8 @@
 #      compilation en continu du module — et se contentent d'un message obscur
 #      dans la console.
 #
-# Bibliothèque standard uniquement : le script tourne tel quel sous Windows,
-# Linux, macOS, et sous Pyto sur iPad comme le reste de la suite.
+# Il n'utilise que la bibliothèque standard : il tourne tel quel sous Windows,
+# Linux et macOS.
 # =============================================================================
 
 import argparse
@@ -423,7 +423,7 @@ def ouvrir_serveur(hote: str, port: int, essais: int):
     """Le premier port libre à partir de `port`. Un double-clic ne doit pas
     échouer simplement parce qu'un serveur de la veille occupe encore 8139."""
     derniere: OSError | None = None
-    # Réseau : double pile d'abord, IPv4 seule si IPv6 manque (Pyto, conteneurs)
+    # Réseau : double pile d'abord, IPv4 seule si IPv6 manque (conteneurs)
     piles = [(ServeurDoublePile, "::"), (Serveur, hote)] if hote == "0.0.0.0" else [(Serveur, hote)]
     for p in range(port, port + essais):
         if hote == "0.0.0.0" and not ipv4_libre(p):

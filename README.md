@@ -18,6 +18,24 @@ triangulés : ce sont ceux des chaînes d'impression 3D et des outils de rendu.
 Le 3MF apporte sa hiérarchie, ses noms d'objets et ses couleurs ; l'OBJ ses
 noms d'objets et, si le `.mtl` est déposé avec lui, ses matériaux.
 
+La visionneuse ne modifie aucun fichier ; à côté d'elle, le **mode conception**
+(`conception.html`, voir *Concevoir une pièce*) dessine des pièces paramétriques.
+
+---
+
+## Installation
+
+Il faut Python 3.8 ou plus, et git pour les mises à jour. Rien d'autre à installer : voir *Dépendances*.
+
+| Système | Installer | Lancer |
+| :--- | :--- | :--- |
+| Raspberry Pi, Linux | `git clone https://github.com/pilou33620/WEB_3D.git` | `python3 web_3D.py` |
+| Windows | le même `git clone` | double-clic sur `web_3D.py`, ou `python web_3D.py` |
+| Android (Termux) | `pkg install python git`, puis le même `git clone` | `python web_3D.py --sans-navigateur`, `termux-wake-lock` actif |
+
+Dans WEB·SUITE, le lanceur télécharge l'outil (`python lanceur/installer.py 3d`) et le démarre :
+voir [son README](../README.md).
+
 ---
 
 ## Démarrage
@@ -30,7 +48,7 @@ python web_3D.py
 
 Dans les deux cas le serveur démarre et la page s'ouvre seule sur
 `http://127.0.0.1:8139/` (le port suivant si celui-ci est déjà pris). Le serveur
-ne fait que servir des fichiers : il n'y a aucun calcul côté Python.
+ne fait que servir et ranger des fichiers : il n'y a aucun calcul côté Python.
 
 > [!IMPORTANT]
 > Contrairement aux éditeurs de WEB_CAO, **le double-clic sur `index.html` ne
@@ -44,12 +62,28 @@ Options utiles :
 | Option | Effet |
 | :--- | :--- |
 | `--port 8140` | changer de port |
-| `--local` | n'écouter que sur `127.0.0.1` |
+| `--local` | n'écouter que sur `127.0.0.1` (sans elle : réseau local, avec code d'appairage) |
 | `--sans-navigateur` | ne pas ouvrir le navigateur au lancement |
+| `--sans-pause` | ne pas attendre une touche à l'arrêt (fenêtre d'un double-clic sous Windows) |
+| `--sans-maj` | ne pas vérifier les mises à jour au démarrage |
 | `--dossier <chemin>` | servir un autre dossier |
-| `--projets <chemin>` | dossier des projets : bouton **🗂 Projets…** (WEB·SUITE y passe `PROJETS/3D`) |
+| `--projets <chemin>` | dossier des projets, créé s'il manque : bouton **🗂 Projets…** (WEB·SUITE y passe `PROJETS/3D`) |
 
-Sur le réseau local, l'adresse affichée au démarrage s'ouvre telle quelle
+Un modèle peut aussi être ouvert directement par l'URL :
+`http://127.0.0.1:8139/?modele=exemples/assemblage-as1.stp`.
+
+Le serveur ne sert que les pages (`index.html`, `conception.html`, `regles-conception.md`,
+`css/`, `js/`, `vendor/`, `exemples/`) et les fichiers 3D et leurs images posés dans le dossier :
+ni `.git/`, ni le script, ni la liste des
+fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
+`localhost`, ni le nom du poste (DNS rebinding). Vérification :
+`python test/banc-serveur.py`.
+
+### Utiliser depuis un autre appareil
+
+Sans `--local`, le serveur écoute aussi sur le réseau local ; lancé par WEB·SUITE, seulement
+si le lanceur y écoute lui-même. L'adresse de la ligne `réseau` (et `tailscale`, s'il y en a
+une) affichée au démarrage s'ouvre telle quelle
 depuis une tablette : la navigation tactile (un doigt tourne, deux doigts
 déplacent et pincent pour zoomer) est codée, mais pas encore essayée sur une
 vraie tablette.
@@ -61,28 +95,47 @@ Elle s'en souvient ensuite, pour tous les web tools de ce poste
 
 En mode réseau, la connexion est **chiffrée (HTTPS)** quand la commande `openssl` est présente sur le poste (Raspberry Pi, Linux, macOS ; sous Windows, celle de Git) : une autorité propre au poste, créée une fois dans `~/.web_tools/tls/`, signe le certificat du serveur. Chaque appareil l'installe une fois, depuis le lien de la page du code (`/appairage/ca.pem`) ; sur iPad : Réglages › Profil téléchargé › Installer, puis Général › Informations › Réglages des certificats › activer. Comparer son empreinte SHA-256 avec celle du terminal. Sans `openssl` (ou avec `WEB_TOOLS_HTTP=1`), tout reste en HTTP et le terminal le dit.
 
+### Où vivent les données
+
 **Les projets.** Avec `--projets`, le bouton **🗂 Projets…** liste les modèles du dossier
 (un clic les ouvre, un `.obj` avec son `.mtl`) et **Ranger le modèle ouvert ici** y copie le
 fichier qu'on vient d'ouvrir — sans jamais en écraser un : un nom pris devient
 `piece (2).stp`. Lancée par WEB·SUITE, la visionneuse pointe sur `PROJETS/3D`, que le
 lanceur envoie sur GitHub à l'arrêt de l'outil : le modèle rangé sur un poste s'ouvre sur
-l'autre. Le serveur ne lit et n'écrit que dans ce dossier, et seulement des formats 3D.
+l'autre. Le serveur ne lit et n'écrit que dans ce dossier, et seulement des modèles (ni `.glb`
+ni `.gltf`), ce qui accompagne un `.obj` (`.mtl`, images) et les pièces `.json` du mode conception.
+Sans `--projets`, *Enregistrer* du mode conception télécharge le `.json`.
 
-Un modèle peut aussi être ouvert directement par l'URL :
-`http://127.0.0.1:8139/?modele=exemples/assemblage-as1.stp`.
+**Le navigateur.** Les préférences et le brouillon du mode conception restent dans le
+`localStorage` de chaque appareil (`web3d.prefs`, `web3d.conception.brouillon`).
 
-Le serveur ne sert que la page (`index.html`, `css/`, `js/`, `vendor/`, `exemples/`)
-et les fichiers 3D posés dans le dossier : ni `.git/`, ni le script, ni la liste des
-fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
-`localhost`, ni le nom du poste (DNS rebinding). Vérification :
-`python test/banc-serveur.py`.
+**Le poste.** `~/.web_tools/` garde le jeton du code d'appairage (`jeton-reseau.txt`) et l'autorité
+HTTPS (`tls/`), communs aux web tools, et les copies de fichiers ouverts depuis le gestionnaire de
+fichiers (`ouvrir/`).
+
+### Mises à jour
+
+Au démarrage, sauf `--sans-maj`, `web_3D.py` cherche une nouvelle version sur GitHub (`git fetch`,
+10 s au plus) et, s'il y en a une, l'applique par `git pull --ff-only` puis se relance avec les mêmes
+arguments. Un historique réécrit ou divergent est refusé, jamais fusionné. Des fichiers suivis modifiés
+sont mis en réserve (`git stash`) puis réappliqués ; un conflit est signalé et ils restent dans la
+réserve. Sans git, hors ligne ou après un échec, l'outil démarre avec la version actuelle. Sous WEB·SUITE,
+le lanceur fait cette vérification à son démarrage et passe alors `--sans-maj` à l'outil.
+
+### Bancs d'essai
 
 Les exemples ont leur banc, sous Node et sans navigateur (`node test/banc-exemples.mjs`) :
 les STEP passent par le vrai noyau OpenCascade de `vendor/occt/`, l'OBJ et le STL par les
 lecteurs three.js, et l'équerre tournée d'`essai-mesure.obj` doit retrouver son repère
 propre. Le canal de pilotage a le sien (`node test/banc-pilote-3d.mjs`) : les commandes
-de la page 3D, sur une vraie scène. Les trois bancs — exemples, pilotage et
-`test/banc-serveur.py` — tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`).
+de la page 3D, sur une vraie scène. Le mode conception se vérifie sous Node
+(`node test/banc-conception.mjs`, `banc-conception-plus.mjs`, `banc-pieces-reference.mjs`) et dans la
+page, avec un Chromium sans écran : `node --experimental-websocket test/banc-conception-page.mjs`, de
+même `banc-conception-plus-page.mjs` et `banc-conception-retours.mjs` (`CHROMIUM=` donne son chemin,
+`/usr/bin/chromium` par défaut ; longs sur un Raspberry Pi : à lancer en arrière-plan). Ces huit bancs et
+`test/banc-serveur.py` tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`). Restent à
+lancer à la main : `node test/banc-conception-perf.mjs`, ainsi que `python appairage.py` et
+`python pilote.py`, qui vérifient les modules communs.
 
 ---
 
@@ -113,7 +166,7 @@ de la page 3D, sur une vraie scène. Les trois bancs — exemples, pilotage et
   (micron, centimètre, pouce, pied, mètre) et le facteur est appliqué au
   chargement. L'OBJ et le STL, eux, ne déclarent aucune unité : une unité de
   fichier y vaut un millimètre.
-- La lecture se fait dans un *worker* : la page reste vivante pendant qu'un
+- La lecture des STEP, IGES et BREP se fait dans un *worker* : la page reste vivante pendant qu'un
   assemblage de plusieurs dizaines de méga-octets est triangulé.
 
 ### Regarder
@@ -241,7 +294,7 @@ Le bouton **✏️ Conception** de l'en-tête ouvre `conception.html` : on y des
 paramétrique, à la manière de [solidcraft](https://github.com/tangency-labs/solidcraft) dont la page
 reprend l'organisation (ruban, historique, paramètres). Le thème, la souris, le cube de vues, la
 mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de la visionneuse ;
-**🧊 Visionneuse** y revient. La géométrie est exacte (B-Rep) : elle est calculée par OpenCascade
+**◈ Visionneuse** y revient. La géométrie est exacte (B-Rep) : elle est calculée par OpenCascade
 ([replicad](https://replicad.xyz)) dans un fil d'exécution à part, dans le navigateur, hors ligne.
 
 - **Disposition** — celle de solidcraft, aux couleurs de la suite : barre fine en haut (menu
@@ -386,7 +439,7 @@ solveur : une loi ou une valeur par liaison, à chaque pas. Une esquisse ne coup
 d'abord) ; deux éléments identiques et symétriques peuvent s'échanger si la pièce change beaucoup (ce n'est
 pas un nommage topologique du noyau). Le développé d'une tôle ne vaut que pour des plis partant de la tôle de
 base ; un pli oblique garde une couronne à bouts droits. Les liaisons se résolvent une à une, dans l'ordre
-de l'historique : pas de solveur de mécanisme fermé ; l'URDF refuse les liaisons cylindrique et plan, qu'il ne sait pas dire. Sans lien (composant ou STEP pris depuis un fichier), une
+de l'historique : pas de solveur de mécanisme fermé ; l'URDF refuse les liaisons cylindrique, plan et sphérique, qu'il ne sait pas dire. Sans lien (composant ou STEP pris depuis un fichier), une
 pièce insérée ne suit pas l'original.
 
 ### Exporter
@@ -413,7 +466,7 @@ ouverture si Claude Code est prêt (`lanceur/docs/SPEC-claude-pages.md` de web_s
 
 | Genre | Commandes | Ce qui se passe |
 | :--- | :--- | :--- |
-| Lectures | `web3d_scene`, `web3d_mesurer`, `web3d_collisions` | réponse directe ; `web3d_mesurer` : `dimensions` exige `piece` ou `fichier`, volume et surface jusqu'à 800 000 triangles comme la fiche, distance et faces refusent une pièce masquée, la cote part avec « Effacer la mesure » et à la fermeture ; `web3d_collisions` avec `afficher` : les courbes, et la tolérance écrite dans les préférences, comme le champ |
+| Lectures | `web3d_projets`, `web3d_scene`, `web3d_mesurer`, `web3d_collisions`, `web3d_regles` | réponse directe ; `web3d_projets` : la liste de la page, sans les annexes ; `web3d_regles` : le bouton *Règles* de la page de conception ; `web3d_mesurer` : `dimensions` exige `piece` ou `fichier`, volume et surface jusqu'à 800 000 triangles comme la fiche, distance et faces refusent une pièce masquée, la cote part avec « Effacer la mesure » et à la fermeture ; `web3d_collisions` avec `afficher` : les courbes, et la tolérance écrite dans les préférences, comme le champ |
 | Directes | `web3d_vue`, `web3d_visibilite`, `web3d_coupe` | appliquées tout de suite : vue, œil, plan de coupe — rien du fichier ; la projection s'écrit dans les préférences et `#selProjection`, comme le bouton ; une coupe sur une face refuse une pièce masquée |
 | En carte | `web3d_ouvrir` | une carte avant → après, Appliquer ou Refuser ; elle s'annule par la carte |
 | Gestes | `pilote_interface` | tout le reste, comme l'utilisateur : déplacer (`#bDeplacer`), exporter une pièce (`#bExportPiece`), ranger son STEP (`#bRangerPiece`) |
@@ -488,15 +541,18 @@ WEB_3D/
 ├── index.html                    structure de la page et carte des imports
 ├── conception.html               la page du mode conception
 ├── regles-conception.md          les règles de conception d'une pièce, lues par le MCP (`savoir_lire`) et Claude in Chrome (lien Règles)
-├── web_3D.py                     serveur statique (bibliothèque standard)
+├── web_3D.py                     serveur de la page et des projets
+├── ouvrir.py                     ouvrir un .step depuis le gestionnaire de fichiers
 ├── pilote.py                     canal de pilotage, côté serveur (copie de web_suite)
 ├── appairage.py                  code d'appairage des tablettes (copie commune aux web tools)
 ├── css/
 │   ├── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
-│   └── conception.css            ruban, historique, esquisse (mêmes variables de thème)
-├── js/                           modules ES, chargés par 09-demarrage.js
+│   ├── conception.css            ruban, historique, esquisse (mêmes variables de thème)
+│   ├── pilote.css                panneau « Claude » (copie de web_suite)
+│   └── telephone.css             disposition sur petit écran (copie de WEB_CAO)
+├── js/                           modules ES, chargés par 09-demarrage.js ou c6-conception.js
 ├── exemples/                     fichiers d'essai, un par voie de lecture
-├── test/                         bancs d'essai : exemples, pilotage, serveur
+├── test/                         bancs d'essai : exemples, pilotage, serveur, conception
 └── vendor/                       bibliothèques, servies en local
     ├── three/                    three.js r186 + modules d'exemples (lecteurs
     │                              STL, 3MF, OBJ, MTL, glTF, export glTF, fflate, occlusion ambiante)
@@ -510,7 +566,7 @@ WEB_3D/
 | :--- | :--- |
 | `js/00-config.js` | préférences et **table des gestes de souris** : c'est elle que lit la navigation |
 | `js/01-scene.js` | scène, deux caméras pour un même cadrage, éclairage, sol, modes d'affichage, plan de coupe |
-| `js/02-import.js` | fichier → maillages : les six formats, hiérarchie, couleurs (y compris par face B-Rep), unités, arêtes vives |
+| `js/02-import.js` | fichier → maillages : les sept formats, hiérarchie, couleurs (y compris par face B-Rep), unités, arêtes vives |
 | `js/03-navigation.js` | orbite (libre / contrainte), panoramique, zoom, tactile, inertie, animations de vue |
 | `js/04-cube-vue.js` | cube de vues : 26 zones cliquables, triade, rendu dans son propre canevas |
 | `js/05-arbre.js` | arbre d'assemblage, sélection, isolement, fiche de propriétés, volume et surface |
@@ -527,6 +583,8 @@ WEB_3D/
 | `js/pilote.js` | canal de pilotage côté page : relais entre onglets, panneau « Claude », cartes, interrupteur. **Copie** de `web_suite/lanceur/pilote.js`, à ne pas modifier ici |
 | `pilote.py` | canal de pilotage côté serveur : file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement. Copie de `web_suite/lanceur/pilote.py` |
 | `appairage.py` | le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste. Copie commune aux web tools |
+| `ouvrir.py` | « Ouvrir avec WEB_3D » : copie le `.step` dans `~/.web_tools/ouvrir/`, démarre WEB_3D s'il le faut, ouvre la page ; `--associer` inscrit l'application |
+| `js/telephone.js` | disposition de la visionneuse sur un petit écran. **Copie** de `WEB_CAO/commun/telephone.js` |
 | `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures), `banc-conception-retours.mjs` (désignation, mesure, boîtes de question, cube, maillage, échec de construction, script ; même lancement ; lancement commun dans `harnais-page.mjs`), `banc-conception-plus.mjs` (commandes ajoutées, sur le noyau, valeurs calculées à la main) et `banc-conception-plus-page.mjs` (les mêmes, par les vrais boutons) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 | `js/c1-expressions.js` | conception : paramètres et expressions des cotes (analyseur maison, jamais `eval`) |
@@ -552,16 +610,17 @@ WEB_3D/
 
 ## Dépendances
 
-Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution.
+Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution. Côté serveur, `web_3D.py`
+n'utilise aujourd'hui que la bibliothèque standard de Python : pas de `requirements.txt`.
 
 | Bibliothèque | Version | Licence | Rôle |
 | :--- | :--- | :--- | :--- |
 | [three.js](https://threejs.org) | r186 | MIT | rendu WebGL, lecteurs STL / 3MF / OBJ / MTL / glTF, export glTF |
-| [fflate](https://github.com/101arrowz/fflate) | livré avec three.js | MIT | décompression du 3MF (une archive ZIP) |
+| [fflate](https://github.com/101arrowz/fflate) | livré avec three.js | MIT | archive ZIP du 3MF (lecture et export) |
 | [occt-import-js](https://github.com/kovacsv/occt-import-js) | 0.0.23 | LGPL-2.1 | OpenCascade en WebAssembly : lecture STEP / IGES / BREP |
 | [replicad](https://replicad.xyz) | 1.2.0 | MIT | modélisation B-Rep du mode conception |
 | [replicad-opencascadejs](https://github.com/sgenoud/replicad) | 1.1.0 | LGPL-2.1 | OpenCascade en WebAssembly pour replicad |
-| [planegcs](https://github.com/Salusoft89/planegcs) | 1.3.0 | LGPL-2.0 ou ultérieure | solveur de contraintes d'esquisse de FreeCAD, en WebAssembly |
+| [planegcs](https://github.com/Salusoft89/planegcs) | 1.3.0 | LGPL-2.0 ou ultérieure (texte livré : LGPL-2.1) | solveur de contraintes d'esquisse de FreeCAD, en WebAssembly |
 | [DejaVu Sans](https://dejavu-fonts.github.io) | paquet Debian fonts-dejavu-core | licence libre DejaVu (voir `vendor/polices/`) | police du texte des esquisses |
 
 Les textes de licence accompagnent les fichiers dans `vendor/three/`,
@@ -584,8 +643,9 @@ entre ses coins opposés, les réglages ΔXYZ 1 et 2 doivent donner 40 × 30 × 
 
 Chrome, Edge, Firefox et Safari récents : la page utilise les modules ES avec
 *import map*, WebGL 2, les `<dialog>` natifs et les évènements *pointer*.
-Le noyau WebAssembly pèse 7,3 Mo — il n'est chargé qu'à la première ouverture
-de fichier, puis réutilisé pour les suivants.
+Le noyau WebAssembly de la visionneuse pèse 7,3 Mo — il n'est chargé qu'à la première ouverture
+d'un STEP, IGES ou BREP, puis réutilisé pour les suivants, sauf après un fichier de plus de
+30 Mo ou un échec : le suivant recharge alors un noyau neuf.
 
 ---
 
@@ -601,8 +661,8 @@ de fichier, puis réutilisé pour les suivants.
 | <kbd>D</kbd> | déplacer un fichier (« ✥ Déplacer ») |
 | <kbd>T</kbd> | thème clair ↔ sombre |
 | <kbd>K</kbd> | ouvrir / fermer la mesure |
-| <kbd>M</kbd> | mode de mesure : point → arête → face |
+| <kbd>M</kbd> | ouvrir la mesure s'il le faut, puis mode suivant : auto → point → arête → face → pièce |
 | <kbd>I</kbd> / <kbd>H</kbd> | isoler la sélection / tout réafficher |
 | <kbd>Suppr</kbd> | masquer la sélection |
 | <kbd>1</kbd>…<kbd>7</kbd> | avant, arrière, gauche, droite, dessus, dessous, isométrique |
-| <kbd>Échap</kbd> | effacer la mesure en cours, puis fermer l'outil, désélectionner, sortir de l'isolement |
+| <kbd>Échap</kbd> | annuler le choix d'une face de coupe ou une contrainte de déplacement, effacer la mesure en cours, puis fermer l'outil, sortir de l'isolement, désélectionner |
