@@ -106,6 +106,10 @@ with tempfile.TemporaryDirectory() as tmp:
     liste = json.loads(requete("GET", "/api/projets")[1])
     verifier("liste", (liste["dispo"], sorted(f["chemin"] for f in liste["fichiers"])), (True, ["t (2).stl", "t.stl"]))
     verifier("relecture", requete("GET", "/projets/t.stl")[1], stl)
+    for nom in ("m.glb", "m.gltf"):       # la page les ouvre : ils se rangent aussi
+        verifier("rangement " + nom, json.loads(ranger(nom)[1]).get("chemin"), nom)
+        verifier("relecture " + nom, requete("GET", "/projets/" + nom)[1], stl)
+        os.remove(os.path.join(tmp, nom))
     for chemin in ("/projets/secret.txt", "/projets/../web_3D.py", "/projets/..%5cweb_3D.py",
                    "/projets/C:%5cWindows%5cwin.ini", "/projets/.git/config"):
         verifier("refus " + chemin, requete("GET", chemin)[0], 404)

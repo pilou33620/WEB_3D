@@ -4,8 +4,8 @@
    autre.
 
    Une visionneuse sert d'abord à vérifier : un entraxe, une épaisseur, un jeu.
-   Encore faut-il désigner ce qu'on mesure, et c'est là que les trois modes se
-   séparent — parce que trois choses différentes sont attendues :
+   Encore faut-il désigner ce qu'on mesure, et c'est là que les modes se
+   séparent — parce que des choses différentes sont attendues :
 
    · Point à point, c'est la distance brute entre deux endroits du modèle. La
      mesure doit tomber juste, et « juste » veut dire sur un sommet du maillage,

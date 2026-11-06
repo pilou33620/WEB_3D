@@ -51,7 +51,7 @@ const TYPE_URDF = { rigide:"fixed", pivot:"revolute", glissiere:"prismatic" };
 /**
  * Le texte URDF : un lien par corps, un joint par liaison ; les maillages (mm dans le monde) sont ramenés au
  * repère du lien. `corps` : { nom, masse (kg), centre (mm), boite }. Une liaison que l'URDF ne sait pas dire
- * (cylindrique, plan) est refusée plutôt que simplifiée sans le dire.
+ * (cylindrique, sphérique, plan) est refusée plutôt que simplifiée sans le dire.
  */
 export function ecrireUrdf(nom, corps, liaisons, v = Number){
   const noms = new Set(corps.map(c => c.nom));

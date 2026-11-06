@@ -51,7 +51,7 @@ RACINE = os.path.dirname(os.path.abspath(__file__))
 STATIQUE = re.compile(
     r"^/(?:index\.html|conception\.html|regles-conception\.md)?$"
     r"|^/(?:css|js|vendor|exemples)(?:/[\w-][\w.-]*)+$"
-    r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|png|jpe?g|webp|bmp|gif)$",
+    r"|^(?:/[\w(][\w .()+-]*)+\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|gltf|png|jpe?g|webp|bmp|gif)$",
     re.IGNORECASE)
 
 # Le dossier des projets (--projets ; WEB_SUITE y passe PROJETS/3D, synchronisé
@@ -60,7 +60,7 @@ PROJETS = None
 # Ce qu'on y lit et y range : des modèles, ce qui accompagne un .obj (les annexes
 # de js/02-import.js) et les pièces du mode conception (.json, conception.html).
 # La page nettoie le nom avant l'envoi (nomProjet de js/11-projets.js).
-NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|png|jpe?g|webp|bmp|gif|json)$",
+NOM_PROJET = re.compile(r"^[\w(][\w .()+-]*\.(?:stpz?|step|igs|iges|brep|brp|stl|3mf|obj|mtl|glb|gltf|png|jpe?g|webp|bmp|gif|json)$",
                         re.IGNORECASE)
 MAX_PROJET = 200 * 1024 * 1024
 
@@ -127,6 +127,7 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         ".obj": "text/plain",
         ".mtl": "text/plain",
         ".glb": "model/gltf-binary",
+        ".gltf": "model/gltf+json",
     }
 
     def parse_request(self):

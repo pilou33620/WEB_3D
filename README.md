@@ -102,8 +102,8 @@ En mode réseau, la connexion est **chiffrée (HTTPS)** quand la commande `opens
 fichier qu'on vient d'ouvrir — sans jamais en écraser un : un nom pris devient
 `piece (2).stp`. Lancée par WEB·SUITE, la visionneuse pointe sur `PROJETS/3D`, que le
 lanceur envoie sur GitHub à l'arrêt de l'outil : le modèle rangé sur un poste s'ouvre sur
-l'autre. Le serveur ne lit et n'écrit que dans ce dossier, et seulement des modèles (ni `.glb`
-ni `.gltf`), ce qui accompagne un `.obj` (`.mtl`, images) et les pièces `.json` du mode conception.
+l'autre. Le serveur ne lit et n'écrit que dans ce dossier, et seulement des modèles (`.glb` et
+`.gltf` compris), ce qui accompagne un `.obj` (`.mtl`, images) et les pièces `.json` du mode conception.
 Sans `--projets`, *Enregistrer* du mode conception télécharge le `.json`.
 
 **Le navigateur.** Les préférences et le brouillon du mode conception restent dans le

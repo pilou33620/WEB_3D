@@ -911,8 +911,8 @@ export class Interface {
         case "c": this.basculerCoupe(); break;
         case "k": this.basculerMesure(); break;
         case "d": this.basculerDeplacement?.(); break;
-        /* M ouvre la mesure s'il le faut, puis fait tourner les modes :
-           point → arête → face. Un seul doigt suffit pour tout le cycle. */
+        /* M ouvre la mesure s'il le faut, puis fait tourner les modes (MODES de
+           07-mesure.js). Un seul doigt suffit pour tout le cycle. */
         case "m":
           if(!this.mesure.actif) this.basculerMesure(true);
           else { this.mesure.modeSuivant(); this.majPanneauMesure(); }
