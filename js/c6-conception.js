@@ -347,7 +347,31 @@ class Conception {
       ...actionsEsquisse(this),
     };
     for(const b of document.querySelectorAll("#ruban [data-action]")) b.onclick = () => actions[b.dataset.action]();
-    for(const b of document.querySelectorAll(".ong-ruban")) b.onclick = () => this.ongletRuban(b.dataset.onglet);
+    for(const b of document.querySelectorAll(".ong-ruban")) b.onclick = () => {
+      // replié : l'onglet touché déroule ses groupes par-dessus la vue ; retouché, il les range
+      const ruban = $("ruban"), deja = b.classList.contains("on") && ruban.classList.contains("deroule");
+      this.ongletRuban(b.dataset.onglet);
+      ruban.classList.toggle("deroule", document.body.classList.contains("ruban-replie") && !deja);
+    };
+    /* Repli du ruban, comme WEB_CAO : mémorisé par appareil */
+    const pli = $("rubanPli"), ruban = $("ruban");
+    const plier = (replie, memoriser) => {
+      document.body.classList.toggle("ruban-replie", replie);
+      ruban.classList.remove("deroule");
+      pli.textContent = replie ? "▾" : "▴";
+      pli.title = replie ? "Déplier le ruban" : "Replier le ruban : plus de place pour la vue";
+      pli.setAttribute("aria-expanded", String(!replie));
+      if(memoriser) try{ localStorage.setItem("w3d.ruban.replie", replie ? "1" : "0"); }catch(_){}
+    };
+    let lu = null;
+    try{ lu = localStorage.getItem("w3d.ruban.replie"); }catch(_){}
+    plier(lu === null ? matchMedia("(max-width:600px),(max-height:500px)").matches : lu === "1", false);
+    pli.onclick = () => plier(!document.body.classList.contains("ruban-replie"), true);
+    // une commande lancée, ou un geste hors du ruban, referme la bande déroulée
+    ruban.addEventListener("click", (e) => {
+      if(e.target.closest(".groupes button")) setTimeout(() => ruban.classList.remove("deroule"), 0);
+    });
+    document.addEventListener("pointerdown", (e) => { if(!ruban.contains(e.target) && !e.target.closest(".menu-flottant")) ruban.classList.remove("deroule"); });
 
     $("bParametres").onclick = $("bParametres2").onclick = $("navParametres").onclick = () => this.ouvrirParametres();
     this.brancherDisposition();

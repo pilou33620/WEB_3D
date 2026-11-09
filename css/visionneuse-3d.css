@@ -577,3 +577,10 @@ table.raccourcis td:first-child{width:140px;white-space:nowrap}
 
 
 
+
+/* ---------- repli de la barre (js/pli-barre.js) ; le téléphone a sa propre disposition ---------- */
+.barre-pli{margin-left:auto;flex:none;width:28px;height:24px;background:none;border:1px solid var(--border2);
+  border-radius:4px;color:var(--txt-dim);cursor:pointer;font-size:11px}
+.barre-pli:hover{color:#fff;border-color:var(--blue)}
+body.tel .barre-pli{display:none}
+body.barre-repliee:not(.tel)>header .tools>:not(#bArreter):not(#simProgression){display:none}

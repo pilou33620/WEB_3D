@@ -67,11 +67,11 @@ try{
     }
     return trop;
   `), {});
-  verifier("chaque bouton du ruban se voit, sur tous les onglets : aucun n'est replié ni hors de l'écran", await page(`
+  verifier("chaque bouton du ruban se voit, sur tous les onglets : aucun n'est hors de l'écran (les rangés .plus passent par la liste du groupe)", await page(`
     const hors = [];
     for(const g of document.querySelectorAll("#ruban .groupes")){
       const h = g.hidden; g.hidden = false;
-      for(const b of g.querySelectorAll("button")){
+      for(const b of g.querySelectorAll("button:not(.plus button)")){
         const r = b.getBoundingClientRect();
         if(!r.width || !r.height || r.right > innerWidth + 1 || r.left < 0) hors.push(b.dataset.op || b.dataset.outil || b.dataset.action || b.dataset.contrainte || b.id);
       }

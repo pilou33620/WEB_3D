@@ -68,7 +68,7 @@ try{
 <!-- Le ruban. Un bouton porte data-op (opération de c3-operations.js), data-outil (outil
      d'esquisse de c5-esquisse-ui.js), data-action ou data-contrainte, ou l'identifiant d'une
      commande de la visionneuse. Le titre de chaque groupe ouvre la liste de ses commandes ;
-     la recherche (S) les parcourt toutes. Faute de place, le ruban passe sur une seconde rangée : tout reste visible. -->
+     la recherche (S) les parcourt toutes. Les commandes rares (.plus) ne sont que dans la liste du groupe ; ▴ replie le ruban. -->
 <nav id="ruban">
   <div class="atelier" title="Atelier de conception de pièces">
     <i>◩</i><b>Design</b><span>Atelier</span>
@@ -88,6 +88,7 @@ try{
       <button class="ong-ruban" data-onglet="rendu">Rendu</button>
       <button class="ong-ruban" data-onglet="soudures">Soudures</button>
       <span class="grow"></span>
+      <button class="ruban-pli" id="rubanPli" type="button">▴</button>
       <label class="recherche-cmd" title="Rechercher une commande — touche S">⌕
         <input type="search" id="rechCommande" placeholder="Rechercher une commande" autocomplete="off"><kbd>S</kbd></label>
     </div>
@@ -99,33 +100,33 @@ try{
       <section><div class="btns">
           <button data-op="extrusion" title="Extruder les contours fermés d'une esquisse"><i>⬆</i>Extrusion</button>
           <button data-op="revolution" title="Faire tourner une esquisse autour d'un axe"><i>⟳</i>Révolution</button>
-          <button data-op="percage" title="Trous simples, lamés ou fraisés sur les points d'une esquisse"><i>⊙</i>Perçage</button>
           <span class="pile">
+            <button data-op="percage" title="Trous simples, lamés ou fraisés sur les points d'une esquisse"><i>⊙</i>Perçage</button>
             <button data-op="balayage" title="Déplacer un profil le long d'un chemin"><i>≈</i>Balayage</button>
             <button data-op="lissage" title="Volume passant par plusieurs sections"><i>⧖</i>Lissage</button>
-            <button data-op="boite" title="Boîte"><i>▣</i>Boîte</button>
           </span>
           <span class="pile">
+            <button data-op="boite" title="Boîte"><i>▣</i>Boîte</button>
             <button data-op="cylindre" title="Cylindre"><i>⌭</i>Cylindre</button>
             <button data-op="sphere" title="Sphère"><i>●</i>Sphère</button>
-            <button data-op="cone" title="Cône ou tronc de cône"><i>▲</i>Cône</button>
           </span>
-          <span class="pile">
+          <span class="pile plus">
+            <button data-op="cone" title="Cône ou tronc de cône"><i>▲</i>Cône</button>
             <button data-op="tore" title="Tore"><i>◎</i>Tore</button>
             <button data-op="tuyau" title="Tuyau : un cercle le long d'un chemin, plein ou creux"><i>⌇</i>Tuyau</button>
-            <button data-op="ressort" title="Ressort hélicoïdal"><i>⌬</i>Ressort</button>
           </span>
-          <span class="pile">
+          <span class="pile plus">
+            <button data-op="ressort" title="Ressort hélicoïdal"><i>⌬</i>Ressort</button>
             <button data-op="nervure" title="Nervure : des lignes ouvertes épaissies et extrudées, jointes au corps"><i>╫</i>Nervure</button>
             <button data-op="gravure" title="Gravure : une esquisse en creux ou en relief sur le corps"><i>✎</i>Gravure</button>
-            <button data-op="filetage" title="Filetage cosmétique sur une face cylindrique : dessiné, sans matière"><i>⧙</i>Filetage</button>
           </span>
-          <span class="pile">
+          <span class="pile plus">
+            <button data-op="filetage" title="Filetage cosmétique sur une face cylindrique : dessiné, sans matière"><i>⧙</i>Filetage</button>
             <button data-op="voile" title="Voile : des lignes épaissies, jusqu'aux bords du corps"><i>╪</i>Voile</button>
             <button data-op="englobant" title="Solide englobant : la boîte qui contient les corps choisis"><i>⬚</i>Englobant</button>
-            <button data-op="chemin3d" title="Chemin 3D : des droites ou une courbe par des points de l'espace, pour un tuyau ou un balayage"><i>⟿</i>Chemin 3D</button>
           </span>
-          <span class="pile">
+          <span class="pile plus">
+            <button data-op="chemin3d" title="Chemin 3D : des droites ou une courbe par des points de l'espace, pour un tuyau ou un balayage"><i>⟿</i>Chemin 3D</button>
             <button data-op="cellule" title="Remplissage de frontière : le volume fermé par des corps et des surfaces, autour d'un point"><i>▦</i>Frontière</button>
           </span>
         </div><h5>Créer</h5></section>
@@ -133,49 +134,49 @@ try{
           <button data-op="tirer" title="Tirer une face plane : ajoute ou enlève de la matière (Press Pull)"><i>⇪</i>Tirer</button>
           <button data-op="conge" title="Arrondir des arêtes"><i>◜</i>Congé</button>
           <button data-op="chanfrein" title="Casser des arêtes"><i>◸</i>Chanfrein</button>
-          <button data-op="coque" title="Évider un corps en retirant des faces"><i>▢</i>Coque</button>
-          <button data-op="combiner" title="Joindre, enlever ou intersecter des corps"><i>⊕</i>Combiner</button>
           <span class="pile">
+            <button data-op="coque" title="Évider un corps en retirant des faces"><i>▢</i>Coque</button>
+            <button data-op="combiner" title="Joindre, enlever ou intersecter des corps"><i>⊕</i>Combiner</button>
             <button data-op="depouille" title="Dépouille : incliner des faces par rapport à un plan neutre"><i>⟋</i>Dépouille</button>
+          </span>
+          <span class="pile plus">
             <button data-op="decouper" title="Découper un corps en deux par un plan"><i>⫽</i>Découpe</button>
             <button data-op="echelle" title="Mettre un corps à l'échelle"><i>⤢</i>Échelle</button>
-          </span>
-          <span class="pile">
             <button data-op="decalerFace" title="Décaler des faces planes ou cylindriques : ajoute ou enlève de la matière"><i>⇉</i>Décaler face</button>
+          </span>
+          <span class="pile plus">
             <button data-op="supprimerFace" title="Supprimer des faces : le trou se bouche, ou le corps devient une surface"><i>⊠</i>Suppr. face</button>
             <button data-op="remplacerFace" title="Remplacer une face : le corps s'arrête à une surface qui le traverse"><i>⇄</i>Rempl. face</button>
-          </span>
-          <span class="pile">
             <button data-op="diviser" title="Diviser un corps par un plan de construction, une esquisse ou une surface"><i>⫿</i>Diviser</button>
+          </span>
+          <span class="pile plus">
             <button data-op="diviserFace" title="Diviser des faces selon les lignes d'une esquisse"><i>⫾</i>Div. face</button>
             <button data-op="retirerCorps" title="Retirer un corps de la suite de l'historique, sans effacer ce qui l'a construit"><i>⌫</i>Retirer</button>
-          </span>
-          <span class="pile">
             <button data-op="gravureCylindre" title="Graver une esquisse sur un cylindre : la profondeur suit la surface"><i>✎</i>Gravure sur cylindre</button>
           </span>
         </div><h5>Modifier</h5></section>
       <section><div class="btns">
-          <button data-op="deplacer" title="Déplacer ou tourner un corps"><i>✥</i>Déplacer</button>
-          <button data-op="miroir" title="Symétrie d'un corps par un plan"><i>⇋</i>Miroir</button>
-          <button data-op="repetition" title="Répétition linéaire ou circulaire, dans une ou deux directions"><i>⁂</i>Répétition</button>
           <span class="pile">
+            <button data-op="deplacer" title="Déplacer ou tourner un corps"><i>✥</i>Déplacer</button>
+            <button data-op="miroir" title="Symétrie d'un corps par un plan"><i>⇋</i>Miroir</button>
+            <button data-op="repetition" title="Répétition linéaire ou circulaire, dans une ou deux directions"><i>⁂</i>Répétition</button>
+          </span>
+          <span class="pile plus">
             <button data-op="repChemin" title="Répéter un corps le long d'un chemin d'esquisse"><i>⋰</i>Sur chemin</button>
             <button data-op="aligner" title="Aligner un corps sur un autre : minimums, centres, maximums, ou posé contre"><i>⊟</i>Aligner</button>
-          </span>
-          <span class="pile">
             <button id="bApparence" title="Couleur, métal, rugosité, opacité d'un corps ou d'une face, et son matériau — sélection vide : tous les corps"><i>◐</i>Apparence</button>
           </span>
         </div><h5>Disposer</h5></section>
       <section><div class="btns">
-          <button id="bParametres" title="Paramètres nommés : les cotes s'écrivent « L/2 », « 2*e + 1 »…"><i>ƒx</i>Paramètres</button>
-        </div><h5>Configurer</h5></section>
-      <section><div class="btns">
-          <button data-op="plan" title="Plan de construction : décalé et incliné, médian, ou par trois points"><i>▱</i>Plan</button>
           <span class="pile">
+            <button data-op="plan" title="Plan de construction : décalé et incliné, médian, ou par trois points"><i>▱</i>Plan</button>
             <button data-op="axe" title="Axe de construction : par deux points ou l'axe d'un cylindre ; sert aux révolutions et répétitions"><i>╱</i>Axe</button>
             <button data-op="point" title="Point de construction"><i>•</i>Point</button>
           </span>
         </div><h5>Construire</h5></section>
+      <section><div class="btns">
+          <button id="bParametres" title="Paramètres nommés : les cotes s'écrivent « L/2 », « 2*e + 1 »…"><i>ƒx</i>Paramètres</button>
+        </div><h5>Configurer</h5></section>
     </div>
 
     <div class="groupes" data-volet="esquisse" hidden>
