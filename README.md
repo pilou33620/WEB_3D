@@ -31,7 +31,6 @@ Il faut Python 3.8 ou plus, et git pour les mises à jour. Rien d'autre à insta
 | :--- | :--- | :--- |
 | Raspberry Pi, Linux | `git clone https://github.com/pilou33620/WEB_3D.git` | `python3 web_3D.py` |
 | Windows | le même `git clone` | double-clic sur `web_3D.py`, ou `python web_3D.py` |
-| Android (Termux) | `pkg install python git`, puis le même `git clone` | `python web_3D.py --sans-navigateur`, `termux-wake-lock` actif |
 
 Dans WEB·SUITE, le lanceur télécharge l'outil (`python lanceur/installer.py 3d`) et le démarre :
 voir [son README](../README.md).
