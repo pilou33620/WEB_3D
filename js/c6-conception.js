@@ -850,8 +850,11 @@ class Conception {
     if(vue.modele.children.length){
       vue.adapterAuModele();
       if(this.premiereVue){ this.nav.allerVersVue("iso", false); vue.ajusterVue(vue.modele); this.premiereVue = false; this.rayonCadre = vue.rayonModele; }
-      /* La pièce a beaucoup grandi : elle sortirait du cadre. (Jamais pendant une esquisse : le plan reste où il est.) */
-      else if(!this.editeur.ouvert && vue.rayonModele > 1.5 * (this.rayonCadre || 0)){ vue.ajusterVue(vue.modele); this.rayonCadre = vue.rayonModele; }
+      /* La pièce a beaucoup grandi : elle sortirait du cadre ; ou fondu au dixième (une cote de 1e6 corrigée en 30) :
+         elle ne serait plus qu'un point, grille comprise. (Jamais pendant une esquisse : le plan reste où il est.) */
+      else if(!this.editeur.ouvert && (vue.rayonModele > 1.5 * (this.rayonCadre || 0) || vue.rayonModele < (this.rayonCadre || 0) / 10)){
+        vue.ajusterVue(vue.modele); this.rayonCadre = vue.rayonModele;
+      }
     }
     vue.definirAretes(prefs.aretes);
     if(vue.modeFilaire) vue.definirFilaire(true);
@@ -2136,8 +2139,10 @@ class Conception {
       v.title = erreurs[p.nom] || "";
       nom.classList.toggle("faux", !!erreurs[p.nom] && !NOM_PARAMETRE.test(p.nom));
       expr.classList.toggle("faux", !!erreurs[p.nom]);
-      nom.onchange = () => { this.renommerParametre(p.nom, nom.value.trim()); this.remplirParametres(); };
-      expr.onchange = () => { p.expr = expr.value.trim(); this.remplirParametres(); };
+      /* La table se refait après coup : refaite pendant le « change », qui arrive au blur, le champ qui
+         perd le focus disparaissait sous lui (« Failed to set the 'innerHTML'… moved in a 'blur' handler »). */
+      nom.onchange = () => { this.renommerParametre(p.nom, nom.value.trim()); setTimeout(() => this.remplirParametres()); };
+      expr.onchange = () => { p.expr = expr.value.trim(); setTimeout(() => this.remplirParametres()); };
       const sup = document.createElement("button"); sup.type = "button"; sup.className = "tb mini"; sup.textContent = "✕";
       sup.onclick = async () => {
         const u = this.usagesParametre(p.nom);
@@ -2495,6 +2500,11 @@ class Conception {
 function verifierPiece(doc){
   if(!doc || doc.format !== FORMAT || !Array.isArray(doc.operations) || !Array.isArray(doc.parametres || [])){
     throw new Error("ce fichier n'est pas une pièce du mode conception");
+  }
+  /* Une opération écrite à la main ou par script sans `nom` (la forme courte du README)
+     cassait l'historique : « Cannot read properties of undefined (reading 'normalize') ». */
+  for(const op of doc.operations){
+    if(op && typeof op === "object" && typeof op.nom !== "string") op.nom = String(op.id ?? op.type ?? "opération");
   }
   try{ structuredClone(doc); }
   catch(e){ throw new Error(`cette pièce ne peut pas être transmise au noyau : ${e.message}`); }

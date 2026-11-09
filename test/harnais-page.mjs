@@ -59,7 +59,7 @@ export async function ouvrirConception(){
     /* Chromium démarre sur la page : depuis about:blank, Page.navigate restait sans réponse sur le Pi. */
     navigateur = spawn(CHROMIUM, ["--headless=new", `--remote-debugging-port=${portCdp}`, `--user-data-dir=${profil}`,
       "--password-store=basic", "--use-mock-keychain",     // sinon le réseau de Chromium attend un trousseau, sans fin
-      "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--no-first-run", "--window-size=1500,950",
+      "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--no-first-run", "--window-size=1500,1100",
       `http://127.0.0.1:${portWeb}/conception.html`], { stdio:"ignore" });
     const cibles = await (await attendreHttp(`http://127.0.0.1:${portCdp}/json/list`)).json();
     ws = new WebSocket(cibles.find(c => c.type === "page").webSocketDebuggerUrl);

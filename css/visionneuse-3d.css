@@ -256,6 +256,7 @@ main{flex:1;display:flex;min-height:0}
 .depot.survol{border-color:var(--blue);background:#20242a}
 .depot b{display:block;font-size:15px;margin-bottom:6px}
 .depot small{display:block;font-size:12.5px;color:var(--txt-dim);line-height:1.55;margin-bottom:14px}
+#errEtat{color:var(--red);max-width:50%}
 .depot .err{display:block;margin-top:12px;font-size:12px;color:var(--red);line-height:1.5;white-space:pre-wrap}
 
 /* ---------- voile d'attente ---------- */

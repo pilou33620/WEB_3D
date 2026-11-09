@@ -30,7 +30,8 @@ async function liste(){
 export function nomProjet(nom){
   nom = String(nom).normalize("NFC");
   const i = nom.lastIndexOf(".");
-  const base = (i > 0 ? nom.slice(0, i) : nom).replace(/[^\p{L}\p{N}_ .()+-]/gu, "_").trim() || "modele";
+  // 100 caractères au plus : le serveur refuse au-delà de 150, la marge laisse place à « (2) »
+  const base = (i > 0 ? nom.slice(0, i) : nom).replace(/[^\p{L}\p{N}_ .()+-]/gu, "_").slice(0, 100).trim() || "modele";
   return (/^[\p{L}\p{N}_(]/u.test(base) ? "" : "_") + base + (i > 0 ? nom.slice(i).toLowerCase() : "");
 }
 

@@ -497,6 +497,14 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
       }
     }
 
+    /* Un sommet cité mais absent (« f 1 2 9 » sur deux sommets) donne des NaN :
+       ils passaient à la caméra, et la vue restait noire jusqu'au rechargement. */
+    const boite = new THREE.Box3().setFromObject(groupe);
+    if([...boite.min.toArray(), ...boite.max.toArray()].some(Number.isNaN)){
+      liberer(groupe);
+      throw new Error(`${fichier.name} : fichier corrompu, des sommets ont des coordonnées invalides ` +
+        "(indice de sommet absent ou valeur non numérique).");
+    }
     recenser(groupe, etat);
     groupe.name = groupe.name || fichier.name;
     groupe.userData.fichier = fichier.name;

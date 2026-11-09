@@ -451,9 +451,15 @@ export class Interface {
   }
 
   erreur(message){
-    const e = $("errDepot");
-    e.hidden = !message;
-    e.textContent = message || "";
+    /* Deux places : l'accueil est masqué dès qu'un modèle est affiché, et
+       le message y restait invisible ; la barre d'état, elle, est toujours là. */
+    for(const id of ["errDepot", "errEtat"]){
+      const e = $(id);
+      if(!e) continue;                     // conception.html n'a pas de barre d'état
+      e.hidden = !message;
+      e.textContent = message || "";
+      e.title = message || "";
+    }
   }
 
   basculerTheme(){

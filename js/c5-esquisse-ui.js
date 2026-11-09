@@ -823,11 +823,16 @@ export class EditeurEsquisse {
     const id = (e) => e.id;
     let k = [], aide = null;
     switch(type){
-      case "horizontal": case "vertical":
+      case "horizontal": case "vertical": {
+        /* Horizontale ET verticale : la ligne ne peut que s'écraser en un point, et le solveur l'acceptait. */
+        const autre = type === "horizontal" ? "vertical" : "horizontal";
+        const deja = L.filter(l => this.esq.contraintes.some(c => c.type === autre && c.a === l.id && c.b == null));
+        if(deja.length){ aide = `Contrainte refusée : cette ligne est déjà ${autre === "vertical" ? "verticale" : "horizontale"}.`; break; }
         if(L.length) k = L.map(l => ({ type, a:l.id }));
         else if(P.length === 2) k = [{ type, a:P[0].id, b:P[1].id }];
         else aide = "Sélectionnez une ou plusieurs lignes, ou deux points.";
         break;
+      }
       case "coincident":
         if(P.length === 2) k = [{ type, a:P[0].id, b:P[1].id }]; else aide = "Sélectionnez deux points.";
         break;

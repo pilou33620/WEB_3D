@@ -186,6 +186,8 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
             taille = -1
         if not NOM_PROJET.match(nom):
             return self._json({"detail": "Nom ou format refusé : %s" % nom}, 400)
+        if len(nom) > 150:     # au-delà, le système refuse le fichier (OSError 36) : on le dit avant
+            return self._json({"detail": "Nom trop long (150 caractères au plus)"}, 400)
         if remplacer and not nom.lower().endswith(".json"):
             return self._json({"detail": "Remplacement réservé aux pièces .json"}, 400)
         if not 0 < taille <= MAX_PROJET:
@@ -226,7 +228,13 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
                     f.write(bloc)
                     reste -= len(bloc)
             if not reste and temporaire:
-                os.replace(temporaire, cible)     # avant `complet` : un échec ici laisse le finally retirer le .tmp
+                try:     # une pièce tronquée ou illisible n'écrase pas la bonne
+                    with open(temporaire, "rb") as lu:
+                        json.loads(lu.read().decode("utf-8"))
+                except ValueError:     # UnicodeDecodeError en est une
+                    reste = -1
+                else:
+                    os.replace(temporaire, cible)     # avant `complet` : un échec ici laisse le finally retirer le .tmp
             complet = not reste
         except (ConnectionError, TimeoutError):   # client parti ou muet depuis `timeout` s : personne à qui répondre
             self.close_connection = True
@@ -234,6 +242,8 @@ class Gestionnaire(http.server.SimpleHTTPRequestHandler):
         finally:
             if not complet:     # fin prématurée, coupure, disque plein : pas de fichier tronqué dans PROJETS
                 os.remove(temporaire or cible)
+        if reste == -1:
+            return self._json({"detail": "Pièce illisible (JSON invalide) : rien n'a été remplacé"}, 400)
         if not complet:
             return self._json({"detail": "Envoi interrompu"}, 400)
         # realpath des deux côtés : un chemin court Windows (PIERRE~1) ne se compare pas au long
