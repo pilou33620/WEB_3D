@@ -367,8 +367,13 @@ function unite3mf(tampon){
   }
 }
 
-function lire3mf(tampon){
-  const groupe = new ThreeMFLoader().parse(tampon);
+function lire3mf(tampon, nomFichier){
+  let groupe;
+  /* Le message du lecteur (« THREE.ThreeMFLoader: Cannot find relationship file `rels`… ») ne dit rien
+     à l'utilisateur : on dit ce qu'est un 3MF, et on garde le détail entre parenthèses. */
+  try{ groupe = new ThreeMFLoader().parse(tampon); }
+  catch(e){ throw new Error(`${nomFichier} : 3MF illisible. Un .3mf est une archive zip (modèle, relations) ; ` +
+    `celle-ci est tronquée ou n'en est pas une. (${String(e.message || e).replace(/^THREE\.\w+:\s*/, "")})`); }
   const facteur = UNITES_3MF[unite3mf(tampon)] ?? 1;
   if(facteur !== 1) groupe.scale.setScalar(facteur);
   groupe.userData.unite3mf = unite3mf(tampon);
@@ -458,7 +463,8 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
        décompresser seul ; la suite le lit comme un .stp ordinaire. */
     if(extension(fichier.name) === "stpz"){
       const flux = fichier.stream().pipeThrough(new DecompressionStream("gzip"));
-      fichier = new File([await new Response(flux).blob()], fichier.name.replace(/z$/i, ""));
+      try{ fichier = new File([await new Response(flux).blob()], fichier.name.replace(/z$/i, "")); }
+      catch(e){ throw new Error(`${fichier.name} : ce .stpz n'est pas un STEP compressé en gzip (archive illisible ou tronquée).`); }
     }
     surProgres?.(`Lecture de ${fichier.name}…`);
     let groupe;
@@ -471,7 +477,7 @@ export async function ouvrirFichiers(fichiers, { surProgres } = {}){
       if(format === "stl"){
         groupe = lireStl(tampon, fichier.name, materiau);
       }else if(format === "3mf"){
-        groupe = lire3mf(tampon);
+        groupe = lire3mf(tampon, fichier.name);
         normaliserMateriaux(groupe);
       }else if(format === "gltf"){
         groupe = await lireGltf(tampon, fichier.name);

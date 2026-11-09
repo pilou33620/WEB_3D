@@ -320,6 +320,8 @@ export function miroir(esq, ids, idAxe){
 }
 
 export function repetitionRect(esq, ids, nx, ny, dx, dy){
+  // la même borne que la répétition du noyau : 100 000 exemplaires gelaient la page 40 s
+  if(!(nx >= 1 && ny >= 1 && nx * ny >= 2 && nx * ny <= 500)) return "Répétition refusée : de 2 à 500 exemplaires en tout.";
   for(let i = 0; i < nx; i++) for(let j = 0; j < ny; j++){
     if(i || j) copier(esq, ids, (x, y) => [x + i * dx, y + j * dy]);
   }
@@ -327,6 +329,7 @@ export function repetitionRect(esq, ids, nx, ny, dx, dy){
 }
 
 export function repetitionCirc(esq, ids, n, angle, cx, cy){
+  if(!(n >= 2 && n <= 500)) return "Répétition refusée : de 2 à 500 exemplaires.";
   const pas = Math.abs(angle % 360) < 1e-9 ? angle / n : angle / (n - 1);
   for(let i = 1; i < n; i++){
     const t = pas * i * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);

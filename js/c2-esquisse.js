@@ -614,7 +614,17 @@ export function ajouterPrimitives(esq, prims){
     return id;
   };
   const ajouter = (e) => { esq.elements.push(e); return e; };
+  /* Un script (ajouterEsquisse) écrit volontiers { x, y } : accepté, et tout autre point est refusé
+     en clair plutôt que par « object is not iterable ». */
+  const xy = (v, quoi) => {
+    const q = Array.isArray(v) ? v : v && typeof v === "object" ? [v.x, v.y] : null;
+    if(!q || !Number.isFinite(+q[0]) || !Number.isFinite(+q[1])) throw new Error(`primitive « ${quoi} » : un point s'écrit [x, y] ou { x, y }`);
+    return [+q[0], +q[1]];
+  };
   return prims.map((p) => {
+    p = { ...p };
+    for(const k of ["a", "b", "m", "c", "p"]) if(p[k] !== undefined) p[k] = xy(p[k], p.type);
+    if(Array.isArray(p.pts)) p.pts = p.pts.map(v => xy(v, p.type));
     if(p.type === "ligne"){
       if(Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]) < 1e-6) return null;
       return ajouter({ id:nouvelId(esq, "l"), type:"ligne", p1:point(p.a), p2:point(p.b) });
