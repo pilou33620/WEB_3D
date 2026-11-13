@@ -20,13 +20,17 @@ export async function ouvrirConception(){
   const projets = mkdtempSync(join(tmpdir(), "banc-conception-"));
   const profil = mkdtempSync(join(tmpdir(), "banc-chromium-"));
   const portWeb = await portLibre(), portCdp = await portLibre();
-  const serveur = spawn("python3", ["web_3D.py", "--port", portWeb, "--local", "--sans-navigateur", "--sans-pause", "--sans-maj", "--projets", projets],
-    { cwd:RACINE, stdio:"ignore", env:{ ...process.env, WEB_TOOLS_HTTP:"1" } });
+  /* L'exécutable Rust : WEB_3D_BIN donne son dossier (CI), sinon celui de « cargo build ». Son dossier
+     personnel est un dossier d'essai : l'inscription « Ouvrir avec » du poste ne bouge pas. */
+  const maison = mkdtempSync(join(tmpdir(), "banc-maison-"));
+  const exe = join(process.env.WEB_3D_BIN || join(RACINE, "target", "debug"), process.platform === "win32" ? "web_3d.exe" : "web_3d");
+  const serveur = spawn(exe, ["--port", portWeb, "--local", "--sans-navigateur", "--sans-pause", "--sans-maj", "--projets", projets],
+    { cwd:RACINE, stdio:"ignore", env:{ ...process.env, WEB_TOOLS_HTTP:"1", WEB_3D_DEPOT:RACINE, HOME:maison, USERPROFILE:maison } });
   let navigateur = null, ws = null;
   /* Interrompu (Ctrl+C, délai de la CI) : on ne laisse ni processus ni profil de 100 Mo dans /tmp. */
   const nettoyer = () => {
     navigateur?.kill(); serveur.kill();
-    rmSync(projets, { recursive:true, force:true }); rmSync(profil, { recursive:true, force:true });
+    for(const d of [projets, profil, maison]) rmSync(d, { recursive:true, force:true });
   };
   for(const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { nettoyer(); process.exit(130); });
 

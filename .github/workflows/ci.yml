@@ -24,20 +24,18 @@ jobs:
       - name: Canal de pilotage (MCP de web_suite) — commandes de la page 3D
         run: node test/banc-pilote-3d.mjs
 
-      - name: Serveur — fichiers servis, Host
+      - name: Exécutable Rust (web_3d)
+        run: cargo build --bins
+
+      # Les bancs intégrés de appairage.py et pilote.py sont des tests Rust de la caisse commune
+      # (dépôt web_suite) ; ici : chemins des projets, noms sûrs et copie de « ouvrir », mise à jour git.
+      - name: Tests Rust
+        run: cargo test
+
+      - name: Serveur — fichiers servis, Host, projets, ouvrir (exécutable en boîte noire)
         run: python test/banc-serveur.py
-
-      - name: Appairage — code, jeton et cookie partagés
-        run: python appairage.py
-
-      - name: Canal de pilotage — serveur (pilote.py)
-        run: python pilote.py
-
-      - name: appairage.py et pilote.py sont les mêmes que ceux de web_suite
-        run: |
-          git clone --quiet --depth 1 https://github.com/pilou33620/web_suite.git ../web_suite
-          diff <(tr -d '\r' < ../web_suite/lanceur/appairage.py) <(tr -d '\r' < appairage.py)
-          diff <(tr -d '\r' < ../web_suite/lanceur/pilote.py) <(tr -d '\r' < pilote.py)
+        env:
+          WEB_3D_BIN: target/debug
 
       - name: Conception — expressions, solveur d'esquisse, opérations OpenCascade
         run: node test/banc-conception.mjs

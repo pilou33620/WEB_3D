@@ -6,6 +6,11 @@ venv/
 node_modules/
 .DS_Store
 
+# Rust
+target/
+# Exécutable compilé ou téléchargé (binaires.sh, binaires.cmd)
+bin/
+
 # Graphe graphify : le graphe est versionne ; son cache, ses copies datees et ses
 # fichiers propres au poste ne le sont pas.
 /graphify-out/cache/

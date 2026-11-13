@@ -25,33 +25,38 @@ La visionneuse ne modifie aucun fichier ; à côté d'elle, le **mode conception
 
 ## Installation
 
-Il faut Python 3.8 ou plus, et git pour les mises à jour. Rien d'autre à installer : voir *Dépendances*.
+Il faut git, pour l'installation et les mises à jour. Plus de Python : le serveur est un exécutable
+Rust, `bin/web_3d`. Le script de démarrage le télécharge depuis GitHub (publication « binaires »,
+compilée à chaque envoi sur `main` pour Linux x86_64 et aarch64, macOS aarch64 et Windows x86_64),
+ou le compile sur place si `cargo` est installé ([rustup.rs](https://rustup.rs)) : voir *Dépendances*.
 
 | Système | Installer | Lancer |
 | :--- | :--- | :--- |
-| Raspberry Pi, Linux | `git clone https://github.com/pilou33620/WEB_3D.git` | `python3 web_3D.py` |
-| Windows | le même `git clone` | double-clic sur `web_3D.py`, ou `python web_3D.py` |
+| Raspberry Pi, Linux, macOS | `git clone https://github.com/pilou33620/WEB_3D.git` | `./demarrer_WEB_3D.sh` |
+| Windows | le même `git clone` | double-clic sur `demarrer_WEB_3D.cmd` |
 
-Dans WEB·SUITE, le lanceur télécharge l'outil (`python lanceur/installer.py 3d`) et le démarre :
+Dans WEB·SUITE, le lanceur télécharge l'outil (`bin/installer 3d`) et le démarre :
 voir [son README](../README.md).
 
 ---
 
 ## Démarrage
 
-**Double-cliquez sur `web_3D.py`** — ou, depuis un terminal :
+**Double-cliquez sur `demarrer_WEB_3D.cmd`** (Windows) — ou, depuis un terminal :
 
 ```bash
-python web_3D.py
+./demarrer_WEB_3D.sh
 ```
 
+Le script met `bin/web_3d` à jour (téléchargé, ou compilé si `cargo` est là) puis le lance avec les
+options qu'on lui passe ; une fois l'exécutable en place, `bin/web_3d` se lance aussi directement.
 Dans les deux cas le serveur démarre et la page s'ouvre seule sur
 `http://127.0.0.1:8139/` (le port suivant si celui-ci est déjà pris). Le serveur
-ne fait que servir et ranger des fichiers : il n'y a aucun calcul côté Python.
+ne fait que servir et ranger des fichiers : il n'y a aucun calcul côté serveur.
 
 > [!IMPORTANT]
 > Contrairement aux éditeurs de WEB_CAO, **le double-clic sur `index.html` ne
-> suffit pas** — c'est sur `web_3D.py` qu'il faut cliquer. En `file://`, le
+> suffit pas** — c'est `demarrer_WEB_3D` qu'il faut lancer. En `file://`, le
 > navigateur refuse de charger le module WebAssembly (origine « null ») et
 > ignore le type MIME `application/wasm`. Il faut passer par le serveur —
 > c'est sa seule raison d'être.
@@ -73,10 +78,10 @@ Un modèle peut aussi être ouvert directement par l'URL :
 
 Le serveur ne sert que les pages (`index.html`, `conception.html`, `regles-conception.md`,
 `css/`, `js/`, `vendor/`, `exemples/`) et les fichiers 3D et leurs images posés dans le dossier :
-ni `.git/`, ni le script, ni la liste des
+ni `.git/`, ni les sources, ni la liste des
 fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
 `localhost`, ni le nom du poste (DNS rebinding). Vérification :
-`python test/banc-serveur.py`.
+`python test/banc-serveur.py` (le banc pilote l'exécutable en boîte noire).
 
 ### Utiliser depuis un autre appareil
 
@@ -90,7 +95,7 @@ vraie tablette.
 La première fois, la tablette demande un **code d'appairage** à 6 chiffres, affiché
 dans le terminal du serveur (ou dans les logs de WEB_3D, dans WEB·SUITE).
 Elle s'en souvient ensuite, pour tous les web tools de ce poste
-(`appairage.py`, commun aux web tools). Le poste lui-même n'a jamais besoin de code.
+(caisse Rust `web_tools_commun` du dépôt web_suite, commune aux web tools). Le poste lui-même n'a jamais besoin de code.
 
 En mode réseau, la connexion est **chiffrée (HTTPS)** quand la commande `openssl` est présente sur le poste (Raspberry Pi, Linux, macOS ; sous Windows, celle de Git) : une autorité propre au poste, créée une fois dans `~/.web_tools/tls/`, signe le certificat du serveur. Chaque appareil l'installe une fois, depuis le lien de la page du code (`/appairage/ca.pem`) ; sur iPad : Réglages › Profil téléchargé › Installer, puis Général › Informations › Réglages des certificats › activer. Comparer son empreinte SHA-256 avec celle du terminal. Sans `openssl` (ou avec `WEB_TOOLS_HTTP=1`), tout reste en HTTP et le terminal le dit.
 
@@ -114,9 +119,11 @@ fichiers (`ouvrir/`).
 
 ### Mises à jour
 
-Au démarrage, sauf `--sans-maj`, `web_3D.py` cherche une nouvelle version sur GitHub (`git fetch`,
-10 s au plus) et, s'il y en a une, l'applique par `git pull --ff-only` puis se relance avec les mêmes
-arguments. Un historique réécrit ou divergent est refusé, jamais fusionné. Des fichiers suivis modifiés
+Au démarrage, sauf `--sans-maj`, `web_3d` cherche une nouvelle version sur GitHub (`git fetch`,
+10 s au plus) et, s'il y en a une, l'applique par `git pull --ff-only` puis redémarre avec les mêmes
+arguments : lancé par `demarrer_WEB_3D` (`WEB_3D_RELANCEUR=1`), il sort avec le code 75 et le script
+reprend l'exécutable de la nouvelle version avant de le relancer ; lancé directement, il se relance
+lui-même (pages à jour, exécutable inchangé jusqu'au prochain `demarrer_WEB_3D`). Un historique réécrit ou divergent est refusé, jamais fusionné. Des fichiers suivis modifiés
 sont mis en réserve (`git stash`) puis réappliqués ; un conflit est signalé et ils restent dans la
 réserve. Sans git, hors ligne ou après un échec, l'outil démarre avec la version actuelle. Sous WEB·SUITE,
 le lanceur fait cette vérification à son démarrage et passe alors `--sans-maj` à l'outil.
@@ -132,9 +139,12 @@ de la page 3D, sur une vraie scène. Le mode conception se vérifie sous Node
 page, avec un Chromium sans écran : `node --experimental-websocket test/banc-conception-page.mjs`, de
 même `banc-conception-plus-page.mjs` et `banc-conception-retours.mjs` (`CHROMIUM=` donne son chemin,
 `/usr/bin/chromium` par défaut ; longs sur un Raspberry Pi : à lancer en arrière-plan). Ces huit bancs et
-`test/banc-serveur.py` tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`). Restent à
-lancer à la main : `node test/banc-conception-perf.mjs`, ainsi que `python appairage.py` et
-`python pilote.py`, qui vérifient les modules communs.
+`test/banc-serveur.py` tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`), après
+`cargo build` et `cargo test` (chemins des projets, noms sûrs et copie de « ouvrir », mise à jour git).
+Les bancs restent en Python et en JavaScript : ils pilotent l'exécutable (`WEB_3D_BIN` donne son
+dossier, sinon `target/debug` de `cargo build` ; `test/banc_bin.py`). Reste à lancer à la main :
+`node test/banc-conception-perf.mjs`. L'appairage et le canal de pilotage sont vérifiés dans web_suite
+(`cargo test` de la caisse commune).
 
 ---
 
@@ -149,7 +159,7 @@ lancer à la main : `node test/banc-conception-perf.mjs`, ainsi que `python appa
   déposés ensemble composent un assemblage dans une même scène.
 - **Depuis le gestionnaire de fichiers** : au premier démarrage, WEB_3D ajoute
   « Ouvrir avec WEB_3D » aux `.step` / `.stp` de l'utilisateur (refait seulement
-  si le dossier a bougé ; `python3 ouvrir.py --associer` le force). Sous Linux il
+  si le dossier a bougé ; `bin/web_3d ouvrir --associer` le force). Sous Linux il
   devient aussi l'application du double-clic ; sous Windows, choisir WEB_3D au
   premier double-clic puis « Toujours ». Le fichier est copié dans
   `~/.web_tools/ouvrir/` (copies retirées après un jour), servi au seul poste
@@ -454,7 +464,7 @@ pièce insérée ne suit pas l'original.
 
 ### Se laisser piloter par Claude
 La page reçoit les ordres de Claude par le MCP de web_suite (canal de pilotage,
-`js/pilote.js` et `pilote.py`). Elle porte, en bas à droite, un panneau **« Claude »** : on le glisse par sa tête, × le réduit en pastille
+`js/pilote.js` et la caisse `web_tools_commun`). Elle porte, en bas à droite, un panneau **« Claude »** : on le glisse par sa tête, × le réduit en pastille
 « Claude » qu'un clic rouvre (il revient aussi dès que Claude propose une modification).
 
 On peut aussi lui écrire **depuis la page**, sur n'importe quel appareil : la zone
@@ -540,10 +550,14 @@ WEB_3D/
 ├── index.html                    structure de la page et carte des imports
 ├── conception.html               la page du mode conception
 ├── regles-conception.md          les règles de conception d'une pièce, lues par le MCP (`savoir_lire`) et Claude in Chrome (lien Règles)
-├── web_3D.py                     serveur de la page et des projets
-├── ouvrir.py                     ouvrir un .step depuis le gestionnaire de fichiers
-├── pilote.py                     canal de pilotage, côté serveur (copie de web_suite)
-├── appairage.py                  code d'appairage des tablettes (copie commune aux web tools)
+├── Cargo.toml                    la caisse Rust du serveur (exécutable web_3d)
+├── src/
+│   ├── main.rs                   options, démarrage, double-clic Windows, redémarrage
+│   ├── serveur_3d.rs             ce qui est servi et rangé : pages, projets, /ouvrir/
+│   ├── maj.rs                    mise à jour git au démarrage
+│   └── ouvrir.rs                 ouvrir un .step depuis le gestionnaire de fichiers
+├── demarrer_WEB_3D.sh / .cmd     lancement : met bin/web_3d à jour puis le lance
+├── binaires.sh / .cmd            bin/web_3d : compilé ici (cargo) ou téléchargé depuis GitHub
 ├── css/
 │   ├── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
 │   ├── conception.css            ruban, historique, esquisse (mêmes variables de thème)
@@ -580,9 +594,9 @@ WEB_3D/
 | `js/13-deplacement.js` | « ✥ Déplacer » (D) : un fichier entier, à la souris (glisser une pièce, Maj : à la verticale), au clavier (mm, °), ou par contrainte (deux plans plaqués avec décalage, deux cylindres coaxiaux) |
 | `js/14-pilote-3d.js` | les commandes du MCP pour la page 3D (`brancherPilote3d`) : scène, vue, visibilité, coupe, mesure, collisions, et en carte ouvrir |
 | `js/pilote.js` | canal de pilotage côté page : relais entre onglets, panneau « Claude », cartes, interrupteur. **Copie** de `web_suite/lanceur/pilote.js`, à ne pas modifier ici |
-| `pilote.py` | canal de pilotage côté serveur : file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement. Copie de `web_suite/lanceur/pilote.py` |
-| `appairage.py` | le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste. Copie commune aux web tools |
-| `ouvrir.py` | « Ouvrir avec WEB_3D » : copie le `.step` dans `~/.web_tools/ouvrir/`, démarre WEB_3D s'il le faut, ouvre la page ; `--associer` inscrit l'application |
+| `src/serveur_3d.rs` | le serveur : fichiers statiques filtrés, projets (liste, rangement par blocs, remplacement atomique des `.json`), `/ouvrir/` |
+| `web_tools_commun` (dépôt web_suite, `commun/`) | caisse Rust commune, prise par git à une révision épinglée dans `Cargo.toml` : serveur HTTP/HTTPS, appairage (le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste) et canal de pilotage côté serveur (file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement) |
+| `src/ouvrir.rs` | « Ouvrir avec WEB_3D » (`web_3d ouvrir piece.step`) : copie le `.step` dans `~/.web_tools/ouvrir/`, démarre WEB_3D s'il le faut (par `demarrer_WEB_SUITE` ou `demarrer_WEB_3D`), ouvre la page ; `--associer` inscrit l'application |
 | `js/telephone.js` | disposition de la visionneuse sur un petit écran. **Copie** de `WEB_CAO/commun/telephone.js` |
 | `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures), `banc-conception-retours.mjs` (désignation, mesure, boîtes de question, cube, maillage, échec de construction, script ; même lancement ; lancement commun dans `harnais-page.mjs`), `banc-conception-plus.mjs` (commandes ajoutées, sur le noyau, valeurs calculées à la main) et `banc-conception-plus-page.mjs` (les mêmes, par les vrais boutons) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
@@ -609,8 +623,10 @@ WEB_3D/
 
 ## Dépendances
 
-Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution. Côté serveur, `web_3D.py`
-n'utilise aujourd'hui que la bibliothèque standard de Python : pas de `requirements.txt`.
+Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution. Côté serveur, l'exécutable
+`web_3d` (Rust) ne demande rien sur le poste ; ses caisses sont dans `Cargo.toml` : `web_tools_commun`
+(web_suite), `serde`, `serde_json`, `regex`, `chrono`, et selon le système `libc` ou `windows-sys`.
+Python ne sert plus qu'au banc `test/banc-serveur.py`.
 
 | Bibliothèque | Version | Licence | Rôle |
 | :--- | :--- | :--- | :--- |

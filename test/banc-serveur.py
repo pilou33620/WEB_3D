@@ -2,24 +2,58 @@
 
     python test/banc-serveur.py
 
-Démarre le serveur en mémoire sur un port libre de 127.0.0.1 et vérifie que
-la page, le noyau WebAssembly et les exemples se chargent, que rien d'autre du
-dossier ne sort (.git, script, listes de fichiers) et qu'un Host étranger est
-refusé (DNS rebinding).
+Démarre l'exécutable web_3d (boîte noire : sous-processus et HTTP) sur un port
+libre de 127.0.0.1 et vérifie que la page, le noyau WebAssembly et les exemples
+se chargent, que rien d'autre du dossier ne sort (.git, sources, listes de
+fichiers) et qu'un Host étranger est refusé (DNS rebinding).
+
+Ce qui ne se voit pas de l'extérieur (noms sûrs et copie de « ouvrir », chemins des
+projets, mise à jour git) est vérifié par cargo test.
 """
 import http.client
 import os
+import re
+import subprocess
 import sys
-import threading
+import tempfile
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, RACINE)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.chdir(RACINE)
-import web_3D  # noqa: E402
+from banc_bin import binaire  # noqa: E402
 
-serveur = web_3D.Serveur(("127.0.0.1", 0), web_3D.Gestionnaire)
-threading.Thread(target=serveur.serve_forever, daemon=True).start()
-PORT = serveur.server_address[1]
+# Le dossier personnel du serveur : l'inscription « Ouvrir avec » et ~/.web_tools/ouvrir/
+# restent dans un dossier d'essai
+MAISON = tempfile.TemporaryDirectory()
+os.makedirs(os.path.join(MAISON.name, ".config"))
+JOURNAL = open(os.path.join(MAISON.name, "erreurs.txt"), "w+")
+LANCES = []
+
+
+def demarrer(*args, **env):
+    """Lance web_3d sur un port libre : (port, ce qu'il a écrit avant de servir)."""
+    milieu = {k: v for k, v in os.environ.items() if k not in ("XDG_CONFIG_HOME", "XDG_DATA_HOME")}
+    milieu.update(HOME=MAISON.name, USERPROFILE=MAISON.name, WEB_3D_DEPOT=RACINE, **env)
+    proc = subprocess.Popen([binaire("web_3d"), "--local", "--sans-navigateur", "--sans-maj", "--sans-pause",
+                             "--port", "0", *args], stdout=subprocess.PIPE, stderr=JOURNAL, env=milieu,
+                            encoding="utf-8")
+    LANCES.append(proc)
+    lignes = []
+    while not lignes or "Ctrl+C" not in lignes[-1]:
+        ligne = proc.stdout.readline()
+        if not ligne:
+            raise SystemExit("web_3d s'est arrêté au démarrage :\n" + "".join(lignes))
+        lignes.append(ligne)
+    return int(re.search(r"adresse : http://127\.0\.0\.1:(\d+)/", "".join(lignes)).group(1)), "".join(lignes)
+
+
+def arreter(proc):
+    proc.terminate()
+    proc.wait(10)
+    proc.stdout.close()
+
+
+PORT, ANNONCE = demarrer()
 
 
 def code(chemin, hote=None, methode="GET"):
@@ -44,12 +78,13 @@ CAS = [
     ("/.git/config", None, 404),
     ("/.git/HEAD", None, 404),
     ("/.gitignore", None, 404),
-    ("/web_3D.py", None, 404),
+    ("/Cargo.toml", None, 404),
+    ("/src/main.rs", None, 404),
     ("/README.md", None, 404),
     ("/js/", None, 404),
     ("/exemples/", None, 404),
-    ("/js/../web_3D.py", None, 404),
-    ("/js/%2e%2e/web_3D.py", None, 404),
+    ("/js/../Cargo.toml", None, 404),
+    ("/js/%2e%2e/Cargo.toml", None, 404),
     ("/C:%5cWindows%5cwin.ini", None, 404),
     ("/.git/piece.stp", None, 404),
     ("/", "192.168.1.20:8139", 200),
@@ -94,7 +129,8 @@ def verifier(nom, obtenu, attendu):
 essais = len(CAS) + 1
 verifier("sans --projets : pas de projets", json.loads(requete("GET", "/api/projets")[1])["dispo"], False)
 with tempfile.TemporaryDirectory() as tmp:
-    web_3D.PROJETS = tmp
+    # un second serveur, avec --projets ; son délai de lecture du socket est d'une seconde
+    PORT_SANS, (PORT, ANNONCE_2) = PORT, demarrer("--projets", tmp, WEB_3D_BANC_DELAI="1")
     with open(os.path.join(tmp, "secret.txt"), "w") as f:
         f.write("non")
     stl = open(os.path.join(RACINE, "exemples", "tetraedre.stl"), "rb").read()
@@ -110,7 +146,7 @@ with tempfile.TemporaryDirectory() as tmp:
         verifier("rangement " + nom, json.loads(ranger(nom)[1]).get("chemin"), nom)
         verifier("relecture " + nom, requete("GET", "/projets/" + nom)[1], stl)
         os.remove(os.path.join(tmp, nom))
-    for chemin in ("/projets/secret.txt", "/projets/../web_3D.py", "/projets/..%5cweb_3D.py",
+    for chemin in ("/projets/secret.txt", "/projets/../Cargo.toml", "/projets/..%5cCargo.toml",
                    "/projets/C:%5cWindows%5cwin.ini", "/projets/.git/config"):
         verifier("refus " + chemin, requete("GET", chemin)[0], 404)
 
@@ -184,15 +220,11 @@ with tempfile.TemporaryDirectory() as tmp:
 
     verifier("envoi coupé : 400 et fichier retiré", envoi_partiel("coupe.stl", True)[0][9:12] + b"/" +
              str(os.path.exists(os.path.join(tmp, "coupe.stl"))).encode(), b"400/False")
-    delai = web_3D.Gestionnaire.timeout
-    web_3D.Gestionnaire.timeout = 0.5
-    try:
-        verifier("client muet au-delà du délai : fichier retiré", envoi_partiel("muet.stl", False), (b"entame", False))
-    finally:
-        web_3D.Gestionnaire.timeout = delai
-    web_3D.PROJETS = None
+    verifier("client muet au-delà du délai : fichier retiré", envoi_partiel("muet.stl", False), (b"entame", False))
+    arreter(LANCES[-1])
+    PORT = PORT_SANS
 
-# Canal de pilotage (pilote.py, MCP de web_suite) : X-Web3D exigé sur tout POST, pilote.py
+# Canal de pilotage (pilote.rs de web_suite, MCP) : X-Web3D exigé sur tout POST, le pilote
 # refuse en plus une autre origine ; la page bat, le MCP de ce poste voit l'onglet
 import json  # noqa: E402
 battement = json.dumps({"navigateur": "n1", "onglets": [{"id": "o1", "page": "3d", "projet": "", "focus_il_y_a": 0}]})
@@ -214,57 +246,49 @@ _r = _c.getresponse(); _r.read(); _c.close()
 verifier("cadres : même origine seulement", (_r.getheader("X-Frame-Options"),
          "frame-ancestors 'self'" in (_r.getheader("Content-Security-Policy") or "")), ("SAMEORIGIN", True))
 
-# Ouvrir depuis le gestionnaire de fichiers (ouvrir.py) : la copie est servie au seul poste
-import ouvrir  # noqa: E402
+# Ouvrir depuis le gestionnaire de fichiers (web_3d ouvrir) : la copie est servie au seul poste.
+# Les noms sûrs et la copie elle-même (vieilles copies retirées) : cargo test, ouvrir.rs.
 import urllib.parse  # noqa: E402
-verifier("ouvrir : noms sûrs", [ouvrir.nom_sur(n) for n in ("/a/x,y&z.STEP", ".cache.stp", "été 1+1.stp")],
-         ["x_y_z.step", "_.cache.stp", "été 1+1.stp"])
-with tempfile.TemporaryDirectory() as tmp:
-    ouvrir.DOSSIER = os.path.join(tmp, "ouvrir")
-    source = os.path.join(tmp, "Pièce, v2.STEP")
-    with open(source, "wb") as f:
-        f.write(b"ISO-10303-21;")
-    os.makedirs(ouvrir.DOSSIER)
-    vieux = os.path.join(ouvrir.DOSSIER, "vieux.stp")
-    open(vieux, "w").close()
-    os.utime(vieux, (0, 0))
-    nom = ouvrir.copier(source)
-    verifier("ouvrir : copie, vieilles copies retirées", (nom, sorted(os.listdir(ouvrir.DOSSIER))),
-             ("Pièce_ v2.step", ["Pièce_ v2.step"]))
-    url = "/ouvrir/" + urllib.parse.quote(nom)
-    verifier("ouvrir : servi au poste", requete("GET", url)[1], b"ISO-10303-21;")
-    for chemin in ("/ouvrir/../web_3D.py", "/ouvrir/..%2F..%2Fsecret.stp", "/ouvrir/.part"):
-        verifier("ouvrir : refus " + chemin, requete("GET", chemin)[0], 404)
-    ce_poste = web_3D.appairage.Garde.ce_poste
-    web_3D.appairage.Garde.ce_poste = staticmethod(lambda h: False)
-    verifier("ouvrir : refusé à un autre appareil", requete("GET", url)[0], 404)
-    web_3D.appairage.Garde.ce_poste = ce_poste
-    if os.name != "nt":   # inscription au démarrage : une fois, puis rien tant que le dossier ne bouge pas
-        env = {k: os.environ.pop(k, None) for k in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME")}
-        os.environ["HOME"] = tmp
-        os.makedirs(os.path.join(tmp, ".config"))
-        verifier("associer : la première fois, puis plus", (bool(ouvrir.associer(forcer=False)),
-                 ouvrir.associer(forcer=False)), (True, None))
-        for k, v in env.items():
-            os.environ.pop(k, None)
-            if v is not None:
-                os.environ[k] = v
+nom = "Pièce_ v2.step"
+os.makedirs(os.path.join(MAISON.name, ".web_tools", "ouvrir"))
+with open(os.path.join(MAISON.name, ".web_tools", "ouvrir", nom), "wb") as f:
+    f.write(b"ISO-10303-21;")
+url = "/ouvrir/" + urllib.parse.quote(nom)
+verifier("ouvrir : servi au poste", requete("GET", url)[1], b"ISO-10303-21;")
+for chemin in ("/ouvrir/../Cargo.toml", "/ouvrir/..%2F..%2Fsecret.stp", "/ouvrir/.part"):
+    verifier("ouvrir : refus " + chemin, requete("GET", chemin)[0], 404)
+# WEB_TOOLS_BANC_DISTANT=1 : ce serveur-là traite le poste comme un autre appareil
+PORT_POSTE, (PORT, ANNONCE_3) = PORT, demarrer(WEB_TOOLS_BANC_DISTANT="1")
+verifier("ouvrir : refusé à un autre appareil", (requete("GET", url)[0], requete("GET", "/")[0]), (404, 200))
+arreter(LANCES[-1])
+PORT = PORT_POSTE
+if os.name != "nt":   # inscription au démarrage : une fois, puis rien tant que le dossier ne bouge pas
+    verifier("associer : la première fois, puis plus", ["Ouvrir avec :" in a for a in (ANNONCE, ANNONCE_2, ANNONCE_3)],
+             [True, False, False])
+    entree = os.path.join(MAISON.name, ".local", "share", "applications", "web3d-ouvrir.desktop")
+    verifier("associer : l'entrée lance « web_3d ouvrir »",
+             'Exec="%s" ouvrir %%f\n' % os.path.realpath(binaire("web_3d")) in open(entree, encoding="utf-8").read(), True)
 
-# --- Un client coupé en pleine réponse n'est pas une erreur à afficher ; une vraie erreur, si ---
-vues = []
-serveur.handle_error = lambda *a: vues.append(a[1])
-for exc, attendu in ((ConnectionAbortedError, 0), (ConnectionResetError, 0), (BrokenPipeError, 0), (ValueError, 1)):
-    def casse(_handler, exc=exc):
-        raise exc("essai")
-    vues.clear()
-    web_3D.PILOTE.traiter = casse
-    try:
-        code("/conception.html")
-    except Exception:
-        pass             # la connexion tombe : c'est le but
-    del web_3D.PILOTE.traiter
-    verifier("client coupé : " + exc.__name__, len(vues), attendu)
+# --- Un client coupé en pleine réponse n'est pas une erreur à afficher, et le serveur continue ---
+import socket as _s2  # noqa: E402
+import struct  # noqa: E402
+for _ in range(3):
+    s = _s2.create_connection(("127.0.0.1", PORT), timeout=10)
+    s.sendall(("GET /vendor/occt/occt-import-js.wasm HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n" % PORT).encode())
+    s.recv(1000)
+    s.setsockopt(_s2.SOL_SOCKET, _s2.SO_LINGER, struct.pack("hh" if os.name == "nt" else "ii", 1, 0))   # RST à la fermeture
+    s.close()
+verifier("client coupé : le serveur sert toujours", code("/conception.html"), 200)
+JOURNAL.flush()
+JOURNAL.seek(0)
+erreurs = JOURNAL.read()
+verifier("client coupé : rien d'affiché", [l for l in erreurs.splitlines() if "panicked" in l or "occt-import" in l], [])
+verifier("journal : les refus y sont, pas les lectures réussies",
+         ('"GET /.git/config" 404' in erreurs, '"GET /index.html" 200' in erreurs), (True, False))
 
-serveur.shutdown()
+for proc in LANCES[:1]:
+    arreter(proc)
+JOURNAL.close()
+MAISON.cleanup()
 print("%d/%d ok" % (essais - echecs, essais))
 sys.exit(1 if echecs else 0)
