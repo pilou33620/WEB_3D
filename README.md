@@ -81,7 +81,7 @@ Le serveur ne sert que les pages (`index.html`, `conception.html`, `regles-conce
 ni `.git/`, ni les sources, ni la liste des
 fichiers ne sortent. Il refuse aussi un en-tête `Host` qui n'est ni une IP, ni
 `localhost`, ni le nom du poste (DNS rebinding). Vérification :
-`python test/banc-serveur.py` (le banc pilote l'exécutable en boîte noire).
+`cargo test --test banc_serveur` (le banc pilote l'exécutable en boîte noire).
 
 ### Utiliser depuis un autre appareil
 
@@ -138,11 +138,12 @@ de la page 3D, sur une vraie scène. Le mode conception se vérifie sous Node
 (`node test/banc-conception.mjs`, `banc-conception-plus.mjs`, `banc-pieces-reference.mjs`) et dans la
 page, avec un Chromium sans écran : `node --experimental-websocket test/banc-conception-page.mjs`, de
 même `banc-conception-plus-page.mjs` et `banc-conception-retours.mjs` (`CHROMIUM=` donne son chemin,
-`/usr/bin/chromium` par défaut ; longs sur un Raspberry Pi : à lancer en arrière-plan). Ces huit bancs et
-`test/banc-serveur.py` tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`), après
-`cargo build` et `cargo test` (chemins des projets, noms sûrs et copie de « ouvrir », mise à jour git).
-Les bancs restent en Python et en JavaScript : ils pilotent l'exécutable (`WEB_3D_BIN` donne son
-dossier, sinon `target/debug` de `cargo build` ; `test/banc_bin.py`). Reste à lancer à la main :
+`/usr/bin/chromium` par défaut ; longs sur un Raspberry Pi : à lancer en arrière-plan). Ces huit bancs
+tournent sur GitHub à chaque envoi (`.github/workflows/ci.yml`), après `cargo build` et `cargo test` :
+les tests unitaires (chemins des projets, noms sûrs et copie de « ouvrir », mise à jour git) et le banc
+du serveur, `tests/banc_serveur.rs`, qui pilote l'exécutable en boîte noire (fichiers servis, `Host`,
+projets, ouvrir). Plus aucun banc en Python ; ceux de la page restent en JavaScript et lancent
+l'exécutable (`WEB_3D_BIN` donne son dossier, sinon `target/debug` de `cargo build`). Reste à lancer à la main :
 `node test/banc-conception-perf.mjs`. L'appairage et le canal de pilotage sont vérifiés dans web_suite
 (`cargo test` de la caisse commune).
 
@@ -565,7 +566,8 @@ WEB_3D/
 │   └── telephone.css             disposition sur petit écran (copie de WEB_CAO)
 ├── js/                           modules ES, chargés par 09-demarrage.js ou c6-conception.js
 ├── exemples/                     fichiers d'essai, un par voie de lecture
-├── test/                         bancs d'essai : exemples, pilotage, serveur, conception
+├── test/                         bancs d'essai JavaScript : exemples, pilotage, conception
+├── tests/                        banc du serveur (test d'intégration Cargo)
 └── vendor/                       bibliothèques, servies en local
     ├── three/                    three.js r186 + modules d'exemples (lecteurs
     │                              STL, 3MF, OBJ, MTL, glTF, export glTF, fflate, occlusion ambiante)
@@ -598,7 +600,8 @@ WEB_3D/
 | `web_tools_commun` (dépôt web_suite, `commun/`) | caisse Rust commune, prise par git à une révision épinglée dans `Cargo.toml` : serveur HTTP/HTTPS, appairage (le code à 6 chiffres qui ouvre l'accès réseau à une tablette ; un seul jeton pour tous les web tools du poste) et canal de pilotage côté serveur (file des commandes, long-poll, ordres du MCP acceptés de ce poste seulement) |
 | `src/ouvrir.rs` | « Ouvrir avec WEB_3D » (`web_3d ouvrir piece.step`) : copie le `.step` dans `~/.web_tools/ouvrir/`, démarre WEB_3D s'il le faut (par `demarrer_WEB_SUITE` ou `demarrer_WEB_3D`), ouvre la page ; `--associer` inscrit l'application |
 | `js/telephone.js` | disposition de la visionneuse sur un petit écran. **Copie** de `WEB_CAO/commun/telephone.js` |
-| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-serveur.py`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures), `banc-conception-retours.mjs` (désignation, mesure, boîtes de question, cube, maillage, échec de construction, script ; même lancement ; lancement commun dans `harnais-page.mjs`), `banc-conception-plus.mjs` (commandes ajoutées, sur le noyau, valeurs calculées à la main) et `banc-conception-plus-page.mjs` (les mêmes, par les vrais boutons) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
+| `tests/` | `banc_serveur.rs` : le serveur en boîte noire (`cargo test`) |
+| `test/` | `banc-exemples.mjs`, `banc-pilote-3d.mjs`, `banc-conception.mjs` (expressions, solveur, opérations sur le noyau), `banc-pieces-reference.mjs` (de vraies pièces comparées à leur volume calculé, avant et après un changement de paramètres, avec des points témoins), `banc-conception-page.mjs` (la page dans un Chromium sans écran, avec de vrais gestes, `node --experimental-websocket` ; `CAPTURES=dossier` y dépose des captures), `banc-conception-retours.mjs` (désignation, mesure, boîtes de question, cube, maillage, échec de construction, script ; même lancement ; lancement commun dans `harnais-page.mjs`), `banc-conception-plus.mjs` (commandes ajoutées, sur le noyau, valeurs calculées à la main) et `banc-conception-plus-page.mjs` (les mêmes, par les vrais boutons) — ceux que lance la CI — et `banc-conception-perf.mjs` (temps et mémoire sur une grosse pièce, à la main) |
 | `js/travailleur-occt.js` | le fil d'exécution qui appelle OpenCascade et renvoie des tableaux typés |
 | `js/c1-expressions.js` | conception : paramètres et expressions des cotes (analyseur maison, jamais `eval`) |
 | `js/c2-esquisse.js` | conception : modèle d'esquisse, traduction pour le solveur planegcs, contours et trous, import DXF / SVG |
@@ -626,7 +629,7 @@ WEB_3D/
 Tout est servi depuis `vendor/`, rien n'est téléchargé à l'exécution. Côté serveur, l'exécutable
 `web_3d` (Rust) ne demande rien sur le poste ; ses caisses sont dans `Cargo.toml` : `web_tools_commun`
 (web_suite), `serde`, `serde_json`, `regex`, `chrono`, et selon le système `libc` ou `windows-sys`.
-Python ne sert plus qu'au banc `test/banc-serveur.py`.
+Plus rien n'est en Python, bancs compris.
 
 | Bibliothèque | Version | Licence | Rôle |
 | :--- | :--- | :--- | :--- |

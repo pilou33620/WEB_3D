@@ -14,10 +14,6 @@ jobs:
         with:
           node-version: '22'
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Exemples — OpenCascade, lecteurs three.js, repère propre d'une pièce
         run: node test/banc-exemples.mjs
 
@@ -28,14 +24,10 @@ jobs:
         run: cargo build --bins
 
       # Les bancs intégrés de appairage.py et pilote.py sont des tests Rust de la caisse commune
-      # (dépôt web_suite) ; ici : chemins des projets, noms sûrs et copie de « ouvrir », mise à jour git.
-      - name: Tests Rust
+      # (dépôt web_suite) ; ici : chemins des projets, noms sûrs et copie de « ouvrir », mise à jour git,
+      # et tests/banc_serveur.rs : fichiers servis, Host, projets, ouvrir (exécutable en boîte noire).
+      - name: Tests Rust — tests unitaires et banc du serveur
         run: cargo test
-
-      - name: Serveur — fichiers servis, Host, projets, ouvrir (exécutable en boîte noire)
-        run: python test/banc-serveur.py
-        env:
-          WEB_3D_BIN: target/debug
 
       - name: Conception — expressions, solveur d'esquisse, opérations OpenCascade
         run: node test/banc-conception.mjs
