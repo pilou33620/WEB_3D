@@ -9,7 +9,7 @@ node_modules/
 # Rust
 target/
 # Exécutable compilé ou téléchargé (binaires.sh, binaires.cmd)
-bin/
+/bin/
 
 # Graphe graphify : le graphe est versionne ; son cache, ses copies datees et ses
 # fichiers propres au poste ne le sont pas.
