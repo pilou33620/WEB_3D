@@ -6,7 +6,7 @@ description = "WEB_3D : serveur de la visionneuse 3D et de ses projets"
 
 [dependencies]
 # Serveur HTTP/HTTPS, appairage et canal de pilotage : communs aux web tools (dépôt web_suite)
-web_tools_commun = { git = "https://github.com/pilou33620/web_suite", rev = "5c79b906e1fcf0e9b8e1589d106b0a92e2236021" }
+web_tools_commun = { git = "https://github.com/pilou33620/web_suite", rev = "ef2eea36f38c604771630612b650085e6c50ed3e" }
 serde_json = { version = "1", features = ["preserve_order"] } # les clés JSON gardent leur ordre, comme en Python
 regex = "1"
 serde = "1"
