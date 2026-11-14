@@ -208,8 +208,8 @@ fn banc() {
     b.verifier("sans --projets : pas de projets", requete(port, "GET", "/api/projets", b"", &[]).json()["dispo"].clone(), json!(false));
     let annonce_2;
     {
-        // un second serveur, avec --projets ; son délai de lecture du socket est d'une seconde
-        let second = maison.demarrer(&["--projets", tmp.to_str().unwrap()], &[("WEB_3D_BANC_DELAI", "1")]);
+        // un second serveur, avec --projets ; son délai de lecture du socket est de deux secondes (une seule coupait parfois la course des deux envois de 2 Mo en CI)
+        let second = maison.demarrer(&["--projets", tmp.to_str().unwrap()], &[("WEB_3D_BANC_DELAI", "2")]);
         annonce_2 = second.annonce.clone();
         let port = second.port;
         fs::write(tmp.join("secret.txt"), "non").unwrap();
