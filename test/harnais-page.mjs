@@ -76,6 +76,12 @@ export async function ouvrirConception(){
       if(m.method === "Log.entryAdded" && m.params.entry.level === "error" && !/favicon/.test(m.params.entry.url || "")) erreurs.push(m.params.entry.text + " " + (m.params.entry.url || ""));
     };
     await cdp("Runtime.enable"); await cdp("Log.enable");
+    /* La page finit de se charger avant la première commande : évaluée pendant la navigation, elle
+       perdait son contexte (« Execution context was destroyed », vu en CI). */
+    for(let i = 0; i < 300; i++){
+      if(await page(`return document.readyState === "complete" && location.pathname.endsWith("conception.html")`).catch(() => false)) break;
+      await pause(100);
+    }
   }catch(e){
     await fermer();
     throw e;
