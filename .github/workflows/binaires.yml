@@ -1,0 +1,84 @@
+name: exécutables
+
+# Compile les exécutables Rust de WEB_3D pour chaque système et les dépose dans la
+# publication « binaires », en deux archives par système :
+# - web_3d-<système> : l'exécutable seul, que binaires.sh / binaires.cmd prennent sur un
+#   clone git sans cargo ;
+# - web_3d-prod-<système> : la production, complète et sans git — l'exécutable, les scripts
+#   de démarrage et ce que le serveur sert (pages, js, css, données). Ni sources, ni specs, ni bancs.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compiler:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # musl : exécutables statiques, indépendants de la glibc du poste (Raspberry Pi OS)
+          - { os: ubuntu-latest, cible: x86_64-unknown-linux-musl, nom: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, cible: aarch64-unknown-linux-musl, nom: linux-aarch64 }
+          - { os: macos-latest, cible: aarch64-apple-darwin, nom: macos-aarch64 }
+          - { os: windows-latest, cible: x86_64-pc-windows-msvc, nom: windows-x86_64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup target add ${{ matrix.cible }}
+
+      - if: contains(matrix.cible, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - run: cargo build --release --bins --target ${{ matrix.cible }}
+
+      - name: Archive (les exécutables et le commit dont ils viennent)
+        shell: bash
+        run: |
+          mkdir bin
+          cd target/${{ matrix.cible }}/release
+          if [ "${{ runner.os }}" = Windows ]; then
+            cp ./*.exe ../../../bin/
+          else
+            find . -maxdepth 1 -type f -perm -u+x -exec cp {} ../../../bin/ \;
+          fi
+          cd ../../..
+          git rev-parse HEAD > bin/commit
+          if [ "${{ runner.os }}" = Windows ]; then
+            (cd bin && 7z a ../web_3d-${{ matrix.nom }}.zip .)
+          else
+            tar -czf web_3d-${{ matrix.nom }}.tar.gz -C bin .
+          fi
+
+      - name: Archive de production (exécutable, scripts de démarrage, pages)
+        shell: bash
+        run: |
+          P=prod/web_3d
+          mkdir -p $P
+          cp -r bin $P/
+          cp demarrer_*.sh demarrer_*.cmd binaires.sh binaires.cmd README.md $P/
+          # ce que le serveur sert (STATIQUE de src/serveur_3d.rs) : les deux pages, les règles
+          # de conception, css/, js/, vendor/ (noyaux WebAssembly, three, police) et exemples/
+          cp index.html conception.html regles-conception.md $P/
+          cp -r css js vendor exemples $P/
+          if [ "${{ runner.os }}" = Windows ]; then
+            (cd prod && 7z a ../web_3d-prod-${{ matrix.nom }}.zip web_3d)
+          else
+            tar -czf web_3d-prod-${{ matrix.nom }}.tar.gz -C prod web_3d
+          fi
+
+      - name: Publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # les quatre compilations arrivent ensemble : une seule crée la publication
+          gh release view binaires >/dev/null 2>&1 \
+            || gh release create binaires --title "Exécutables" \
+                 --notes "Exécutables de WEB_3D, recompilés à chaque envoi sur main. web_3d-<système> : pris par binaires.sh et binaires.cmd. web_3d-prod-<système> : la production complète (exécutable, scripts de démarrage, pages), à décompresser puis lancer par demarrer_WEB_3D." \
+            || true
+          gh release upload binaires web_3d-${{ matrix.nom }}.* web_3d-prod-${{ matrix.nom }}.* --clobber

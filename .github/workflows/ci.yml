@@ -14,30 +14,20 @@ jobs:
         with:
           node-version: '22'
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Exemples — OpenCascade, lecteurs three.js, repère propre d'une pièce
         run: node test/banc-exemples.mjs
 
       - name: Canal de pilotage (MCP de web_suite) — commandes de la page 3D
         run: node test/banc-pilote-3d.mjs
 
-      - name: Serveur — fichiers servis, Host
-        run: python test/banc-serveur.py
+      - name: Exécutable Rust (web_3d)
+        run: cargo build --bins
 
-      - name: Appairage — code, jeton et cookie partagés
-        run: python appairage.py
-
-      - name: Canal de pilotage — serveur (pilote.py)
-        run: python pilote.py
-
-      - name: appairage.py et pilote.py sont les mêmes que ceux de web_suite
-        run: |
-          git clone --quiet --depth 1 https://github.com/pilou33620/web_suite.git ../web_suite
-          diff <(tr -d '\r' < ../web_suite/lanceur/appairage.py) <(tr -d '\r' < appairage.py)
-          diff <(tr -d '\r' < ../web_suite/lanceur/pilote.py) <(tr -d '\r' < pilote.py)
+      # Les bancs intégrés de appairage.py et pilote.py sont des tests Rust de la caisse commune
+      # (dépôt web_suite) ; ici : chemins des projets, noms sûrs et copie de « ouvrir », mise à jour git,
+      # et tests/banc_serveur.rs : fichiers servis, Host, projets, ouvrir (exécutable en boîte noire).
+      - name: Tests Rust — tests unitaires et banc du serveur
+        run: cargo test
 
       - name: Conception — expressions, solveur d'esquisse, opérations OpenCascade
         run: node test/banc-conception.mjs
