@@ -35,6 +35,8 @@ ou le compile sur place si `cargo` est installé ([rustup.rs](https://rustup.rs)
 | Raspberry Pi, Linux, macOS | `git clone https://github.com/pilou33620/WEB_3D.git` | `./demarrer_WEB_3D.sh` |
 | Windows | le même `git clone` | double-clic sur `demarrer_WEB_3D.cmd` |
 
+**Sans git ni cargo** : l'archive de production `web_3d-prod-<système>` (`.tar.gz` ; `.zip` sous Windows) de la [publication « binaires »](https://github.com/pilou33620/WEB_3D/releases/tag/binaires) contient l'exécutable, les scripts de démarrage et les pages (avec leurs noyaux WebAssembly et les exemples), sans les sources. Décompressez-la, puis lancez `demarrer_WEB_3D` comme ci-dessus. Elle ne se met pas à jour seule : pour changer de version, reprenez l'archive.
+
 Dans WEB·SUITE, le lanceur télécharge l'outil (`bin/installer 3d`) et le démarre :
 voir [son README](../README.md).
 
