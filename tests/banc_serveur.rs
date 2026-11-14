@@ -208,8 +208,8 @@ fn banc() {
     b.verifier("sans --projets : pas de projets", requete(port, "GET", "/api/projets", b"", &[]).json()["dispo"].clone(), json!(false));
     let annonce_2;
     {
-        // un second serveur, avec --projets ; son délai de lecture du socket est de deux secondes (une seule coupait parfois la course des deux envois de 2 Mo en CI)
-        let second = maison.demarrer(&["--projets", tmp.to_str().unwrap()], &[("WEB_3D_BANC_DELAI", "2")]);
+        // un second serveur, avec --projets
+        let second = maison.demarrer(&["--projets", tmp.to_str().unwrap()], &[]);
         annonce_2 = second.annonce.clone();
         let port = second.port;
         fs::write(tmp.join("secret.txt"), "non").unwrap();
@@ -295,8 +295,12 @@ fn banc() {
         let (reponse, reste) = envoi_partiel(port, &tmp, "coupe.stl", true);
         b.verifier("envoi coupé : 400 et fichier retiré", (String::from_utf8_lossy(reponse.get(9..12).unwrap_or(b"")).into_owned(), reste),
                    ("400".to_string(), false));
-        b.verifier("client muet au-delà du délai : fichier retiré", envoi_partiel(port, &tmp, "muet.stl", false), (b"entame".to_vec(), false));
         second.arreter();
+        // Le délai d'une seconde n'est que pour ce cas : sur le serveur des autres cas, il coupait
+        // parfois la course des deux envois de 2 Mo sur une machine chargée.
+        let presse = maison.demarrer(&["--projets", tmp.to_str().unwrap()], &[("WEB_3D_BANC_DELAI", "1")]);
+        b.verifier("client muet au-delà du délai : fichier retiré", envoi_partiel(presse.port, &tmp, "muet.stl", false), (b"entame".to_vec(), false));
+        presse.arreter();
     }
 
     // Canal de pilotage (pilote.rs de web_suite, MCP) : X-Web3D exigé sur tout POST, le pilote
