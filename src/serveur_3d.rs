@@ -214,7 +214,9 @@ fn journal(r: &Requete, code: u16) {
         return;
     }
     let ligne = format!("\"{} {}\" {} -", r.methode, r.cible, code);
-    eprintln!("{} - - [{}] {}", r.client.ip(), chrono::Local::now().format("%d/%b/%Y %H:%M:%S"), appairage::masquer(&ligne));
+    // Méthode et cible viennent du réseau : pas de séquence d'échappement dans le terminal
+    let ligne: String = appairage::masquer(&ligne).chars().map(|c| if c.is_control() { c.escape_unicode().to_string() } else { c.to_string() }).collect();
+    eprintln!("{} - - [{}] {}", r.client.ip(), chrono::Local::now().format("%d/%b/%Y %H:%M:%S"), ligne);
 }
 
 pub struct Visionneuse {
@@ -292,6 +294,11 @@ impl Visionneuse {
                     .entete("Location", &format!("{}/{}", r.chemin(), requete));
             }
             cible.push("index.html"); // « / » : le seul dossier que STATIQUE laisse passer
+        }
+        // Comme chemin_projet : un lien posé dans le dossier ne fait rien servir du dehors
+        let dedans = fs::canonicalize(&cible).ok().zip(fs::canonicalize(&self.dossier).ok()).is_some_and(|(c, d)| c.starts_with(d));
+        if !dedans {
+            return introuvable();
         }
         fichier(&cible)
     }
@@ -403,7 +410,9 @@ impl Visionneuse {
         let mut complet = reste == 0 && panne.is_none();
         if complet && temporaire.is_some() {
             // une pièce tronquée ou illisible n'écrase pas la bonne
-            match fs::read(ecrit).map(|lu| serde_json::from_slice::<Value>(&lu).is_ok()) {
+            // sans construire l'arbre : 200 Mo de « [0,0,… » en prendraient plusieurs Go
+            let valide = |f| serde_json::from_reader::<_, serde::de::IgnoredAny>(std::io::BufReader::new(f)).is_ok();
+            match fs::File::open(ecrit).map(valide) {
                 Ok(true) => panne = fs::rename(ecrit, &cible).err(),
                 Ok(false) => illisible = true,
                 Err(e) => panne = Some(e),

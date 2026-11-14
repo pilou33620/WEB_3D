@@ -246,6 +246,8 @@ fn banc() {
         b.verifier("remplacement refusé hors .json", piece(&stl, "t.stl", remplacer).code, 400);
         b.verifier("remplacement : nom qui remonte refusé", piece(b"{}", "..%2Fp.json", remplacer).code, 400);
         b.verifier("remplacement : sous-dossier absent refusé", piece(b"{}", "absent%2Fp.json", remplacer).code, 400);
+        b.verifier("remplacement : JSON invalide refusé, pièce gardée", (piece(br#"{"v":"#, "p.json", remplacer).code, lire("/projets/p.json").texte()),
+                   (400, r#"{"v":2}"#.to_string()));
         let restes: Vec<String> = fs::read_dir(&tmp).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned())
             .filter(|f| f.ends_with(".tmp")).collect();
         b.verifier("remplacement : aucun .tmp laissé", restes, vec![]);
@@ -345,6 +347,20 @@ fn banc() {
         b.verifier("associer : l'entrée lance « web_3d ouvrir »", entree.contains(&format!("Exec=\"{}\" ouvrir %f\n", exe.display())), true);
     }
 
+    // Un lien posé dans le dossier servi et pointant dehors n'est pas servi ; un vrai fichier l'est
+    #[cfg(unix)]
+    {
+        let servi = dossier.join("servi");
+        fs::create_dir_all(&servi).unwrap();
+        fs::write(servi.join("index.html"), "page").unwrap();
+        fs::write(servi.join("dedans.stl"), "x").unwrap();
+        fs::write(dossier.join("secret.stl"), "secret").unwrap();
+        std::os::unix::fs::symlink(dossier.join("secret.stl"), servi.join("lien.stl")).unwrap();
+        let lie = maison.demarrer(&["--dossier", servi.to_str().unwrap()], &[]);
+        b.verifier("statique : lien sortant refusé", (code(lie.port, "/lien.stl"), code(lie.port, "/dedans.stl"), code(lie.port, "/")), (404, 200, 200));
+        lie.arreter();
+    }
+
     // --- Un client coupé en pleine réponse n'est pas une erreur à afficher, et le serveur continue ---
     for _ in 0..3 {
         let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -359,6 +375,8 @@ fn banc() {
     b.verifier("journal : les refus y sont, pas les lectures réussies",
                (erreurs.contains("\"GET /.git/config\" 404"), erreurs.contains("\"GET /index.html\" 200")), (true, false));
 
+    b.verifier("journal : caractères de contrôle échappés", (code(port, "/\x1b[2Jx"), fs::read_to_string(dossier.join("erreurs.txt")).unwrap().contains('\x1b')), (404, false));
+
     poste.arreter();
     for e in &b.echecs {
         println!("{e}");
@@ -366,6 +384,6 @@ fn banc() {
     println!("{}/{} ok", b.essais - b.echecs.len(), b.essais);
     assert!(b.echecs.is_empty(), "{} échec(s) :\n{}", b.echecs.len(), b.echecs.join("\n"));
     if cfg!(unix) {
-        assert_eq!(b.essais, 74, "le nombre de vérifications du banc d'origine");
+        assert_eq!(b.essais, 77, "le nombre de vérifications du banc d'origine");
     }
 }

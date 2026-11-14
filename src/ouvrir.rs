@@ -86,7 +86,7 @@ fn lire(port: u16, chemin: &str, corps: Option<&Value>, delai: u64) -> io::Resul
         texte
     )?;
     let mut tout = Vec::new();
-    s.read_to_end(&mut tout)?;
+    (&s).take(1 << 20).read_to_end(&mut tout)?; // un service local répond en quelques ko
     let reponse = String::from_utf8_lossy(&tout);
     let invalide = |texte: String| io::Error::new(io::ErrorKind::InvalidData, texte);
     let (tete, suite) = reponse.split_once("\r\n\r\n").ok_or_else(|| invalide("réponse HTTP incomplète".into()))?;
