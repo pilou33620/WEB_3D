@@ -560,7 +560,7 @@ WEB_3D/
 │   ├── maj.rs                    mise à jour git au démarrage
 │   └── ouvrir.rs                 ouvrir un .step depuis le gestionnaire de fichiers
 ├── demarrer_WEB_3D.sh / .cmd     lancement : met bin/web_3d à jour puis le lance
-├── binaires.sh / .cmd            bin/web_3d : compilé ici (cargo) ou téléchargé depuis GitHub
+├── scripts/binaires.sh / .cmd    bin/web_3d : compilé ici (cargo) ou téléchargé depuis GitHub
 ├── css/
 │   ├── visionneuse-3d.css        thème « dashboard nocturne », comme WEB_CAO
 │   ├── conception.css            ruban, historique, esquisse (mêmes variables de thème)
