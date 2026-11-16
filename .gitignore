@@ -17,3 +17,6 @@ target/
 /graphify-out/20*/
 /graphify-out/.graphify_python
 /graphify-out/.graphify_root
+
+# Cache le lanceur Windows sous Linux (ecrit par demarrer_*.sh)
+.hidden

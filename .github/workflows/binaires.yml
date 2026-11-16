@@ -60,7 +60,7 @@ jobs:
           P=prod/web_3d
           mkdir -p $P
           cp -r bin $P/
-          cp demarrer_*.sh demarrer_*.cmd binaires.sh binaires.cmd README.md $P/
+          cp -r scripts $P/ && cp demarrer_*.sh demarrer_*.cmd README.md $P/
           # ce que le serveur sert (STATIQUE de src/serveur_3d.rs) : les deux pages, les règles
           # de conception, css/, js/, vendor/ (noyaux WebAssembly, three, police) et exemples/
           cp index.html conception.html regles-conception.md $P/
