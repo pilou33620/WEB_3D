@@ -246,7 +246,7 @@ function poignee(c){
     try{ r = repere(esq.plan, c.v()); }catch(_){ return null; }
     const m = f.poly.reduce((s, p) => [s[0] + p[0] / f.poly.length, s[1] + p[1] / f.poly.length], [0, 0]);
     const base = new THREE.Vector3(...r.o).addScaledVector(new THREE.Vector3(...r.x), m[0]).addScaledVector(new THREE.Vector3(...r.y), m[1]);
-    return { base, dir:new THREE.Vector3(...r.n).multiplyScalar(op.inverse ? -1 : 1), d, min:0.1 };
+    return { base, dir:new THREE.Vector3(...r.n).multiplyScalar(op.inverse ? -1 : 1), d, min:0.1, retournable:true };
   }
   return null;
 }
@@ -259,7 +259,7 @@ export function poigneeBas(c, ev){
   const pointe = c.vue.versEcran(g.base.clone().addScaledVector(g.dir, g.d));
   const r = c.vue.canvas.getBoundingClientRect();
   if(Math.hypot(pointe.x + r.left - ev.clientX, pointe.y + r.top - ev.clientY) > 16) return false;
-  const op = c.edition.op;
+  const op = c.edition.op, inverse0 = !!op.inverse;
   const ray = new THREE.Raycaster();
   const bouger = (e) => {
     ray.setFromCamera(c.vue.ndc(e), c.vue.camera());
@@ -267,8 +267,10 @@ export function poigneeBas(c, ev){
     const w = g.base.clone().sub(ray.ray.origin), a = g.dir.dot(ray.ray.direction);
     const den = 1 - a * a;
     if(Math.abs(den) < 1e-6) return;                    // la flèche pointe vers l'œil : rien à lire
-    const t = (a * w.dot(ray.ray.direction) - w.dot(g.dir)) / den;
-    op.distance = String(Math.max(g.min, Math.round(t * 10) / 10));
+    const t = Math.round((a * w.dot(ray.ray.direction) - w.dot(g.dir)) / den * 10) / 10;
+    /* Extrusion : passer de l'autre côté de l'esquisse retourne le sens au lieu de bloquer. */
+    if(g.retournable){ op.inverse = t < 0 ? !inverse0 : inverse0; op.distance = String(Math.max(g.min, Math.abs(t))); }
+    else op.distance = String(Math.max(g.min, t));
     c.majMarques();
     c.apercu();
   };
