@@ -182,7 +182,8 @@ export function operationsPlus(H){
     const d = (o) => { const x = dessinRegions(R, esq, op.contours); return o ? x.offset(o) : x; };
     const dessin = d(ext).cut(d(int));
     const n = op.inverse ? r.n.map(c => -c) : r.n, base = enlever ? vec.ajout(r.o, n, -hauteur) : r.o;
-    const outil = dessin.sketchOnPlane(new R.Plane(base, r.x, n)).extrude(hauteur + (enlever ? 0.01 : 0));
+    /* Plan gardé tel quel (retourner sa normale mettrait le dessin en miroir) : c'est la longueur qui change de signe. */
+    const outil = dessin.sketchOnPlane(new R.Plane(base, r.x, r.n)).extrude((hauteur + (enlever ? 0.01 : 0)) * (op.inverse ? -1 : 1));
     return remplacer(etat, cible, enlever ? cible.shape.cut(outil) : cible.shape.fuse(outil));
   };
 

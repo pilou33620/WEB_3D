@@ -164,6 +164,11 @@ async function bati(ops, id, parametres = []){
   verifier("rainure : la même couronne, enlevée", [ra.erreur, Math.round(ra.vol())], [undefined, Math.round(40 * 40 * 10 - (1600 - 36 * 36) * 3)]);
   const rp = await bati([boitier, contour, { id:"s", type:"repos", esquisse:"e", corps:"", largeur:"2", hauteur:"3" }], "s");
   vrai("repos : une couronne autour du contour", !rp.erreur && rp.vol() > 40 * 40 * 10, rp.erreur);
+  /* Inversé, un contour décentré reste à sa place (plus de dessin en miroir). */
+  const demi = boite("b", 40, 20, 10, -20, -20, 0);
+  const li = await bati([demi, esqu("e", XY, rect(-20, -20, 20, 0)), { id:"s", type:"levre", esquisse:"e", corps:"", mode:"levre", largeur:"2", hauteur:"3", jeu:"0", inverse:true }], "s");
+  const [bmin, bmax] = li.corps[0]?.shape.boundingBox.bounds || [[], []];
+  verifier("lèvre inversée : sous le plan, sans miroir", [li.erreur, li.n, Math.round(bmax[1] * 1e3) / 1e3, Math.round(bmin[2]), Math.round(li.vol())], [undefined, 1, 0, -3, Math.round(40 * 20 * 10 + (800 - 36 * 16) * 3)]);
   const un = pts("e", { base:"XY", decalage:"10" }, [[0, 0]]);
   const cl = await bati([boitier, un, { id:"s", type:"clip", esquisse:"e", corps:"", mode:"crochet", longueur:"10", largeur:"6", epaisseur:"1.5", crochet:"2", surplomb:"1", jeu:"0.2", angle:"0" }], "s");
   const crochet = (1.5 * 10 + 0.5 * 1 * 2) * 6;
