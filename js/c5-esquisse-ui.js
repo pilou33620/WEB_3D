@@ -241,6 +241,7 @@ export class EditeurEsquisse {
     const lacher = (ev) => {
       removeEventListener("pointermove", bouger);
       removeEventListener("pointerup", lacher);
+      removeEventListener("pointercancel", lacher);
       if(!bouge){ this.selectionner(ev); return; }          // un clic sans glisser : sélection du point
       this.ctx.memoriser(avant);           // l'état d'avant le glissé : une seule étape d'annulation
       this.resoudre();
@@ -249,6 +250,7 @@ export class EditeurEsquisse {
     };
     addEventListener("pointermove", bouger);
     addEventListener("pointerup", lacher);
+    addEventListener("pointercancel", lacher);
     vue.invalider();
   }
 

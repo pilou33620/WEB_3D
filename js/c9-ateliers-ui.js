@@ -261,13 +261,20 @@ export function poigneeBas(c, ev){
   if(Math.hypot(pointe.x + r.left - ev.clientX, pointe.y + r.top - ev.clientY) > 16) return false;
   const op = c.edition.op, inverse0 = !!op.inverse;
   const ray = new THREE.Raycaster();
-  const bouger = (e) => {
+  /* Abscisse sur la droite de la flèche du point le plus proche du rayon de la souris. */
+  const lire = (e) => {
     ray.setFromCamera(c.vue.ndc(e), c.vue.camera());
-    /* Le point de la droite de la flèche le plus proche du rayon de la souris. */
     const w = g.base.clone().sub(ray.ray.origin), a = g.dir.dot(ray.ray.direction);
     const den = 1 - a * a;
-    if(Math.abs(den) < 1e-6) return;                    // la flèche pointe vers l'œil : rien à lire
-    const t = Math.round((a * w.dot(ray.ray.direction) - w.dot(g.dir)) / den * 10) / 10;
+    if(Math.abs(den) < 1e-6) return null;               // la flèche pointe vers l'œil : rien à lire
+    return (a * w.dot(ray.ray.direction) - w.dot(g.dir)) / den;
+  };
+  const prise = lire(ev), decalage = prise === null ? 0 : prise - g.d;   // relatif au point saisi : pas de saut au départ
+  const bouger = (e) => {
+    const l = lire(e);
+    if(l === null) return;
+    const t = Math.round((l - decalage) * 10) / 10;
+    if(!t && !g.retournable) return;                    // « tirer » refuse 0 : on garde la dernière valeur
     /* Extrusion : passer de l'autre côté de l'esquisse retourne le sens au lieu de bloquer. */
     if(g.retournable){ op.inverse = t < 0 ? !inverse0 : inverse0; op.distance = String(Math.max(g.min, Math.abs(t))); }
     else op.distance = String(Math.max(g.min, t));
@@ -277,10 +284,12 @@ export function poigneeBas(c, ev){
   const lacher = () => {
     removeEventListener("pointermove", bouger);
     removeEventListener("pointerup", lacher);
+    removeEventListener("pointercancel", lacher);
     if(c.edition) c.construirePanneau();
   };
   addEventListener("pointermove", bouger);
   addEventListener("pointerup", lacher);
+  addEventListener("pointercancel", lacher);
   return true;
 }
 

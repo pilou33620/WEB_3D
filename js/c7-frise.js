@@ -278,11 +278,13 @@ export class Frise {
       const lacher = () => {
         removeEventListener("pointermove", bouger);
         removeEventListener("pointerup", lacher);
+        removeEventListener("pointercancel", lacher);
         m.classList.remove("glisse");
         if(n !== null) ctrl.placerCurseur(n);
       };
       addEventListener("pointermove", bouger);
       addEventListener("pointerup", lacher);
+      addEventListener("pointercancel", lacher);
     };
     return m;
   }

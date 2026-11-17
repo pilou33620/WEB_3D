@@ -442,8 +442,13 @@ export function operationsPlus(H){
         f = R.draw([0, 0]).lineTo([e, 0]).lineTo([e, L - hc]).lineTo([e + s, L - hc]).lineTo([e, L]).lineTo([0, L]).close()
           .sketchOnPlane(new R.Plane([0, w / 2, 0], [1, 0, 0], [0, -1, 0])).extrude(w);
       }
-      if(a) f = f.rotate(a, [0, 0, 0], [0, 0, 1]);
-      const modele = orienter(f, n, [0, 0, 0]);
+      /* orienter ne règle que Z → n : on tourne ensuite autour de n pour que le crochet (X local) suive
+         l'angle compté dans le repère de l'esquisse, quel que soit le plan ou le sens. */
+      const z = n[2], k = vec.norm([-n[1], n[0], 0]);               // axe et angle de la rotation d'orienter
+      const X1 = Math.abs(z) > 0.999999 ? [1, 0, 0] : vec.ajout(vec.ajout([z, 0, 0], vec.vect(k, [1, 0, 0]), Math.sqrt(1 - z * z)), k, k[0] * (1 - z));
+      const d = vec.ajout(vec.ajout([0, 0, 0], rp.x, Math.cos(a * DEG)), rp.y, Math.sin(a * DEG));
+      const t = Math.atan2(vec.scal(vec.vect(X1, d), n), vec.scal(X1, d)) / DEG;
+      const modele = orienter(f, n, [0, 0, 0]).rotate(t, [0, 0, 0], n);
       const copies = points.map(([x, y]) => modele.clone().translate(versMonde(rp, x, y)));
       const outil = copies.length === 1 ? copies[0] : R.makeCompound(copies);
       return remplacer(etat, cible, op.mode === "logement" ? cible.shape.cut(outil) : cible.shape.fuse(outil));

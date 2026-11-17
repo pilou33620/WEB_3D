@@ -173,6 +173,13 @@ async function bati(ops, id, parametres = []){
   const cl = await bati([boitier, un, { id:"s", type:"clip", esquisse:"e", corps:"", mode:"crochet", longueur:"10", largeur:"6", epaisseur:"1.5", crochet:"2", surplomb:"1", jeu:"0.2", angle:"0" }], "s");
   const crochet = (1.5 * 10 + 0.5 * 1 * 2) * 6;
   verifier("clip : la poutre et son crochet", [cl.erreur, Math.round(cl.vol())], [undefined, Math.round(16000 + crochet)]);
+  /* L'orientation se compte dans le repère de l'esquisse, quel que soit le plan et le sens : le crochet (2,5 mm) part vers l'angle demandé. */
+  const cube = boite("b", 2, 2, 2, -1, -1, -1);
+  const sensClip = async (plan, angle, inverse) => {
+    const r = await bati([cube, pts("e", { base:plan }, [[0, 0]]), { id:"s", type:"clip", esquisse:"e", corps:"", mode:"crochet", longueur:"10", largeur:"6", epaisseur:"1.5", crochet:"2", surplomb:"1", jeu:"0", angle, inverse }], "s");
+    return r.erreur || Math.round(r.corps[0].shape.boundingBox.bounds[1][1] * 10) / 10;
+  };
+  verifier("clip : orientation dans le repère de l'esquisse", [await sensClip("XY", "90", false), await sensClip("XY", "90", true), await sensClip("YZ", "0", false), await sensClip("YZ", "0", true)], [2.5, 2.5, 2.5, 2.5]);
   const lg = await bati([boitier, un, { id:"s", type:"clip", esquisse:"e", corps:"", mode:"logement", longueur:"5", largeur:"6", epaisseur:"1.5", crochet:"2", surplomb:"1", jeu:"0" }], "s");
   verifier("clip : le logement est enlevé", [lg.erreur, Math.round(lg.vol())], [undefined, Math.round(16000 - 2.5 * 6 * 5)]);
 }

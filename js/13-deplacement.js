@@ -267,11 +267,13 @@ export function brancherDeplacement(ui){
     const surHaut = () => {
       removeEventListener("pointermove", surBouge);
       removeEventListener("pointerup", surHaut);
+      removeEventListener("pointercancel", surHaut);
       vue.canvas.classList.remove("pano");
       if(bouge) apres(g);
     };
     addEventListener("pointermove", surBouge);
     addEventListener("pointerup", surHaut);
+    addEventListener("pointercancel", surHaut);
     vue.canvas.classList.add("pano");          // le curseur « main » de la navigation
     return true;
   }

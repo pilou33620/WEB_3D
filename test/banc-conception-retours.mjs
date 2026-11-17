@@ -53,7 +53,7 @@ try{
     c.designer("aretes"); await fini();
     /* On s'éloigne jusqu'à ce que les deux cercles (avant la pièce : un cercle seul) soient à quelques pixels */
     return c.aretes().length;`);
-  verifier("désignation : on désigne sur la pièce d'avant l'opération (2 cercles et une couture)", r1, 3);
+  verifier("désignation : on désigne sur la pièce d'avant l'opération (2 cercles, la couture n'est pas une arête)", r1, 2);
 
   const r2 = await page(`
     const c = W3D.conception;
