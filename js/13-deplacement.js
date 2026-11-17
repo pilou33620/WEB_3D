@@ -74,6 +74,7 @@ export function perimerCaches(g){
   g.traverse(o => {
     const topo = o.geometry?.userData.topo;
     if(topo){ topo.cacheAretes.clear(); topo.cacheFaces.clear(); }
+    delete o.userData.reperePropre;     // axes de la pièce en coordonnées monde : à refaire après une rotation
   });
 }
 

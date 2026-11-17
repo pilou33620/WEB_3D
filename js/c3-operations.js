@@ -376,6 +376,7 @@ const OPERATIONS = {
       dir = vec.norm(vec.ajout(versMonde(r, b.x, b.y), origine, -1));
     }
     const angle = v(op.angle ?? 360);
+    if(!(angle !== 0 && Math.abs(angle) <= 360)) throw new Error("angle entre -360° et 360°, non nul");
     return appliquer(etat, dessinRegions(R, esq, op.contours).sketchOnPlane(plan).revolve(dir, { origin:origine, angle }), op);
   },
 
@@ -384,6 +385,7 @@ const OPERATIONS = {
     const profil = dessinRegions(R, esq).sketchOnPlane(planNoyau(R, esq, v).plan);
     if(!profil.wire) throw new Error("le profil d'un balayage doit être un seul contour, sans trou");
     const c3 = ctx.doc.operations.find(o => o.id === op.chemin && o.type === "chemin3d");
+    if(c3 && ctx.ignorees.has(c3.id)) throw new Error(`« ${c3.nom} » est suspendu ou après le curseur`);
     if(c3) return appliquer(etat, R.genericSweep(profil.wire, fil3d(R, c3, v).fil, { frenet:true }), op);
     const chem = chercherEsquisse(ctx, op.chemin);
     const { ouverts, regions } = profils(chem);
@@ -424,15 +426,20 @@ const OPERATIONS = {
       pts = [[0, 1], [rt, 1], [rt, -pt], [r, -pt], [r, -prof], [0, -prof]];
     }else if(op.forme === "fraisure"){
       const rt = v(op.diamTete) / 2, a = v(op.angleTete ?? 90) * Math.PI / 360;
+      if(!(a > 0 && a < Math.PI / 2)) throw new Error("fraisure : angle entre 0 et 180°");
       const h = (rt - r) / Math.tan(a);
       if(!(rt > r && h < prof)) throw new Error("fraisure : diamètre de tête > diamètre du trou, et pas plus profonde que le trou");
       pts = [[0, 1], [rt, 1], [rt, 0], [r, -h], [r, -prof], [0, -prof]];
-    }else pts = [[0, 1], [r, 1], [r, -prof], [0, -prof]];
+    }else pts = op.traversant ? [[0, prof], [r, prof], [r, -prof], [0, -prof]] : [[0, 1], [r, 1], [r, -prof], [0, -prof]];   // traversant : des deux côtés du plan
     const rp = repere(esq.plan, v);
     /* Tous les outils d'un coup : un booléen par trou repart à chaque fois d'une forme plus lourde. */
     const modele = orienter(revolutionProfil(R, pts), rp.n, [0, 0, 0]);    // un seul outil, déplacé : tourner 120 profils coûte cher
     const outils = points.map(([x, y]) => modele.clone().translate(versMonde(rp, x, y)));
-    return remplacer(etat, cible, cible.shape.cut(outils.length === 1 ? outils[0] : R.makeCompound(outils)));
+    /* Un composé d'outils qui se recouvrent donne un résultat faux (pièce vidée ou trous absents) : ceux-là, réunis d'abord. */
+    const rMax = Math.max(...pts.map(q => q[0]));
+    const recouvrent = points.some((p, i) => points.some((q, j) => j > i && Math.hypot(p[0] - q[0], p[1] - q[1]) < 2 * rMax + 1e-6));
+    const outil = outils.length === 1 ? outils[0] : recouvrent ? outils.reduce((a, b) => a.fuse(b)) : R.makeCompound(outils);
+    return remplacer(etat, cible, cible.shape.cut(outil));
   },
 
   boite(R, etat, op, { v }){
@@ -677,7 +684,9 @@ const OPERATIONS = {
     }
     if(op.separe) return suite;
     /* Les exemplaires qui ne se touchent pas se réunissent d'un coup ; sinon, un par un. */
-    const espaces = op.mode !== "circulaire" && copies.length > 1;
+    const [bmin, bmax] = cible.shape.boundingBox.bounds, etendue = (a) => a.reduce((s, c, k) => s + Math.abs(c) * (bmax[k] - bmin[k]), 0);
+    const espaces = op.mode !== "circulaire" && copies.length > 1
+      && (n === 1 || Math.abs(pas) > etendue(axe) + 1e-6) && (n2 === 1 || Math.abs(pas2) > etendue(axe2) + 1e-6);
     return remplacer(etat, cible, espaces ? cible.shape.fuse(R.makeCompound(copies)) : copies.reduce((f, c) => f.fuse(c), cible.shape));
   },
 

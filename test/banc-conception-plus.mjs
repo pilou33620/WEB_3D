@@ -668,5 +668,28 @@ async function bati(ops, id, parametres = []){
   verifier("colinéaire : les deux lignes sur la même droite", [resoudre(gcs, col, num).ok, Math.abs(P(col, "c").y - P(col, "a").y) < 1e-6, Math.abs(P(col, "d").y - P(col, "a").y) < 1e-6], [true, true, true]);
 }
 
+/* ---------------- non-régression : audit complet ---------------- */
+{
+  const cercleE = (id, plan, r) => esqu(id, plan, [{ id:"o", type:"point", x:0, y:0 }, { id:"k", type:"cercle", c:"o", r }]);
+  const trous = (extra = {}) => ({ id:"s", type:"percage", esquisse:"e", corps:"", diametre:"5", traversant:false, profondeur:"5", forme:"simple", ...extra });
+  const bloc = boite("b", 40, 20, 10, -20, -10, -10);
+  const recouv = await bati([bloc, pts("e", XY, [[0, 0], [3, 0]]), trous()], "s");
+  /* Union de deux disques Ø5 à 3 mm : 2·π·2,5² − lentille (12,5·acos 0,6 − 1,5·4), sur 5 mm. */
+  verifier("perçage : deux trous qui se recouvrent creusent bien", [recouv.erreur, Math.round(8000 - recouv.vol())], [undefined, Math.round((2 * Math.PI * 6.25 - (12.5 * Math.acos(0.6) - 6)) * 5)]);
+  const trav = await bati([boite("b", 20, 20, 20, -10, -10, 0), pts("e", { base:"XY", decalage:"10" }, [[0, 0]]), trous({ traversant:true })], "s");
+  verifier("perçage traversant : des deux côtés du plan", [trav.erreur, Math.round(8000 - trav.vol())], [undefined, Math.round(Math.PI * 6.25 * 20)]);
+  const rep = await bati([boite("b", 20, 10, 10), { id:"s", type:"repetition", corps:"", mode:"lineaire", axe:"X", nombre:"3", pas:"10" }], "s");
+  verifier("répétition : exemplaires qui se chevauchent", [rep.erreur, Math.round(rep.vol())], [undefined, 4000]);
+  const rch = await bati([boite("b", 2, 2, 2, -1, -1, 0), cercleE("e", XY, 20), { id:"s", type:"repChemin", corps:"", chemin:"e", nombre:"6", orienter:false, separe:true }], "s");
+  verifier("répétition sur chemin : un cercle", [rch.erreur, rch.n], [undefined, 6]);
+  const loin = { id:"pl", type:"plan", mode:"decale", base:"XY", decalage:"105", angle:"0", axe:"x" };
+  const dvl = await bati([boite("b", 10, 10, 10, 100, 100, 100), loin, { id:"s", type:"diviser", corps:"", mode:"plan", plan:"pl" }], "s");
+  verifier("diviser : corps loin de l'origine du plan", [dvl.erreur, dvl.n], [undefined, 2]);
+  const bos = await bati([boite("b", 2, 2, 2, -1, -1, -1), pts("e", { base:"YZ" }, [[0, 0]]), { id:"s", type:"bossage", esquisse:"e", corps:"", de:"8", di:"0", hauteur:"10", profondeur:"0", depouille:"0", nervures:"1", epNervure:"1", largeurNervure:"6" }], "s");
+  verifier("bossage : nervure sur l'axe x de l'esquisse (YZ → +Y)", [bos.erreur, Math.round(bos.corps[0].shape.boundingBox.bounds[1][1])], [undefined, 10]);
+  const lv = await bati([boite("b", 40, 40, 10, -20, -20, 0), esqu("e", { base:"XY", decalage:"10" }, rect(-20, -20, 20, 20)), { id:"s", type:"levre", esquisse:"e", corps:"", mode:"rainure", largeur:"2", hauteur:"3", jeu:"0.2" }], "s");
+  verifier("rainure avec jeu : ouverte jusqu'au bord", [lv.erreur, Math.round(lv.vol())], [undefined, Math.round(16000 - (1600 - 35.6 * 35.6) * 3.2)]);
+}
+
 console.log(ko ? `banc-conception-plus : ${ko} échec(s), ${ok} OK` : `banc-conception-plus : OK (${ok} vérifications)`);
 process.exit(ko ? 1 : 0);

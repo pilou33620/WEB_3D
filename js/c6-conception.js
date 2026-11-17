@@ -185,7 +185,7 @@ function nouvelleOperation(type, ctrl){
   const defauts = {
     ...defautsAteliers({ derniere, avant:esquisses[esquisses.length - 2]?.id || "", mode, P, premierCorps:ctrl.nomsCorps[0] || "" }),
     ...defautsPlus({ derniere, mode, composants:ctrl.doc.composants || [] }),
-    extrusion:{ esquisse:derniere, distance:"10", sens:"un", operation:mode, corps:"" },
+    extrusion:{ esquisse:derniere, distance:"10", distance2:"10", sens:"un", operation:mode, corps:"" },
     revolution:{ esquisse:derniere, axe:"y", angle:"360", operation:mode, corps:"" },
     balayage:{ esquisse:esquisses[esquisses.length - 2]?.id || "", chemin:derniere, operation:mode, corps:"" },
     lissage:{ esquisses:[], regle:false, operation:mode, corps:"" },

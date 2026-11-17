@@ -434,7 +434,7 @@ export class Vue3D {
     });
 
     if(!actif){
-      this.plansCoupe = [];
+      this.plansCoupe.length = 0;     // en place : les surlignages de mesure gardent ce même tableau
       for(const m of this.materiaux){
         m.clippingPlanes = null;
         m.side = this.modeTransparent ? THREE.DoubleSide : THREE.FrontSide;
@@ -462,7 +462,8 @@ export class Vue3D {
       plan = new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), pos);
     }
 
-    this.plansCoupe = [plan];
+    this.plansCoupe.length = 0;
+    this.plansCoupe.push(plan);
     for(const m of this.materiaux){
       m.clippingPlanes = this.plansCoupe;
       /* Une pièce coupée montre son intérieur : sans les faces arrières, on
@@ -507,7 +508,8 @@ export class Vue3D {
     this._rc.setFromCamera(this.ndc(ev), this.camera());
     this._rc.params.Line.threshold = (this.rayonModele || 1) * 0.005;
     return this._rc.intersectObjects(objets, true)
-      .filter(i => i.object.isMesh && visibleEnLignee(i.object));
+      .filter(i => i.object.isMesh && visibleEnLignee(i.object))
+      .filter(i => this.plansCoupe.every(p => p.distanceToPoint(i.point) >= 0));   // la matière retirée par la coupe ne se prend pas
   }
 
   /** Capture PNG de l'image affichée. */

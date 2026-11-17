@@ -347,7 +347,7 @@ export function ateliers(H){
       const notes = [];
       let suite = etat;
       for(const arete of op.aretes){
-        const une = { ...op, arete, refs:undefined };
+        const une = { ...op, arete };      // refs gardées : les clés aretes:<point> sont propres à chaque arête, elles la suivent
         suite = bride(R, suite, une, ctx);
         notes.push(ctx.note.pli);
       }

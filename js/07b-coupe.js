@@ -150,7 +150,7 @@ export class CoupeManager {
     this.panneau.hidden = !this.actif;
 
     if(!this.actif){
-      this.enChoixFace = false;
+      this.desactiverChoixFace();     // remet aussi le curseur
       this.groupe3D.visible = false;
       this.etiquette.hidden = true;
       this.viderSurbrillanceFace();
@@ -159,11 +159,9 @@ export class CoupeManager {
       return;
     }
 
-    if(this.mode === "face" && !this.faceSelectionnee){
-      this.activerChoixFace();
-    }else{
-      this.appliquer();
-    }
+    if(this.mode === "face" && !this.faceSelectionnee) this.activerChoixFace();
+    else if(this.mode === "face") this.appliquer();
+    else this.definirAxe(this.mode);  // recentré sur la pièce affichée : à la première ouverture, le plan était à l'origine, borné à ±50 mm
   }
 
   /* ==========================================================================
@@ -171,13 +169,8 @@ export class CoupeManager {
      ========================================================================== */
   definirAxe(axe){
     if(axe === "face"){
-      this.mode = "face";
-      this.majPanneauAxes();
-      if(!this.faceSelectionnee){
-        this.activerChoixFace();
-      }else{
-        this.appliquer();
-      }
+      /* Toujours redemander la face : les axes X/Y/Z ont pu écraser la normale et le point de la précédente. */
+      this.activerChoixFace();
       return;
     }
 
@@ -197,6 +190,7 @@ export class CoupeManager {
     this.offsetMm = 0;
     this.majBornes();
     this.majPanneauAxes();
+    this.majPanneauValeurs();
     this.appliquer();
   }
 
@@ -670,6 +664,7 @@ export class CoupeManager {
     const dist = p.querySelector("#coupeDist");
     dist.onchange = (e) => {
       this.definirOffset(parseFloat(e.target.value) || 0);
+      e.target.value = (Math.round(this.offsetMm * 100) / 100).toFixed(2);   // la valeur bornée, même si le champ a encore le focus
     };
 
     // Remise à zéro
