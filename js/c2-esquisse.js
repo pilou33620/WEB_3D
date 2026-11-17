@@ -380,7 +380,14 @@ function traduire(k, idx, v){
       const e = E(k.a);
       return [e.type === "arc" ? { type:"arc_diameter", a_id:k.a, diameter:val() } : { type:"circle_diameter", c_id:k.a, diameter:val() }];
     }
-    case "angle": return [{ type:"l2l_angle_ll", l1_id:k.a, l2_id:k.b, angle:val() * Math.PI / 180 * (k.signe || 1) }];
+    case "angle": {
+      const angle = val() * Math.PI / 180 * (k.signe || 1);
+      if(!k.sommet) return [{ type:"l2l_angle_ll", l1_id:k.a, l2_id:k.b, angle }];
+      /* Coin : chaque ligne orientée depuis le sommet commun, pour que la cote soit l'angle qu'on voit au coin. */
+      const depuis = (l) => { const e = E(l); return e.p2 === k.sommet ? [e.p2, e.p1] : [e.p1, e.p2]; };
+      const [p1, p2] = depuis(k.a), [p3, p4] = depuis(k.b);
+      return [{ type:"l2l_angle_pppp", l1p1_id:p1, l1p2_id:p2, l2p1_id:p3, l2p2_id:p4, angle }];
+    }
   }
   throw new Error(`contrainte inconnue « ${k.type} »`);
 }

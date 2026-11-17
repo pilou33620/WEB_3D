@@ -167,7 +167,8 @@ export function operationsCollees(doc, copiees){
   const sorties = copiees.map(o => { const c = structuredClone(o); c.id = ids(o); delete c.corpsNom; delete c.refs; return c; });
   const renvoi = (x) => table.get(x) ?? x;
   for(const c of sorties){
-    for(const k of ["esquisse", "chemin", "pilote"]) if(c[k]) c[k] = renvoi(c[k]);
+    for(const k of ["esquisse", "chemin", "pilote", "plan1", "plan2", "plan3"]) if(c[k]) c[k] = renvoi(c[k]);
+    if(c.type === "point" && typeof c.axe === "string" && !c.axe.startsWith("ref:")) c.axe = renvoi(c.axe);   // point sur un axe : identifiant nu
     if(c.esquisses) c.esquisses = c.esquisses.map(renvoi);
     if(c.plan?.ref) c.plan.ref = renvoi(c.plan.ref);
     if(typeof c.plan === "string") c.plan = renvoi(c.plan);

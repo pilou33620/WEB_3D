@@ -290,6 +290,7 @@ export function replier(objet){
   for(const enfant of [...objet.children]) replier(enfant);
   if(objet.isGroup && objet.children.length === 1 && !objet.name){
     const seul = objet.children[0];
+    seul.applyMatrix4(objet.matrix);        // la place d'un <item> 3MF est portée par ce groupe anonyme
     objet.parent?.add(seul);
     objet.parent?.remove(objet);
   }
@@ -359,7 +360,7 @@ function unite3mf(tampon){
     const nom = Object.keys(zip).find(n => n.toLowerCase().endsWith(".model"));
     if(!nom) return "millimeter";
     const entete = strFromU8(zip[nom].slice(0, 4096), true);
-    const m = /<model[^>]*\bunit\s*=\s*"([a-z]+)"/i.exec(entete);
+    const m = /<model[^>]*\bunit\s*=\s*["']([a-z]+)["']/i.exec(entete);
     return m ? m[1].toLowerCase() : "millimeter";
   }catch(e){
     /* Archive illisible ici : le lecteur dira mieux que nous ce qui cloche. */

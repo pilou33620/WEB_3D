@@ -10,6 +10,14 @@
    ============================================================================= */
 "use strict";
 
+/** Une chaîne STEP décodée : '' → ', \X2\hhhh…\X0\ (UTF-16), \X\hh (latin-1), \S\c (c + 128). OpenCascade donne les noms ainsi. */
+export function decoderChaineStep(s){
+  return s.replace(/''/g, "'")
+    .replace(/\\X2\\((?:[0-9A-F]{4})+)\\X0\\/gi, (_, h) => String.fromCharCode(...h.match(/.{4}/g).map(x => parseInt(x, 16))))
+    .replace(/\\X\\([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\S\\(.)/g, (_, c) => String.fromCharCode(c.charCodeAt(0) + 128));
+}
+
 export class StepExtractor {
   constructor(texteStep) {
     if (typeof texteStep !== "string" || !texteStep.includes("ISO-10303-21")) {
@@ -31,7 +39,7 @@ export class StepExtractor {
 
     this.entites = new Map();
     // Reconnaissance des entités du type #123 = TYPE(...); ou formes composites
-    const regex = /#(\d+)\s*=\s*([^;]+);/g;
+    const regex = /#(\d+)\s*=\s*((?:'(?:[^']|'')*'|[^;'])+);/g;     // un « ; » dans un nom ne coupe pas l'entité
     let m;
     const regexRef = /#(\d+)/g;
     while ((m = regex.exec(blocData)) !== null) {
@@ -50,9 +58,9 @@ export class StepExtractor {
     this.produits = new Map();
     for (const [id, e] of this.entites) {
       if (e.contenu.includes("PRODUCT(")) {
-        const pm = /PRODUCT\s*\(\s*'([^']*)'/i.exec(e.contenu);
+        const pm = /PRODUCT\s*\(\s*'((?:[^']|'')*)'/i.exec(e.contenu);
         if (pm) {
-          this.produits.set(id, { id, nom: pm[1] });
+          this.produits.set(id, { id, nom: decoderChaineStep(pm[1]) });
         }
       }
     }
@@ -92,12 +100,12 @@ export class StepExtractor {
     this.occurrences = [];
     for (const [id, e] of this.entites) {
       if (e.contenu.includes("NEXT_ASSEMBLY_USAGE_OCCURRENCE")) {
-        const om = /NEXT_ASSEMBLY_USAGE_OCCURRENCE\s*\(\s*'([^']*)'\s*,\s*'([^']*)'/i.exec(e.contenu);
+        const om = /NEXT_ASSEMBLY_USAGE_OCCURRENCE\s*\(\s*'((?:[^']|'')*)'\s*,\s*'((?:[^']|'')*)'/i.exec(e.contenu);
         if (om) {
           this.occurrences.push({
             id,
             occId: om[1],
-            nom: om[2],
+            nom: decoderChaineStep(om[2]),
             parentDefId: e.refs[0],
             childDefId: e.refs[1],
             refs: e.refs,
@@ -278,31 +286,29 @@ export class StepExtractor {
       const enfantProd = [...this.produits.values()].find(p => p.defId === occ.childDefId);
       const enfantNom = enfantProd ? enfantProd.nom.toLowerCase() : "";
 
-      const correspondOcc = autorises.has(occNom) || nomsPiecesAutorisees.some(a => occNom.includes(a.toLowerCase()));
-      const correspondEnfant = enfantProd && (autorises.has(enfantNom) || nomsPiecesAutorisees.some(a => enfantNom.includes(a.toLowerCase()) || a.toLowerCase().includes(enfantNom)));
+      /* Noms exacts : « bolt » contenu dans « l-bracket-bolt » (ou un nom vide contenu partout) ramenait des pièces masquées. */
+      const correspondOcc = autorises.has(occNom);
+      const correspondEnfant = enfantProd && autorises.has(enfantNom);
 
       if (correspondOcc || correspondEnfant) {
         occurrencesConservees.push(occ);
       }
     }
 
-    // Propagation dans l'arbre d'assemblage :
-    // 1. Vers le haut : si un composant enfant est conservé, inclure son sous-ensemble parent
-    // 2. Vers le bas : si un sous-ensemble est conservé, inclure tous ses composants enfants
-    let modifOcc = true;
-    while (modifOcc) {
-      modifOcc = false;
-      const occIds = new Set(occurrencesConservees.map(o => o.id));
-      for (const occ of Array.from(occurrencesConservees)) {
+    // Propagation dans l'arbre d'assemblage, en deux temps séparés :
+    // 1. Vers le bas, depuis les seules occurrences choisies : un sous-ensemble choisi garde tous ses composants
+    // 2. Vers le haut : les sous-ensembles parents, sans redescendre (sinon toute la fratrie revenait)
+    const occIds = new Set(occurrencesConservees.map(o => o.id));
+    const propager = (lie) => {
+      for (let i = 0; i < occurrencesConservees.length; i++) {
+        const occ = occurrencesConservees[i];
         for (const o of this.occurrences) {
-          if ((o.childDefId === occ.parentDefId || o.parentDefId === occ.childDefId) && !occIds.has(o.id)) {
-            occurrencesConservees.push(o);
-            occIds.add(o.id);
-            modifOcc = true;
-          }
+          if (lie(o, occ) && !occIds.has(o.id)) { occurrencesConservees.push(o); occIds.add(o.id); }
         }
       }
-    }
+    };
+    propager((o, occ) => o.parentDefId === occ.childDefId);
+    propager((o, occ) => o.childDefId === occ.parentDefId);
 
     // Trouver le produit racine (celui qui n'est pas enfant dans une occurrence)
     const enfantsIds = new Set(this.occurrences.map(o => o.childDefId));

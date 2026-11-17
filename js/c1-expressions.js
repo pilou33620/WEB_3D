@@ -26,7 +26,7 @@ const UNITES = { mm:1, cm:10, m:1000, in:25.4, "°":1, deg:1 };
 /** Découpe en jetons. « 2,5 » seul est lu comme 2.5 : la virgule décimale des Français. */
 function jetons(texte){
   let s = String(texte ?? "").trim();
-  if(/^-?\d+,\d+$/.test(s)) s = s.replace(",", ".");
+  if(/^-?\d+,\d+\s*(mm|cm|m|in|°|deg)?$/.test(s)) s = s.replace(",", ".");     // « 2,5 mm » aussi
   const sortie = [];
   const re = /\s*(?:(\d+(?:\.\d*)?(?:e[+-]?\d+)?|\.\d+)\s*(mm|cm|deg|in|m(?![\wÀ-ÿ])|°)?(?![\wÀ-ÿ])|([A-Za-z_À-ÿ][\wÀ-ÿ]*)|(\*\*|[-+*/^%(),]))/gy;
   let m;

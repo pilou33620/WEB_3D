@@ -666,6 +666,32 @@ async function bati(ops, id, parametres = []){
     { id:"c", type:"point", x:20, y:3 }, { id:"d", type:"point", x:30, y:3 }, { id:"m", type:"ligne", p1:"c", p2:"d" });
   col.contraintes.push({ id:"k", type:"colineaire", a:"l", b:"m" }, { id:"h", type:"horizontal", a:"l" });
   verifier("colinéaire : les deux lignes sur la même droite", [resoudre(gcs, col, num).ok, Math.abs(P(col, "c").y - P(col, "a").y) < 1e-6, Math.abs(P(col, "d").y - P(col, "a").y) < 1e-6], [true, true, true]);
+
+  /* Audit : coïncidence en double (boucle infinie), angle au coin, rotation d'un rectangle, échelle des cotes X/Y. */
+  const dbl = nouvelle();
+  dbl.elements.push({ id:"a", type:"point", x:0, y:0 }, { id:"b", type:"point", x:0, y:0 });
+  dbl.contraintes.push({ id:"k1", type:"coincident", a:"a", b:"b" }, { id:"k2", type:"coincident", a:"b", b:"a" });
+  verifier("auto-contraindre : une coïncidence en double ne fige pas", Plus.autoContraindre(dbl), 0);
+  for(const [p1, p2] of [["A", "B"], ["B", "A"]]){
+    const an = nouvelle();
+    an.elements.push({ id:"A", type:"point", x:0, y:0 }, { id:"B", type:"point", x:10, y:0 }, { id:"C", type:"point", x:0, y:5 }, { id:"l1", type:"ligne", p1, p2 }, { id:"l2", type:"ligne", p1:"B", p2:"C" });
+    an.contraintes.push({ id:"f1", type:"fixe", a:"A", x:0, y:0 }, { id:"f2", type:"fixe", a:"B", x:10, y:0 }, { id:"L", type:"longueur", a:"l2", expr:String(Math.hypot(10, 5)) },
+      { id:"k", type:"angle", a:"l1", b:"l2", signe:-1, sommet:"B", expr:"30" });
+    const A = P(an, "A"), B = P(an, "B"), C = P(an, "C"), ok = resoudre(gcs, an, Number).ok;
+    const coin = Math.abs(Math.atan2((A.x - B.x) * (C.y - B.y) - (A.y - B.y) * (C.x - B.x), (A.x - B.x) * (C.x - B.x) + (A.y - B.y) * (C.y - B.y))) * 180 / Math.PI;
+    verifier(`cote d'angle au coin, ligne tracée ${p1}→${p2}`, [ok, Math.round(coin * 100) / 100], [true, 30]);
+  }
+  const ro = nouvelle();
+  ro.elements.push(...rect(0, 0, 20, 10));
+  ro.contraintes.push({ id:"h1", type:"horizontal", a:"l1" }, { id:"h3", type:"horizontal", a:"l3" }, { id:"v2", type:"vertical", a:"l2" }, { id:"v4", type:"vertical", a:"l4" });
+  Plus.transformerEsquisse(ro, ["l1", "l2", "l3", "l4"], { angle:30 });
+  const ok30 = resoudre(gcs, ro, Number).ok, q2 = P(ro, "p2");
+  verifier("rotation de 30° : le rectangle tourne au lieu de se déformer", [ok30, Math.round(q2.x * 100) / 100, Math.round(q2.y * 100) / 100], [true, 17.32, 10]);
+  const ech = nouvelle();
+  ech.elements.push(...rect(0, 0, 10, 5));
+  ech.contraintes.push({ id:"kx", type:"distanceX", a:"p1", b:"p2", expr:"10" }, { id:"kl", type:"longueur", a:"l2", expr:"5" });
+  Plus.echelleEsquisse(ech, ["l1", "l2", "l3", "l4"], 2, { x:0, y:0 });
+  verifier("échelle : la cote X posée sur les points suit", ech.contraintes.map(k => k.expr), ["20", "10"]);
 }
 
 /* ---------------- non-régression : audit complet ---------------- */

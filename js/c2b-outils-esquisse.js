@@ -207,7 +207,13 @@ export function decaler(esq, ids, d, lien = null){
         chaine(f.exterieur.segments, true, aire > 0 ? -1 : 1);
       }
     }
-    for(const o of ouverts) chaine(o.segments, false, 1);
+    /* Une chaîne ouverte se parcourt depuis le premier élément du tableau qui a un bout libre : l'ordre de création
+       décidait du côté. On la lit dans le sens où la majorité de ses éléments ont été tracés (p1 → p2). */
+    const idx = indexer(esq), P1 = (sg) => { const e = idx.get(sg.id), p = e && idx.get(e.p1); return p && [p.x, p.y]; };
+    for(const o of ouverts){
+      const sens = o.segments.reduce((n, sg) => { const p = P1(sg); return !p ? n : n + (Math.hypot(p[0] - sg.a[0], p[1] - sg.a[1]) < 1e-9 ? 1 : -1); }, 0);
+      chaine(o.segments, false, sens < 0 ? -1 : 1);
+    }
   }catch(e){ return e.message; }
   const crees = ajouterPrimitives(esq, prims);
   /* Lié : la copie suit l'original. Une ligne reste parallèle à sa distance ; un arc ou un cercle garde son centre. */

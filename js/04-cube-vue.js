@@ -266,6 +266,8 @@ export class CubeVue {
          représentation, il ne porte aucune transformation propre. */
       if(zone) this.nav.allerVersDirection(zone.clone().normalize(), true);
     });
+    /* Geste interrompu par le système (tactile, stylet) : sans ça, le prochain survol tournerait la scène. */
+    c.addEventListener("pointercancel", () => { this.depart = null; this.glisse = false; });
     c.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 

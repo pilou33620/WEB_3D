@@ -21,7 +21,7 @@ const TYPE_GLISSE = "application/x-web3d-operation";      // un fichier glissé 
 /** Les esquisses dont une opération a besoin : elles doivent la précéder. */
 export function dependances(op, ops = []){
   /* Les corps visés par leur nom : c'est l'opération qui les a créés (op.corpsNom) qui doit précéder. */
-  const noms = [op.corps, op.cible, op.corpsA, op.corpsB, op.outil, op.reference, ...(op.outils || []), ...(op.suiveurs || [])].filter(Boolean).map(n => n.split(" · ")[0]);
+  const noms = [op.corps, op.cible, op.corpsA, op.corpsB, op.outil, op.reference, ...(op.outils || []), ...(op.suiveurs || [])].filter(n => typeof n === "string" && n).map(n => n.split(" · ")[0]);   // reference vaut true pour un STEP ou un maillage inséré
   const createurs = ops.filter(o => o !== op && noms.includes(o.corpsNom)).map(o => o.id);
   const axe = typeof op.axe === "string" && op.axe.startsWith("ref:") ? op.axe.slice(4) : null;
   const planVise = op.type === "diviser" && op.mode === "plan" ? op.plan : null;

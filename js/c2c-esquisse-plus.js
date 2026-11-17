@@ -233,8 +233,12 @@ export function couper(esq, id){
     const dernier = e.p2;
     let q0 = pointNeuf(esq, ts[0].q.x, ts[0].q.y);
     e.p2 = q0;
-    ts.slice(1).forEach(({ q }) => { const n = pointNeuf(esq, q.x, q.y); ligneNeuve(esq, q0, n, extra); q0 = n; });
-    ligneNeuve(esq, q0, dernier, extra);
+    const morceaux = [];
+    ts.slice(1).forEach(({ q }) => { const n = pointNeuf(esq, q.x, q.y); morceaux.push(ligneNeuve(esq, q0, n, extra)); q0 = n; });
+    morceaux.push(ligneNeuve(esq, q0, dernier, extra));
+    /* Comme ajuster : les morceaux gardent l'horizontale ou la verticale, sinon la ligne devient articulée. */
+    for(const k of esq.contraintes.filter(k => k.a === id && (k.type === "horizontal" || k.type === "vertical")))
+      for(const m of morceaux) esq.contraintes.push({ id:nouvelId(esq, "k"), type:k.type, a:m });
   }else{
     const arc = (c, p1, p2) => esq.elements.push({ id:nouvelId(esq, "a"), type:"arc", c, p1, p2, ...extra });
     const ids = ts.map(({ q }) => pointNeuf(esq, q.x, q.y));
@@ -267,7 +271,7 @@ function pointsDe(esq, ids){
 /** Met la sélection à l'échelle, depuis un point : cercles et cotes numériques suivent. */
 export function echelleEsquisse(esq, ids, f, o){
   if(!(f > 0)) return "Le facteur doit être positif.";
-  const idx = indexer(esq), choisis = new Set(ids);
+  const idx = indexer(esq), choisis = new Set([...ids, ...pointsDe(esq, ids)]);   // une cote posée sur les points suit aussi
   for(const id of pointsDe(esq, ids)){
     const p = idx.get(id);
     if(id === "o") continue;
@@ -301,6 +305,23 @@ export function transformerEsquisse(esq, ids, { dx = 0, dy = 0, angle = 0, cx = 
     if(id === "o") continue;
     const p = idx.get(id);
     [p.x, p.y] = f(p.x, p.y);
+  }
+  /* Tourner : horizontale/verticale et cotes X/Y de la sélection suivent (échangées à 90°, retirées sinon) ;
+     gardées, le solveur remettait les côtés d'équerre et le rectangle était déformé au lieu d'être tourné. */
+  const q = ((angle % 360) + 360) % 360;
+  if(q > 1e-9 && q < 360 - 1e-9){
+    const dedans = new Set([...ids, ...pointsDe(esq, ids)]), quart = Math.abs(q % 180 - 90) < 1e-9, demi = Math.abs(q - 180) < 1e-9;
+    const ECHANGE = { horizontal:"vertical", vertical:"horizontal", distanceX:"distanceY", distanceY:"distanceX" };
+    esq.contraintes = esq.contraintes.filter(k => {
+      if(!(k.type in ECHANGE) || ![k.a, k.b].filter(Boolean).every(x => dedans.has(x))) return true;
+      if(!quart && !demi) return false;
+      if(quart) k.type = ECHANGE[k.type];
+      if(k.type === "distanceX" || k.type === "distanceY"){
+        const c = k.type === "distanceX" ? "x" : "y", d = idx.get(k.b)[c] - idx.get(k.a)[c];
+        k.signe = d < 0 ? -1 : 1;
+      }
+      return true;
+    });
   }
   return null;
 }
@@ -344,7 +365,10 @@ export function autoContraindre(esq, tolDistance = 0.05, tolAngle = 1){
   const points = esq.elements.filter(e => e.type === "point");
   const unis = new Map();
   const racine = (id) => { while(unis.has(id)) id = unis.get(id); return id; };
-  for(const k of esq.contraintes) if(k.type === "coincident") unis.set(racine(k.a), racine(k.b));
+  for(const k of esq.contraintes) if(k.type === "coincident"){
+    const ra = racine(k.a), rb = racine(k.b);
+    if(ra !== rb) unis.set(ra, rb);                  // une coïncidence en double ferait une boucle : racine() ne s'arrêterait plus
+  }
   points.forEach((a, i) => {
     for(const b of points.slice(i + 1)){
       if(Math.hypot(a.x - b.x, a.y - b.y) > tolDistance || racine(a.id) === racine(b.id)) continue;

@@ -829,13 +829,11 @@ export class Interface {
 
     try{
       if(format === "stp"){
-        let stepTexte = null;
-        for(const g of this.vue.modele.children){
-          if(g.userData.stepTexte){
-            stepTexte = g.userData.stepTexte;
-            break;
-          }
-        }
+        /* Le STEP d'origine du fichier de chaque pièce : celui du premier fichier ouvert ne contient pas les autres. */
+        const racine = (o) => { while(o.parent && o.parent !== this.vue.modele) o = o.parent; return o; };
+        const fichiers = new Set(piecesCibles.map(racine));
+        if(fichiers.size > 1) throw new Error("Ces pièces viennent de plusieurs fichiers : exportez-les fichier par fichier.");
+        const stepTexte = [...fichiers][0]?.userData.stepTexte;
         if(!stepTexte){
           throw new Error("Le texte source STEP n'est pas disponible pour ce fichier.");
         }
@@ -853,7 +851,9 @@ export class Interface {
 
         telechargerFichier(contenuSortie, nomFichier, "application/octet-stream");
       }else{
-        const masquesTemp = [];
+        const masquesTemp = [], montresTemp = [];
+        /* Une pièce cochée mais masquée (et ses parents) : visible le temps de l'export, sinon GLTFExporter l'ignore. */
+        for(const p of piecesCibles) for(let o = p; o && o !== this.vue.modele; o = o.parent) if(!o.visible){ o.visible = true; montresTemp.push(o); }
         this.vue.modele.traverse(o => {
           if(o.isMesh && !piecesCibles.includes(o)){
             if(o.visible){
@@ -867,13 +867,21 @@ export class Interface {
           }
         });
 
+        /* glTF compte en mètres, la page en millimètres : comme exporterGlb, et comme lireGltf le relit. */
+        const remettre = () => {
+          for(const o of masquesTemp) o.visible = true;
+          for(const o of montresTemp) o.visible = false;
+          this.vue.modele.scale.setScalar(1); this.vue.modele.updateMatrixWorld(true);
+        };
+        this.vue.modele.scale.setScalar(0.001);
+        this.vue.modele.updateMatrixWorld(true);
         await new Promise((resoudre, rejeter) => {
           new GLTFExporter().parse(this.vue.modele, (glb) => {
-            for(const o of masquesTemp) o.visible = true;
+            remettre();
             telechargerFichier(glb, nomFichier, "model/gltf-binary");
             resoudre();
           }, (err) => {
-            for(const o of masquesTemp) o.visible = true;
+            remettre();
             rejeter(err);
           }, { binary:true });
         });
@@ -1012,7 +1020,7 @@ export class Interface {
     lier("cbAretes", "aretes", Boolean, () => this.definirAretes(prefs.aretes));
     lier("rgAretes", "angleAretes", parseFloat, () => this.recalculerAretes());
     lier("selFond", "fond", (v) => v, () => this.vue.appliquerFond(prefs.fond));
-    lier("selTheme", "theme", (v) => v, (val) => this.definirTheme(val, true));
+    lier("selTheme", "theme", (v) => v, () => this.definirTheme(prefs.theme, true));   // lier() appelle sans argument
 
     lier("rgLin", "tolLineaire", parseFloat);
     lier("rgAng", "tolAngulaire", parseFloat);
@@ -1127,6 +1135,9 @@ export class Interface {
   appliquerToutesPrefs(){
     const v = this.vue;
     v.definirAxeVertical(prefs.axeVertical);
+    this.cube.poserEtiquettes(prefs.axeVertical);    // comme le choix de l'axe dans les réglages : cube, sol et caméra suivent
+    v.adapterAuModele();
+    this.nav.allerVersVue("iso", false);
     v.definirProjection(prefs.projection);
     v.definirGrille(prefs.grille);
     v.definirOmbres(prefs.ombres);
