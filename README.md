@@ -398,6 +398,11 @@ mesure, la coupe, les collisions et la boîte **🖱 Souris & vue** sont ceux de
   des projets : *Enregistrer* remplace le fichier ouvert, *Enregistrer sous…* ne remplace jamais.
   Un brouillon est gardé dans le navigateur. Export **STEP** (exact), **STL**, **3MF** et **OBJ** des corps visibles, et **DXF de la vue** (arêtes vues et cachées sur leurs calques).
   Dans *🗂 Projets…* de la visionneuse, une pièce `.json` s'ouvre dans la conception.
+- **Exporter pour WEB_ANTENNA** (menu *Fichier*) — un STEP dont chaque corps s'appelle « ANTENNE … ».
+  [WEB_ANTENNA](../WEB_ANTENNA) le reconnaît à ce nom à l'étape « Autour » : le corps passe en métal,
+  l'origine de la pièce est posée sur le port, sur le cuivre du dessus, et le modèle refuse une antenne
+  qui ne touche pas sa pastille. Dessinez donc l'antenne avec **l'origine (0 ; 0 ; 0) au point de
+  soudure et Z vers le haut**. Vérifié de bout en bout sur une lame de 3 × 0,3 × 24,5 mm.
 
 **Solidité.** Une arête ou une face désignée est retrouvée par sa description (nature, direction, faces
 voisines, angle rentrant ou saillant, place relative) : elle suit les changements de cotes, et une référence

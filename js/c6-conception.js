@@ -389,6 +389,7 @@ class Conception {
     $("bRefaire").onclick = () => this.refaire();
     $("bExportPiece").onclick = () => this.exporter("step");
     $("bExportStl").onclick = () => this.exporter("stl");
+    $("bExportAntenne").onclick = () => this.exporter("step", true);
     $("bValiderOperation").onclick = () => this.validerOperation();
     $("bAnnulerOperation").onclick = $("bFermerOperation").onclick = () => this.annulerOperation();
 
@@ -2503,14 +2504,19 @@ class Conception {
     await this.ouvrirDocument(await r.json(), chemin);
   }
 
-  async exporter(format){
+  /** `antenne` : l'export « pour WEB_ANTENNA ». Chaque corps s'y appelle « ANTENNE … » : WEB_ANTENNA le
+      reconnaît à ce nom, le met en métal et pose l'origine de la pièce — le point de soudure, Z vers
+      le haut — sur le port. */
+  async exporter(format, antenne = false){
     const noms = [];
     this.vue.modele.traverse(o => { if(o.userData.estPiece && o.visible && !CORPS.get(o)?.reference) noms.push(o.name); });
     if(!noms.length){ avertir("Aucun corps visible à exporter (les références STEP ne sont pas exportées)."); return; }
     this.ui.attendre(true, `Export ${format.toUpperCase()}…`, "Le noyau écrit la géométrie exacte.");
     try{
-      const r = await this.envoyer({ type:"exporter", doc:this.docPourNoyau(), format, corps:noms });
-      telechargerFichier(await r.blob.arrayBuffer(), `${nomProjet(this.doc.nom)}.${format === "stl" ? "stl" : "stp"}`);
+      const r = await this.envoyer({ type:"exporter", doc:this.docPourNoyau(), format, corps:noms, prefixe:antenne ? "ANTENNE " : "" });
+      telechargerFichier(await r.blob.arrayBuffer(), `${nomProjet(this.doc.nom)}${antenne ? ".antenne" : ""}.${format === "stl" ? "stl" : "stp"}`);
+      if(antenne) avertir("Antenne exportée. Dans WEB_ANTENNA : posez le port sur la pastille, puis importez ce fichier à l'étape « Autour » — "
+        + "l'origine de la pièce (0 ; 0 ; 0, Z vers le haut) est posée sur le port, sur le cuivre.");
     }catch(e){
       if(e.fatale) this.relancerNoyau("Le noyau s'est planté pendant l'export : il a été relancé.");
       else if(!e.abandon) avertir(`Export impossible : ${e.message}`);
