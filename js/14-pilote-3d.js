@@ -380,7 +380,10 @@ export function brancherPilote3d(W3D, Pilote){
       coupe.desactiverChoixFace?.();
       coupe.definirActif(true);
     }
-    if(a.decalage_mm !== undefined) coupe.definirOffset(+a.decalage_mm);
+    if(a.decalage_mm !== undefined){
+      if(!Number.isFinite(+a.decalage_mm)) throw new Error("decalage_mm : un nombre.");
+      coupe.definirOffset(+a.decalage_mm);
+    }
     if(a.inverse !== undefined && !!a.inverse !== !!coupe.inverse) coupe.basculerInverse();
     ui.appliquerCoupe();
     vue.invalider?.();
@@ -416,6 +419,7 @@ export function brancherPilote3d(W3D, Pilote){
        3 s mesurés) ; personne ne regarde la page, on calcule donc d'un bloc. */
     const cache = typeof document !== "undefined" && document.visibilityState === "hidden";
     const tolerance = a.tolerance === undefined ? prefs.toleranceCollision : +a.tolerance;
+    if(!(tolerance >= 0)) throw new Error("tolerance : un nombre ≥ 0 (mm).");
     const { brut, resume:r } = await calculerCollisions(modele, { tolerance, pauses:!cache });
     if(cache) r.note = "Onglet caché : calcul fait d'un bloc.";
     if(a.afficher){

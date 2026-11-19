@@ -176,6 +176,7 @@ export function brancherDeplacement(ui){
 
   /** Tout ce qui a été calculé en coordonnées monde sur ce fichier est périmé. */
   function apres(g){
+    annulerContrainte();      // la face ① retenue était en coordonnées monde d'avant le déplacement
     apresDeplacement(vue, ui, g);
     lire();
   }

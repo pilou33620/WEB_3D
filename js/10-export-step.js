@@ -31,7 +31,8 @@ export class StepExtractor {
 
     this.entites = new Map();
     // Reconnaissance des entités du type #123 = TYPE(...); ou formes composites
-    const regex = /#(\d+)\s*=\s*([^;]+);/g;
+    // Un « ; » dans une chaîne ne finit pas l'entité
+    const regex = /#(\d+)\s*=\s*((?:'(?:[^']|'')*'|[^;'])+);/g;
     let m;
     const regexRef = /#(\d+)/g;
     while ((m = regex.exec(blocData)) !== null) {
@@ -50,9 +51,9 @@ export class StepExtractor {
     this.produits = new Map();
     for (const [id, e] of this.entites) {
       if (e.contenu.includes("PRODUCT(")) {
-        const pm = /PRODUCT\s*\(\s*'([^']*)'/i.exec(e.contenu);
+        const pm = /PRODUCT\s*\(\s*'((?:[^']|'')*)'/i.exec(e.contenu);
         if (pm) {
-          this.produits.set(id, { id, nom: pm[1] });
+          this.produits.set(id, { id, nom: pm[1].replace(/''/g, "'") });
         }
       }
     }
@@ -120,7 +121,7 @@ export class StepExtractor {
     // 2. Le nom du produit est contenu ou contient la cible
     for (const p of this.produits.values()) {
       const pNom = p.nom.toLowerCase();
-      if (pNom.includes(cible) || cible.includes(pNom)) return p;
+      if (pNom && (pNom.includes(cible) || cible.includes(pNom))) return p;   // un produit sans nom ne correspond à rien
     }
     // 3. Correspondance via une occurrence
     for (const occ of this.occurrences) {
@@ -278,8 +279,9 @@ export class StepExtractor {
       const enfantProd = [...this.produits.values()].find(p => p.defId === occ.childDefId);
       const enfantNom = enfantProd ? enfantProd.nom.toLowerCase() : "";
 
-      const correspondOcc = autorises.has(occNom) || nomsPiecesAutorisees.some(a => occNom.includes(a.toLowerCase()));
-      const correspondEnfant = enfantProd && (autorises.has(enfantNom) || nomsPiecesAutorisees.some(a => enfantNom.includes(a.toLowerCase()) || a.toLowerCase().includes(enfantNom)));
+      // Nom exact : par sous-chaîne, « rod » retenait aussi « rod-assembly »
+      const correspondOcc = autorises.has(occNom);
+      const correspondEnfant = enfantProd && autorises.has(enfantNom);
 
       if (correspondOcc || correspondEnfant) {
         occurrencesConservees.push(occ);
@@ -287,15 +289,15 @@ export class StepExtractor {
     }
 
     // Propagation dans l'arbre d'assemblage :
-    // 1. Vers le haut : si un composant enfant est conservé, inclure son sous-ensemble parent
-    // 2. Vers le bas : si un sous-ensemble est conservé, inclure tous ses composants enfants
+    // vers le haut seulement : si un composant est conservé, inclure son sous-ensemble parent.
+    // (Redescendre ramenait tous les frères masqués du composant.)
     let modifOcc = true;
     while (modifOcc) {
       modifOcc = false;
       const occIds = new Set(occurrencesConservees.map(o => o.id));
       for (const occ of Array.from(occurrencesConservees)) {
         for (const o of this.occurrences) {
-          if ((o.childDefId === occ.parentDefId || o.parentDefId === occ.childDefId) && !occIds.has(o.id)) {
+          if (o.childDefId === occ.parentDefId && !occIds.has(o.id)) {
             occurrencesConservees.push(o);
             occIds.add(o.id);
             modifOcc = true;
@@ -502,7 +504,8 @@ export function extraireStepPiece(piece, modele){
 export function sanitiserNomFichier(nom, ext = ".stp") {
   if (!nom) nom = "piece";
   let base = nom.trim().replace(/[\\/*?:"<>|]/g, "_").replace(/\s+/g, "_");
-  base = base.replace(/\.[^.]+$/, "");
+  // Seulement une vraie extension : « M2.5x8 » garde son « .5x8 »
+  base = base.replace(/\.(stp|step|igs|iges|brep|brp|glb|gltf|obj|stl|3mf)$/i, "");
   if (!base) base = "piece";
   if (!ext.startsWith(".")) ext = "." + ext;
   return base + ext;

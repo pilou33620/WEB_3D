@@ -529,7 +529,9 @@ export class Interface {
     this.vue.modele.traverse(o => { if(o.userData.estArete && o.visible){ o.visible = false; aretes.push(o); } });
 
     /* glTF compte en mètres, la page en millimètres. La vue ne se redessine pas tant que l'écran d'attente est là. */
-    const remettre = () => { this.vue.modele.scale.setScalar(1); this.vue.modele.updateMatrixWorld(true); };
+    const sel = this.arbre.selection;
+    if(sel) this.arbre.peindre(sel, false);      // la surbrillance n'est pas une couleur de la pièce
+    const remettre = () => { this.vue.modele.scale.setScalar(1); this.vue.modele.updateMatrixWorld(true); if(sel) this.arbre.peindre(sel, true); };
     this.vue.modele.scale.setScalar(0.001);
     this.vue.modele.updateMatrixWorld(true);
     new GLTFExporter().parse(this.vue.modele, (glb) => {
@@ -829,31 +831,37 @@ export class Interface {
 
     try{
       if(format === "stp"){
-        let stepTexte = null;
-        for(const g of this.vue.modele.children){
-          if(g.userData.stepTexte){
-            stepTexte = g.userData.stepTexte;
-            break;
-          }
-        }
-        if(!stepTexte){
-          throw new Error("Le texte source STEP n'est pas disponible pour ce fichier.");
-        }
-
-        const extracteur = new StepExtractor(stepTexte);
+        /* Le texte STEP est celui du fichier d'où viennent les pièces, pas du premier fichier ouvert. */
+        const fichierDe = (o) => { while(o.parent && o.parent !== this.vue.modele) o = o.parent; return o; };
+        const fichiers = new Set(piecesCibles.map(fichierDe));
         let contenuSortie = "";
 
         if(piecesCibles.length === 1 && repere === "local"){
-          const nomPiece = piecesCibles[0].name;
-          contenuSortie = extracteur.exportPiece(nomPiece);
+          contenuSortie = extraireStepPiece(piecesCibles[0], this.vue.modele);
         }else{
-          const noms = piecesCibles.map(p => p.name);
-          contenuSortie = extracteur.exportAssemblageFiltre(noms);
+          if(fichiers.size > 1)
+            throw new Error("Les pièces viennent de plusieurs fichiers : un STEP ne se tire que d'un seul fichier à la fois (masquez les autres, ou exportez en GLB).");
+          const stepTexte = [...fichiers][0].userData.stepTexte;
+          if(!stepTexte) throw new Error("Le texte source STEP n'est pas disponible pour ce fichier.");
+          contenuSortie = new StepExtractor(stepTexte).exportAssemblageFiltre(piecesCibles.map(p => p.name));
         }
 
         telechargerFichier(contenuSortie, nomFichier, "application/octet-stream");
       }else{
-        const masquesTemp = [];
+        /* Comme exporterGlb : mètres, sans la surbrillance de la sélection ; une pièce cochée mais
+           masquée (elle ou un parent) est montrée le temps de l'export, sinon le fichier sortait vide. */
+        const sel = this.arbre.selection;
+        if(sel) this.arbre.peindre(sel, false);
+        const masquesTemp = [], montres = [];
+        for(const p of piecesCibles)
+          for(let o = p; o && o !== this.vue.modele; o = o.parent)
+            if(!o.visible){ o.visible = true; montres.push(o); }
+        const remettre = () => {
+          for(const o of masquesTemp) o.visible = true;
+          for(const o of montres) o.visible = false;
+          this.vue.modele.scale.setScalar(1); this.vue.modele.updateMatrixWorld(true);
+          if(sel) this.arbre.peindre(sel, true);
+        };
         this.vue.modele.traverse(o => {
           if(o.isMesh && !piecesCibles.includes(o)){
             if(o.visible){
@@ -867,13 +875,15 @@ export class Interface {
           }
         });
 
+        this.vue.modele.scale.setScalar(0.001);
+        this.vue.modele.updateMatrixWorld(true);
         await new Promise((resoudre, rejeter) => {
           new GLTFExporter().parse(this.vue.modele, (glb) => {
-            for(const o of masquesTemp) o.visible = true;
+            remettre();
             telechargerFichier(glb, nomFichier, "model/gltf-binary");
             resoudre();
           }, (err) => {
-            for(const o of masquesTemp) o.visible = true;
+            remettre();
             rejeter(err);
           }, { binary:true });
         });
@@ -1012,7 +1022,7 @@ export class Interface {
     lier("cbAretes", "aretes", Boolean, () => this.definirAretes(prefs.aretes));
     lier("rgAretes", "angleAretes", parseFloat, () => this.recalculerAretes());
     lier("selFond", "fond", (v) => v, () => this.vue.appliquerFond(prefs.fond));
-    lier("selTheme", "theme", (v) => v, (val) => this.definirTheme(val, true));
+    lier("selTheme", "theme", (v) => v, () => this.definirTheme(prefs.theme, true));
 
     lier("rgLin", "tolLineaire", parseFloat);
     lier("rgAng", "tolAngulaire", parseFloat);
