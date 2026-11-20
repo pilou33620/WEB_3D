@@ -852,7 +852,7 @@ export function pointsAccroche(maillage){
   if(!topo) return null;
   maillage.updateWorldMatrix(true, false);
   const garde = maillage.userData.accroches;
-  if(garde && garde.matrice.equals(maillage.matrixWorld)) return garde.points;
+  if(garde && garde.topo === topo && garde.matrice.equals(maillage.matrixWorld)) return garde.points;   // topo refaite (angle des arêtes) : chaînes renumérotées
 
   const points = [];
   const sommets = new Map();
@@ -877,7 +877,7 @@ export function pointsAccroche(maillage){
     }
     if(e.type === "cercle") points.push({ p:e.centre.clone(), type:e.ferme ? "centreCercle" : "centreArc", aretes:[i] });
   }
-  maillage.userData.accroches = { matrice:maillage.matrixWorld.clone(), points };
+  maillage.userData.accroches = { matrice:maillage.matrixWorld.clone(), topo, points };
   return points;
 }
 
@@ -1555,11 +1555,12 @@ export function mesurerAretes(A, B){
     const ficheMin = fiche("Cercle et arête droite", ["Bord à bord", mm(mini.d)], ["Centre → arête", mm(dAxe)], dim);
     const etMax = `${mm(maxi.d)} (Max)`;
     const ficheMax = fiche("Cercle et arête droite", ["Bord à bord max", mm(maxi.d)], ["Centre → arête", mm(dAxe)], dim);
+    const [m1, m2] = A === cercle ? [mini.c1, mini.c2] : [mini.c2, mini.c1];   // p1 sur la sélection 1, comme le glissé
     return {
-      p1:mini.c2, p2:mini.c1, etiquette:etMin, fiche:ficheMin,
+      p1:m1, p2:m2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c2, p2:mini.c1, d:mini.d, etiquette:etMin, fiche:ficheMin },
-      max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, fiche:ficheMax },
+      min:{ p1:m1, p2:m2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -1811,11 +1812,12 @@ export function mesurerFaces(A, B){
         mini.d - d > Math.max(cyl.tol, plan.tol) ? ["Plus court entre les faces", mm(mini.d)] : null];
       const et = mm(d), fch = fiche("Cylindre et plan", ["Bout → plan", mm(d)], ...communesDebout);
       const etMax = `${mm(maxi.d)} (Max)`, fchMax = fiche("Cylindre et plan", ["Surface → plan max", mm(maxi.d)], ...communesDebout);
+      const [q1, q2] = A === plan ? [pied, bout] : [bout, pied];       // p1 sur la sélection 1
       return {
-        p1:pied, p2:bout, etiquette:et, fiche:fch,
+        p1:q1, p2:q2, etiquette:et, fiche:fch,
         extensible:true, positionActuelle:"min",
-        min:{ p1:pied, p2:bout, d, etiquette:et, fiche:fch },
-        max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, fiche:fchMax },
+        min:{ p1:q1, p2:q2, d, etiquette:et, fiche:fch },
+        max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:fchMax },
         glisser,
       };
     }
@@ -1824,11 +1826,12 @@ export function mesurerFaces(A, B){
     const ficheMin = fiche("Cylindre et plan", ["Surface → plan", mm(mini.d)], ...communes);
     const etMax = `${mm(maxi.d)} (Max)`;
     const ficheMax = fiche("Cylindre et plan", ["Surface → plan max", mm(maxi.d)], ...communes);
+    const [m1, m2] = A === cyl ? [mini.c1, mini.c2] : [mini.c2, mini.c1];   // p1 sur la sélection 1
     return {
-      p1:mini.c2, p2:mini.c1, etiquette:etMin, fiche:ficheMin,
+      p1:m1, p2:m2, etiquette:etMin, fiche:ficheMin,
       extensible:true, positionActuelle:"min",
-      min:{ p1:mini.c2, p2:mini.c1, d:mini.d, etiquette:etMin, fiche:ficheMin },
-      max:{ p1:maxi.c2, p2:maxi.c1, d:maxi.d, etiquette:etMax, fiche:ficheMax },
+      min:{ p1:m1, p2:m2, d:mini.d, etiquette:etMin, fiche:ficheMin },
+      max:{ p1:maxi.c1, p2:maxi.c2, d:maxi.d, etiquette:etMax, fiche:ficheMax },
       glisser,
     };
   }
@@ -2248,7 +2251,10 @@ export function mesurerEntites(A, B){
   }
   if(A.genre === "arete" && B.genre === "arete") return mesurerAretes(A, B);
   if(A.genre === "face" && B.genre === "face") return mesurerFaces(A, B);
-  return mesurerAreteFace(A, B);
+  const r = mesurerAreteFace(A, B);
+  /* Construite arête d'abord : face cliquée en premier, on remet p1 sur elle (ΔX/ΔY/ΔZ dans l'ordre des clics, comme le glissé). */
+  if(r && A.genre === "face") for(const o of [r, r.min, r.max]) if(o && o.p1 && o.p2) [o.p1, o.p2] = [o.p2, o.p1];
+  return r;
 }
 
 /* ---------------------------------------------------------------------------

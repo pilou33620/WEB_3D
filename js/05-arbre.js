@@ -73,7 +73,7 @@ export class Arbre {
     nd.className = "nd";
     nd.style.paddingLeft = (4 + profondeur * 13) + "px";
 
-    const enfants = objet.children.filter(o => o.isMesh || o.isGroup);
+    const enfants = objet.children.filter(o => !o.userData.estArete && (o.isMesh || o.isGroup || o.children.length));   // un nœud glTF sans maillage est un Object3D
     const fl = document.createElement("span");
     fl.className = "fl" + (enfants.length ? "" : " vide");
     fl.textContent = "▼";
@@ -131,7 +131,7 @@ export class Arbre {
 
   replierTout(){
     for(const [objet, nd] of this.index){
-      if(objet.isGroup && objet.children.length) this.replie.add(objet);
+      if(!objet.isMesh && objet.children.length) this.replie.add(objet);   // groupes et nœuds glTF (Object3D)
       void nd;
     }
     this.reconstruire();
@@ -242,6 +242,8 @@ export class Arbre {
     const deja = this.isole === objet;      // toutAfficher oublie this.isole
     if(this.isole) this.toutAfficher();
     if(deja) return;
+    /* Un ensemble masqué (ou sous un parent masqué) : ses maillages visibles ne se verraient pas. */
+    for(let o = objet; o && o !== this.vue.modele; o = o.parent) if(!o.isMesh && !o.visible) this.basculerVisible(o, true, { heritage:false });
     this.vue.modele.traverse(o => {
       if(o.isMesh) this.basculerVisible(o, estDansBranche(o, objet), { heritage:false });
     });

@@ -169,10 +169,22 @@ async function bati(ops, id, parametres = []){
   verifier("rainure : la même couronne, enlevée", [ra.erreur, Math.round(ra.vol())], [undefined, Math.round(40 * 40 * 10 - (1600 - 36 * 36) * 3)]);
   const rp = await bati([boitier, contour, { id:"s", type:"repos", esquisse:"e", corps:"", largeur:"2", hauteur:"3" }], "s");
   vrai("repos : une couronne autour du contour", !rp.erreur && rp.vol() > 40 * 40 * 10, rp.erreur);
+  /* Inversé, un contour décentré reste à sa place (plus de dessin en miroir). */
+  const demi = boite("b", 40, 20, 10, -20, -20, 0);
+  const li = await bati([demi, esqu("e", XY, rect(-20, -20, 20, 0)), { id:"s", type:"levre", esquisse:"e", corps:"", mode:"levre", largeur:"2", hauteur:"3", jeu:"0", inverse:true }], "s");
+  const [bmin, bmax] = li.corps[0]?.shape.boundingBox.bounds || [[], []];
+  verifier("lèvre inversée : sous le plan, sans miroir", [li.erreur, li.n, Math.round(bmax[1] * 1e3) / 1e3, Math.round(bmin[2]), Math.round(li.vol())], [undefined, 1, 0, -3, Math.round(40 * 20 * 10 + (800 - 36 * 16) * 3)]);
   const un = pts("e", { base:"XY", decalage:"10" }, [[0, 0]]);
   const cl = await bati([boitier, un, { id:"s", type:"clip", esquisse:"e", corps:"", mode:"crochet", longueur:"10", largeur:"6", epaisseur:"1.5", crochet:"2", surplomb:"1", jeu:"0.2", angle:"0" }], "s");
   const crochet = (1.5 * 10 + 0.5 * 1 * 2) * 6;
   verifier("clip : la poutre et son crochet", [cl.erreur, Math.round(cl.vol())], [undefined, Math.round(16000 + crochet)]);
+  /* L'orientation se compte dans le repère de l'esquisse, quel que soit le plan et le sens : le crochet (2,5 mm) part vers l'angle demandé. */
+  const cube = boite("b", 2, 2, 2, -1, -1, -1);
+  const sensClip = async (plan, angle, inverse) => {
+    const r = await bati([cube, pts("e", { base:plan }, [[0, 0]]), { id:"s", type:"clip", esquisse:"e", corps:"", mode:"crochet", longueur:"10", largeur:"6", epaisseur:"1.5", crochet:"2", surplomb:"1", jeu:"0", angle, inverse }], "s");
+    return r.erreur || Math.round(r.corps[0].shape.boundingBox.bounds[1][1] * 10) / 10;
+  };
+  verifier("clip : orientation dans le repère de l'esquisse", [await sensClip("XY", "90", false), await sensClip("XY", "90", true), await sensClip("YZ", "0", false), await sensClip("YZ", "0", true)], [2.5, 2.5, 2.5, 2.5]);
   const lg = await bati([boitier, un, { id:"s", type:"clip", esquisse:"e", corps:"", mode:"logement", longueur:"5", largeur:"6", epaisseur:"1.5", crochet:"2", surplomb:"1", jeu:"0" }], "s");
   verifier("clip : le logement est enlevé", [lg.erreur, Math.round(lg.vol())], [undefined, Math.round(16000 - 2.5 * 6 * 5)]);
 }
@@ -664,6 +676,55 @@ async function bati(ops, id, parametres = []){
     { id:"c", type:"point", x:20, y:3 }, { id:"d", type:"point", x:30, y:3 }, { id:"m", type:"ligne", p1:"c", p2:"d" });
   col.contraintes.push({ id:"k", type:"colineaire", a:"l", b:"m" }, { id:"h", type:"horizontal", a:"l" });
   verifier("colinéaire : les deux lignes sur la même droite", [resoudre(gcs, col, num).ok, Math.abs(P(col, "c").y - P(col, "a").y) < 1e-6, Math.abs(P(col, "d").y - P(col, "a").y) < 1e-6], [true, true, true]);
+
+  /* Audit : coïncidence en double (boucle infinie), angle au coin, rotation d'un rectangle, échelle des cotes X/Y. */
+  const dbl = nouvelle();
+  dbl.elements.push({ id:"a", type:"point", x:0, y:0 }, { id:"b", type:"point", x:0, y:0 });
+  dbl.contraintes.push({ id:"k1", type:"coincident", a:"a", b:"b" }, { id:"k2", type:"coincident", a:"b", b:"a" });
+  verifier("auto-contraindre : une coïncidence en double ne fige pas", Plus.autoContraindre(dbl), 0);
+  for(const [p1, p2] of [["A", "B"], ["B", "A"]]){
+    const an = nouvelle();
+    an.elements.push({ id:"A", type:"point", x:0, y:0 }, { id:"B", type:"point", x:10, y:0 }, { id:"C", type:"point", x:0, y:5 }, { id:"l1", type:"ligne", p1, p2 }, { id:"l2", type:"ligne", p1:"B", p2:"C" });
+    an.contraintes.push({ id:"f1", type:"fixe", a:"A", x:0, y:0 }, { id:"f2", type:"fixe", a:"B", x:10, y:0 }, { id:"L", type:"longueur", a:"l2", expr:String(Math.hypot(10, 5)) },
+      { id:"k", type:"angle", a:"l1", b:"l2", signe:-1, sommet:"B", expr:"30" });
+    const A = P(an, "A"), B = P(an, "B"), C = P(an, "C"), ok = resoudre(gcs, an, Number).ok;
+    const coin = Math.abs(Math.atan2((A.x - B.x) * (C.y - B.y) - (A.y - B.y) * (C.x - B.x), (A.x - B.x) * (C.x - B.x) + (A.y - B.y) * (C.y - B.y))) * 180 / Math.PI;
+    verifier(`cote d'angle au coin, ligne tracée ${p1}→${p2}`, [ok, Math.round(coin * 100) / 100], [true, 30]);
+  }
+  const ro = nouvelle();
+  ro.elements.push(...rect(0, 0, 20, 10));
+  ro.contraintes.push({ id:"h1", type:"horizontal", a:"l1" }, { id:"h3", type:"horizontal", a:"l3" }, { id:"v2", type:"vertical", a:"l2" }, { id:"v4", type:"vertical", a:"l4" });
+  Plus.transformerEsquisse(ro, ["l1", "l2", "l3", "l4"], { angle:30 });
+  const ok30 = resoudre(gcs, ro, Number).ok, q2 = P(ro, "p2");
+  verifier("rotation de 30° : le rectangle tourne au lieu de se déformer", [ok30, Math.round(q2.x * 100) / 100, Math.round(q2.y * 100) / 100], [true, 17.32, 10]);
+  const ech = nouvelle();
+  ech.elements.push(...rect(0, 0, 10, 5));
+  ech.contraintes.push({ id:"kx", type:"distanceX", a:"p1", b:"p2", expr:"10" }, { id:"kl", type:"longueur", a:"l2", expr:"5" });
+  Plus.echelleEsquisse(ech, ["l1", "l2", "l3", "l4"], 2, { x:0, y:0 });
+  verifier("échelle : la cote X posée sur les points suit", ech.contraintes.map(k => k.expr), ["20", "10"]);
+}
+
+/* ---------------- non-régression : audit complet ---------------- */
+{
+  const cercleE = (id, plan, r) => esqu(id, plan, [{ id:"o", type:"point", x:0, y:0 }, { id:"k", type:"cercle", c:"o", r }]);
+  const trous = (extra = {}) => ({ id:"s", type:"percage", esquisse:"e", corps:"", diametre:"5", traversant:false, profondeur:"5", forme:"simple", ...extra });
+  const bloc = boite("b", 40, 20, 10, -20, -10, -10);
+  const recouv = await bati([bloc, pts("e", XY, [[0, 0], [3, 0]]), trous()], "s");
+  /* Union de deux disques Ø5 à 3 mm : 2·π·2,5² − lentille (12,5·acos 0,6 − 1,5·4), sur 5 mm. */
+  verifier("perçage : deux trous qui se recouvrent creusent bien", [recouv.erreur, Math.round(8000 - recouv.vol())], [undefined, Math.round((2 * Math.PI * 6.25 - (12.5 * Math.acos(0.6) - 6)) * 5)]);
+  const trav = await bati([boite("b", 20, 20, 20, -10, -10, 0), pts("e", { base:"XY", decalage:"10" }, [[0, 0]]), trous({ traversant:true })], "s");
+  verifier("perçage traversant : des deux côtés du plan", [trav.erreur, Math.round(8000 - trav.vol())], [undefined, Math.round(Math.PI * 6.25 * 20)]);
+  const rep = await bati([boite("b", 20, 10, 10), { id:"s", type:"repetition", corps:"", mode:"lineaire", axe:"X", nombre:"3", pas:"10" }], "s");
+  verifier("répétition : exemplaires qui se chevauchent", [rep.erreur, Math.round(rep.vol())], [undefined, 4000]);
+  const rch = await bati([boite("b", 2, 2, 2, -1, -1, 0), cercleE("e", XY, 20), { id:"s", type:"repChemin", corps:"", chemin:"e", nombre:"6", orienter:false, separe:true }], "s");
+  verifier("répétition sur chemin : un cercle", [rch.erreur, rch.n], [undefined, 6]);
+  const loin = { id:"pl", type:"plan", mode:"decale", base:"XY", decalage:"105", angle:"0", axe:"x" };
+  const dvl = await bati([boite("b", 10, 10, 10, 100, 100, 100), loin, { id:"s", type:"diviser", corps:"", mode:"plan", plan:"pl" }], "s");
+  verifier("diviser : corps loin de l'origine du plan", [dvl.erreur, dvl.n], [undefined, 2]);
+  const bos = await bati([boite("b", 2, 2, 2, -1, -1, -1), pts("e", { base:"YZ" }, [[0, 0]]), { id:"s", type:"bossage", esquisse:"e", corps:"", de:"8", di:"0", hauteur:"10", profondeur:"0", depouille:"0", nervures:"1", epNervure:"1", largeurNervure:"6" }], "s");
+  verifier("bossage : nervure sur l'axe x de l'esquisse (YZ → +Y)", [bos.erreur, Math.round(bos.corps[0].shape.boundingBox.bounds[1][1])], [undefined, 10]);
+  const lv = await bati([boite("b", 40, 40, 10, -20, -20, 0), esqu("e", { base:"XY", decalage:"10" }, rect(-20, -20, 20, 20)), { id:"s", type:"levre", esquisse:"e", corps:"", mode:"rainure", largeur:"2", hauteur:"3", jeu:"0.2" }], "s");
+  verifier("rainure avec jeu : ouverte jusqu'au bord", [lv.erreur, Math.round(lv.vol())], [undefined, Math.round(16000 - (1600 - 35.6 * 35.6) * 3.2)]);
 }
 
 console.log(ko ? `banc-conception-plus : ${ko} échec(s), ${ok} OK` : `banc-conception-plus : OK (${ok} vérifications)`);

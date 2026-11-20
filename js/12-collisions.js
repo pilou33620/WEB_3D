@@ -59,7 +59,7 @@ export async function chercherCollisions(racine, { tol = 0.1, surProgres, visibl
     const [a, b, zone, ba, bb] = paires[k];
     const segments = croiser(sommets(a), sommets(b), zone, tol);
     if(segments) resultats.push({ a, b, segments, longueur:longueur(segments) });
-    else if(contenue(a, b, ba, bb, sommets)) resultats.push({ a, b, segments:[], longueur:0, contenue:true });
+    else if(contenue(a, b, ba, bb, sommets) || penetre(sommets(a), sommets(b), ba, bb, tol)) resultats.push({ a, b, segments:[], longueur:0, contenue:true });
     /* Rendre la main de temps en temps : le voile d'attente doit vivre. Sauf si l'on
        demande le contraire (onglet caché : chaque pause y coûterait au moins une seconde). */
     if(pauses && performance.now() - t > 40){
@@ -86,6 +86,40 @@ function contenue(a, b, ba, bb, sommets){
     if(rayon.intersectTriangle(u, v, w, false, x)) n++;      // false : les deux faces comptent
   }
   return n % 2 === 1;
+}
+
+/** Faces coplanaires : leurs traversées tombent dans la tolérance (cubes décalés, doublon exact, bloc enfoncé
+    de même section) et croiser() ne voit rien. Un point pris à `tol` sous la peau de l'une, au milieu d'un
+    triangle, qui tombe dans la matière de l'autre trahit la pénétration ; deux pièces posées l'une sur l'autre, non. */
+function penetre(sa, sb, ba, bb, tol){
+  const zone = ba.clone().intersect(bb), t = zone.getSize(new THREE.Vector3());
+  if(zone.isEmpty() || Math.min(t.x, t.y, t.z) <= tol) return false;
+  return sousLaPeau(sa, sb, zone, tol) || sousLaPeau(sb, sa, zone, tol);
+}
+
+function sousLaPeau(s, autre, zone, tol){
+  const u = new THREE.Vector3(), v = new THREE.Vector3(), w = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Vector3();
+  /* Sens des triangles par le volume signé : un fichier aux normales retournées ne change pas le côté « matière ». */
+  let vol = 0;
+  for(let i = 0; i < s.length; i += 9){ u.fromArray(s, i); v.fromArray(s, i + 3); w.fromArray(s, i + 6); vol += u.dot(n.crossVectors(v, w)); }
+  const versDedans = vol >= 0 ? -1 : 1;
+  const nb = s.length / 9, pas = Math.max(1, Math.floor(nb / 48));     // 48 essais au plus : le test du point coûte un tour de l'autre maillage
+  const rayon = new THREE.Ray(new THREE.Vector3(), new THREE.Vector3(0.5773, 0.5774, 0.5775).normalize()), x = new THREE.Vector3();
+  for(let k = 0; k < nb; k += pas){
+    u.fromArray(s, k * 9); v.fromArray(s, k * 9 + 3); w.fromArray(s, k * 9 + 6);
+    c.copy(u).add(v).add(w).divideScalar(3);
+    if(!zone.containsPoint(c)) continue;
+    n.subVectors(v, u).cross(w.clone().sub(u));
+    if(n.lengthSq() < 1e-24) continue;
+    rayon.origin.copy(c).addScaledVector(n.normalize(), versDedans * tol);
+    let traverses = 0;
+    for(let t = 0; t < autre.length; t += 9){
+      u.fromArray(autre, t); v.fromArray(autre, t + 3); w.fromArray(autre, t + 6);
+      if(rayon.intersectTriangle(u, v, w, false, x)) traverses++;
+    }
+    if(traverses % 2 === 1) return true;
+  }
+  return false;
 }
 
 function longueur(s){

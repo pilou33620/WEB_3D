@@ -401,6 +401,7 @@ const OPERATIONS = {
     const profil = dessinRegions(R, esq).sketchOnPlane(planNoyau(R, esq, v).plan);
     if(!profil.wire) throw new Error("le profil d'un balayage doit être un seul contour, sans trou");
     const c3 = ctx.doc.operations.find(o => o.id === op.chemin && o.type === "chemin3d");
+    if(c3 && ctx.ignorees.has(c3.id)) throw new Error(`« ${c3.nom} » est suspendu ou après le curseur`);
     if(c3) return appliquer(etat, R.genericSweep(profil.wire, fil3d(R, c3, v).fil, { frenet:true }), op);
     const chem = chercherEsquisse(ctx, op.chemin);
     const { ouverts, regions } = profils(chem);
@@ -441,6 +442,7 @@ const OPERATIONS = {
       pts = [[0, 1], [rt, 1], [rt, -pt], [r, -pt], [r, -prof], [0, -prof]];
     }else if(op.forme === "fraisure"){
       const rt = v(op.diamTete) / 2, a = v(op.angleTete ?? 90) * Math.PI / 360;
+      if(!(a > 0 && a < Math.PI / 2)) throw new Error("fraisure : angle entre 0 et 180°");
       const h = (rt - r) / Math.tan(a);
       if(!(a > 0 && a < Math.PI / 2)) throw new Error("angle de fraisure entre 0 et 180°");
       if(!(rt > r && h < prof)) throw new Error("fraisure : diamètre de tête > diamètre du trou, et pas plus profonde que le trou");

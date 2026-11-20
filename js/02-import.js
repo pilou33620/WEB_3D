@@ -365,7 +365,7 @@ function unite3mf(tampon){
     const nom = Object.keys(zip).find(n => n.toLowerCase().endsWith(".model"));
     if(!nom) return "millimeter";
     const entete = strFromU8(zip[nom].slice(0, 4096), true);
-    const m = /<model[^>]*\bunit\s*=\s*"([a-z]+)"/i.exec(entete);
+    const m = /<model[^>]*\bunit\s*=\s*["']([a-z]+)["']/i.exec(entete);
     return m ? m[1].toLowerCase() : "millimeter";
   }catch(e){
     /* Archive illisible ici : le lecteur dira mieux que nous ce qui cloche. */

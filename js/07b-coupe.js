@@ -196,6 +196,7 @@ export class CoupeManager {
     this.offsetMm = 0;
     this.majBornes();
     this.majPanneauAxes();
+    this.majPanneauValeurs();
     this.appliquer();
   }
 
@@ -669,6 +670,7 @@ export class CoupeManager {
     const dist = p.querySelector("#coupeDist");
     dist.onchange = (e) => {
       this.definirOffset(parseFloat(e.target.value) || 0);
+      e.target.value = (Math.round(this.offsetMm * 100) / 100).toFixed(2);   // la valeur bornée, même si le champ a encore le focus
     };
 
     // Remise à zéro

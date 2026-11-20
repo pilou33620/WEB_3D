@@ -317,7 +317,7 @@ export class Navigation {
     let delta = ev.deltaY;
     if(ev.deltaMode === 1) delta *= 16;        // lignes
     else if(ev.deltaMode === 2) delta *= 100;  // pages
-    if(prefs.moletteInversee) delta = -delta;
+    if(prefs.moletteInversee && !pincement) delta = -delta;   // le pincement suit les doigts, comme sur écran tactile
     const facteur = Math.pow(0.9988, -delta * prefs.sensZoom * (pincement ? 2.2 : 1));
     this.zoomer(facteur, ev);
   }

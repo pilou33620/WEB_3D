@@ -408,7 +408,7 @@ export class Vue3D {
       m.transparent = this.modeTransparent || m.userData?.transparentDorigine || false;
       m.opacity = this.modeTransparent ? 0.28 : (m.userData?.opaciteDorigine ?? 1);
       m.depthWrite = !this.modeTransparent;
-      m.side = this.modeTransparent ? THREE.DoubleSide : (m.userData?.coteDorigine ?? THREE.FrontSide);
+      m.side = this.modeTransparent || this.plansCoupe.length ? THREE.DoubleSide : (m.userData?.coteDorigine ?? THREE.FrontSide);   // coupée, une pièce montre son intérieur
       m.needsUpdate = true;
     }
     this.invalider();
@@ -434,7 +434,7 @@ export class Vue3D {
     });
 
     if(!actif){
-      this.plansCoupe = [];
+      this.plansCoupe.length = 0;     // en place : les surlignages de mesure gardent ce même tableau
       for(const m of this.materiaux){
         m.clippingPlanes = null;
         m.side = this.modeTransparent ? THREE.DoubleSide : (m.userData?.coteDorigine ?? THREE.FrontSide);
@@ -462,7 +462,8 @@ export class Vue3D {
       plan = new THREE.Plane().setFromNormalAndCoplanarPoint(n.clone().negate(), pos);
     }
 
-    this.plansCoupe = [plan];
+    this.plansCoupe.length = 0;
+    this.plansCoupe.push(plan);
     for(const m of this.materiaux){
       m.clippingPlanes = this.plansCoupe;
       /* Une pièce coupée montre son intérieur : sans les faces arrières, on

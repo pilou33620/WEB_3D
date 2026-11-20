@@ -37,9 +37,10 @@ async function noyau(){
 }
 
 /** Les polylignes des arêtes en segments (paires de points), avec l'arête de chaque segment. */
-function segmentsAretes(m){
+function segmentsAretes(m, coutures = new Set()){
   const seg = [], arete = [];
   m.edgeGroups.forEach((g, k) => {
+    if(coutures.has(g.edgeId)) return;
     for(let i = g.start; i < g.start + g.count - 1; i++){
       seg.push(...m.lines.slice(i * 3, i * 3 + 6));
       arete.push(k);
@@ -94,7 +95,10 @@ function mailler(c, finesse, transferts, apparence = null){
   /* Arrondie : une fois maillé, l'encombrement du noyau bouge d'un rien, et la tolérance ne doit pas le suivre. */
   const tol = +Math.min(1, Math.max(0.005, finesse * Math.hypot(e0[1][0] - e0[0][0], e0[1][1] - e0[0][1], e0[1][2] - e0[0][2]))).toPrecision(2);
   const m = c.shape.mesh({ tolerance:tol, angularTolerance:ANGLE_MAILLAGE });
-  const e = segmentsAretes(c.shape.meshEdges({ tolerance:tol, angularTolerance:ANGLE_MAILLAGE }));
+  /* La couture d'un cylindre, d'une sphère… n'est pas une arête qu'on voit : ni tracée, ni désignable (un congé dessus échoue). */
+  const coutures = new Set();
+  for(const f of c.shape.faces) for(const a of f.edges) if(oc.BRep_Tool.IsClosed(a.wrapped, f.wrapped)) coutures.add(a.hashCode);
+  const e = segmentsAretes(c.shape.meshEdges({ tolerance:tol, angularTolerance:ANGLE_MAILLAGE }), coutures);
   const position = Float32Array.from(m.vertices), normale = Float32Array.from(m.normals), index = Uint32Array.from(m.triangles);
   transferts.push(position.buffer, normale.buffer, index.buffer, e.position.buffer, e.arete.buffer);
   let proprietes = null;

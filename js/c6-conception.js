@@ -80,6 +80,9 @@ function appliquerNorme(o){
   if(o.forme === "fraisure") o.diamTete = String(t.fraisureD);
 }
 
+/** Champs texte qui contiennent des expressions (évaluées par le noyau) : renommer un paramètre doit les suivre. */
+const EXPR_TEXTE = { chemin3d:["points"], liaison:["loi"] };
+
 const CHAMPS = {
   esquisse:[NOM,
     { cle:"plan", type:"choix", nom:"Plan",
@@ -185,7 +188,7 @@ function nouvelleOperation(type, ctrl){
   const defauts = {
     ...defautsAteliers({ derniere, avant:esquisses[esquisses.length - 2]?.id || "", mode, P, premierCorps:ctrl.nomsCorps[0] || "" }),
     ...defautsPlus({ derniere, mode, composants:ctrl.doc.composants || [] }),
-    extrusion:{ esquisse:derniere, distance:"10", sens:"un", operation:mode, corps:"" },
+    extrusion:{ esquisse:derniere, distance:"10", distance2:"10", sens:"un", operation:mode, corps:"" },
     revolution:{ esquisse:derniere, axe:"y", angle:"360", operation:mode, corps:"" },
     balayage:{ esquisse:esquisses[esquisses.length - 2]?.id || "", chemin:derniere, operation:mode, corps:"" },
     lissage:{ esquisses:[], regle:false, operation:mode, corps:"" },
@@ -572,7 +575,14 @@ class Conception {
      ========================================================================== */
   sauverOnglet(){
     this.onglets[this.ongletActif] = { doc:this.doc, chemin:this.cheminProjet, modifie:this.modifie,
-      pileAnnuler:this.pileAnnuler, pileRefaire:this.pileRefaire, selOps:this.selOps };
+      pileAnnuler:this.pileAnnuler, pileRefaire:this.pileRefaire, selOps:this.selOps, reprises:this.reprises };
+  }
+
+  /** Une opération ou une esquisse en cours : ce qui empile un état d'annulation y mêlerait l'opération pas encore validée. */
+  occupe(){
+    if(!this.edition && !this.editeur.ouvert) return false;
+    avertir("Terminez d'abord l'opération ou l'esquisse en cours.");
+    return true;
   }
 
   chargerOnglet(i){
@@ -580,6 +590,7 @@ class Conception {
     this.ongletActif = i;
     this.doc = o.doc; this.cheminProjet = o.chemin; this.modifie = o.modifie;
     this.pileAnnuler = o.pileAnnuler; this.pileRefaire = o.pileRefaire; this.selOps = o.selOps;
+    this.reprises = o.reprises || [];     // les points de reprise d'une pièce ne se rejouent pas sur une autre
     this.selOp = null;
     this.resultat = null;
     this.premiereVue = true;
@@ -1091,6 +1102,7 @@ class Conception {
     $("bUnites").onclick = (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       this.menu(Object.keys(UNITES).map(u => ({ texte:`${this.doc.unite === u ? "✓ " : ""}${u === "in" ? "pouce (in)" : u}`, action:() => {
+        if(this.occupe()) return;
         this.memoriser();
         this.doc.unite = u;
         this.marquerModifie();
@@ -1135,6 +1147,7 @@ class Conception {
   }
 
   async enregistrerVue(){
+    if(this.occupe()) return;
     const nom = await demanderTexte("Enregistrer la vue", "Nom", `Vue ${(this.doc.vues || []).length + 1}`);
     if(!nom?.trim()) return;
     const c = this.vue.camera();
@@ -1161,11 +1174,14 @@ class Conception {
   }
 
   ouvrirConfigurations(){
+    if(this.occupe()) return;
     const avant = JSON.stringify(this.doc);
+    const confAvant = JSON.stringify([this.doc.configActive, this.doc.configurations]);
     this.remplirConfigurations();
     const dlg = $("dlgConfigurations");
     dlg.onclose = () => {
-      if(this.doc.configActive) appliquerConfiguration(this.doc, this.doc.configActive);
+      /* Seulement si la boîte a changé la configuration : sinon on écraserait les paramètres modifiés depuis dans ƒx. */
+      if(this.doc.configActive && JSON.stringify([this.doc.configActive, this.doc.configurations]) !== confAvant) appliquerConfiguration(this.doc, this.doc.configActive);
       if(JSON.stringify(this.doc) === avant) return;
       this.memoriser(avant);
       this.marquerModifie();
@@ -1557,7 +1573,8 @@ class Conception {
     switch(ch.type){
       case "texte": {
         const t = document.createElement("input"); t.type = "text"; t.value = lire() || "";
-        t.onchange = () => { ecrire(t.value.trim() || op.nom); $("titreOperation").textContent = `${TYPES[op.type].icone} ${nomHistorique(op)}`; this.majHistorique(); };
+        /* Vidé : reste vide (loi « x », points d'un chemin), sauf le nom qui revient au nom de l'opération. */
+        t.onchange = () => { ecrire(t.value.trim() || (ch.cle === "nom" ? op.nom : "")); $("titreOperation").textContent = `${TYPES[op.type].icone} ${nomHistorique(op)}`; this.majHistorique(); };
         val.appendChild(t);
         break;
       }
@@ -2131,7 +2148,7 @@ class Conception {
       const o = document.createElement("option"); o.value = nom; o.textContent = `${nom} (${this.densite(nom)} g/cm³)`; s.appendChild(o);
     }
     s.value = this.doc.materiau;
-    s.onchange = () => { this.memoriser(); this.doc.materiau = s.value; this.marquerModifie(); this.afficherProprietes(this.arbre.selection); };
+    s.onchange = () => { if(this.occupe()){ s.value = this.doc.materiau || ""; return; } this.memoriser(); this.doc.materiau = s.value; this.marquerModifie(); this.afficherProprietes(this.arbre.selection); };
     if(objet) hote.appendChild(bloc); else hote.replaceChildren(bloc);
     if(!corps.length && !objet) hote.innerHTML = '<p class="vide-p">Aucun corps pour l\'instant.</p>';
   }
@@ -2202,8 +2219,8 @@ class Conception {
     const sortie = this.doc.parametres.filter(p => p.nom !== nom && cite(p.expr)).map(p => `paramètre ${p.nom}`);
     for(const op of this.doc.operations){
       const champs = (CHAMPS[op.type] || []).filter(ch => ch.type === "expr" && !ch.get);
-      const dansCotes = op.type === "esquisse" && op.contraintes.some(k => cite(k.expr) || cite(k.x) || cite(k.y));
-      if(dansCotes || champs.some(ch => cite(op[ch.cle]))) sortie.push(op.nom);
+      const dansCotes = op.type === "esquisse" && (op.contraintes.some(k => cite(k.expr) || cite(k.x) || cite(k.y)) || cite(op.plan?.decalage));
+      if(dansCotes || champs.some(ch => cite(op[ch.cle])) || (EXPR_TEXTE[op.type] || []).some(k => cite(op[k]))) sortie.push(op.nom);
     }
     return [...new Set(sortie)];
   }
@@ -2228,6 +2245,7 @@ class Conception {
     for(const op of this.doc.operations){
       /* Seuls les champs d'expression : renommer « y » ne doit toucher ni un axe, ni le base64 d'un STEP. */
       for(const ch of CHAMPS[op.type] || []) if(ch.type === "expr" && !ch.get && typeof op[ch.cle] === "string") op[ch.cle] = remplace(op[ch.cle]);
+      for(const k of EXPR_TEXTE[op.type] || []) op[k] = remplace(op[k]);
       if(op.type === "esquisse"){
         for(const c of op.contraintes){
           if(c.expr !== undefined) c.expr = remplace(c.expr);
@@ -2623,10 +2641,12 @@ function deplacable(poignee, panneau, cle){
     const lacher = () => {
       removeEventListener("pointermove", bouger);
       removeEventListener("pointerup", lacher);
-      localStorage.setItem(CLE, JSON.stringify({ x:parseFloat(panneau.style.left) || 0, y:parseFloat(panneau.style.top) || 0 }));
+      removeEventListener("pointercancel", lacher);
+      try{ localStorage.setItem(CLE, JSON.stringify({ x:parseFloat(panneau.style.left) || 0, y:parseFloat(panneau.style.top) || 0 })); }catch(_){ /* stockage bloqué : la place n'est pas retenue */ }
     };
     addEventListener("pointermove", bouger);
     addEventListener("pointerup", lacher);
+    addEventListener("pointercancel", lacher);
   });
 }
 

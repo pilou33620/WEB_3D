@@ -10,6 +10,14 @@
    ============================================================================= */
 "use strict";
 
+/** Une chaîne STEP décodée : '' → ', \X2\hhhh…\X0\ (UTF-16), \X\hh (latin-1), \S\c (c + 128). OpenCascade donne les noms ainsi. */
+export function decoderChaineStep(s){
+  return s.replace(/''/g, "'")
+    .replace(/\\X2\\((?:[0-9A-F]{4})+)\\X0\\/gi, (_, h) => String.fromCharCode(...h.match(/.{4}/g).map(x => parseInt(x, 16))))
+    .replace(/\\X\\([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\S\\(.)/g, (_, c) => String.fromCharCode(c.charCodeAt(0) + 128));
+}
+
 export class StepExtractor {
   constructor(texteStep) {
     if (typeof texteStep !== "string" || !texteStep.includes("ISO-10303-21")) {
@@ -53,7 +61,7 @@ export class StepExtractor {
       if (e.contenu.includes("PRODUCT(")) {
         const pm = /PRODUCT\s*\(\s*'((?:[^']|'')*)'/i.exec(e.contenu);
         if (pm) {
-          this.produits.set(id, { id, nom: pm[1].replace(/''/g, "'") });
+          this.produits.set(id, { id, nom: decoderChaineStep(pm[1]) });
         }
       }
     }
@@ -93,12 +101,12 @@ export class StepExtractor {
     this.occurrences = [];
     for (const [id, e] of this.entites) {
       if (e.contenu.includes("NEXT_ASSEMBLY_USAGE_OCCURRENCE")) {
-        const om = /NEXT_ASSEMBLY_USAGE_OCCURRENCE\s*\(\s*'([^']*)'\s*,\s*'([^']*)'/i.exec(e.contenu);
+        const om = /NEXT_ASSEMBLY_USAGE_OCCURRENCE\s*\(\s*'((?:[^']|'')*)'\s*,\s*'((?:[^']|'')*)'/i.exec(e.contenu);
         if (om) {
           this.occurrences.push({
             id,
             occId: om[1],
-            nom: om[2],
+            nom: decoderChaineStep(om[2]),
             parentDefId: e.refs[0],
             childDefId: e.refs[1],
             refs: e.refs,

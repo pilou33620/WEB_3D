@@ -1155,6 +1155,9 @@ export class Interface {
   appliquerToutesPrefs(){
     const v = this.vue;
     v.definirAxeVertical(prefs.axeVertical);
+    this.cube.poserEtiquettes(prefs.axeVertical);    // comme le choix de l'axe dans les réglages : cube, sol et caméra suivent
+    v.adapterAuModele();
+    this.nav.allerVersVue("iso", false);
     v.definirProjection(prefs.projection);
     v.definirGrille(prefs.grille);
     v.definirOmbres(prefs.ombres);

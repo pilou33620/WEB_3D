@@ -228,7 +228,7 @@ export class EditeurEsquisse {
   glisser(point, ev0){
     const { vue } = this.ctx;
     const avant = JSON.stringify(this.esq);
-    let bouge = false, attente = false, dernier = ev0;
+    let bouge = false, attente = false, dernier = ev0, lache = false;
     const bouger = (ev) => {
       dernier = ev;
       // même seuil que la navigation : un clic qui tremble sélectionne, il ne déplace pas le point
@@ -237,6 +237,7 @@ export class EditeurEsquisse {
       attente = true;
       requestAnimationFrame(() => {
         attente = false;
+        if(lache) return;                   // relâché entre-temps : lacher() a déjà conclu
         const m = this.local(dernier);
         if(!m) return;
         bouge = true;
@@ -245,6 +246,7 @@ export class EditeurEsquisse {
       });
     };
     const lacher = (ev) => {
+      lache = true;
       removeEventListener("pointermove", bouger);
       removeEventListener("pointerup", lacher);
       removeEventListener("pointercancel", lacher);
@@ -906,10 +908,16 @@ export class EditeurEsquisse {
       const c = C[0];
       k = c.type === "cercle" ? { type:"diametre", a:c.id, expr:arrondi(2 * c.r) } : { type:"rayon", a:c.id, expr:arrondi(rayonDe(indexer(this.esq), c)) };
     }else if(els.length === 2 && L.length === 2){
-      const [a1, b1] = bouts(L[0]), [a2, b2] = bouts(L[1]);
+      let [a1, b1] = bouts(L[0]), [a2, b2] = bouts(L[1]);
+      /* Deux lignes d'un même coin : l'angle se lit depuis le sommet (celui qu'on voit), pas selon le sens de tracé. */
+      const sommet = [L[0].p1, L[0].p2].find(id => id === L[1].p1 || id === L[1].p2);
+      if(sommet){
+        if(b1.id === sommet) [a1, b1] = [b1, a1];
+        if(b2.id === sommet) [a2, b2] = [b2, a2];
+      }
       const u = [b1.x - a1.x, b1.y - a1.y], w = [b2.x - a2.x, b2.y - a2.y];
       const ang = Math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1]) * 180 / Math.PI;
-      k = { type:"angle", a:L[0].id, b:L[1].id, signe:ang < 0 ? -1 : 1, expr:arrondi(Math.abs(ang)) };
+      k = { type:"angle", a:L[0].id, b:L[1].id, signe:ang < 0 ? -1 : 1, expr:arrondi(Math.abs(ang)), ...(sommet ? { sommet } : {}) };
     }
     if(!k){
       this.statut("Cote : une ligne, deux points, un point et une ligne, un cercle ou un arc, ou deux lignes (angle).");
@@ -1299,7 +1307,9 @@ export class EditeurEsquisse {
     if(k.type === "distanceX") return Math.abs(P(k.b).x - P(k.a).x);
     if(k.type === "distanceY") return Math.abs(P(k.b).y - P(k.a).y);
     if(k.type === "angle"){
-      const a = P(k.a), b = P(k.b), u = [P(a.p2).x - P(a.p1).x, P(a.p2).y - P(a.p1).y], w = [P(b.p2).x - P(b.p1).x, P(b.p2).y - P(b.p1).y];
+      const a = P(k.a), b = P(k.b), sens = (l) => k.sommet === l.p2 ? [l.p2, l.p1] : [l.p1, l.p2];   // depuis le sommet commun s'il y en a un
+      const [a1, a2] = sens(a).map(P), [b1, b2] = sens(b).map(P);
+      const u = [a2.x - a1.x, a2.y - a1.y], w = [b2.x - b1.x, b2.y - b1.y];
       return Math.abs(Math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1])) * 180 / Math.PI;
     }
     const a = P(k.a), b = P(k.b);

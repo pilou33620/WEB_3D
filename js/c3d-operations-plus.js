@@ -90,6 +90,14 @@ export function grillePerforation(poly, pas, disposition, marge){
 
 export function operationsPlus(H){
   const { corpsCible, remplacer, nouveauCorps, appliquer, chercherEsquisse, planNoyau, tracer, dessinRegions, revolutionProfil, orienter, designes, plusProches, faceSuivie, reunirOutils } = H;
+  /** Comme orienter (+Z local → n), puis tourné autour de n pour que le X local suive l'angle `a` (°)
+      compté depuis l'axe x de l'esquisse `r` : orienter seul laisse X dans une direction arbitraire. */
+  const orienterEsquisse = (forme, n, r, a) => {
+    const z = n[2], k = vec.norm([-n[1], n[0], 0]);               // axe et angle de la rotation d'orienter
+    const X1 = Math.abs(z) > 0.999999 ? [1, 0, 0] : vec.ajout(vec.ajout([z, 0, 0], vec.vect(k, [1, 0, 0]), Math.sqrt(1 - z * z)), k, k[0] * (1 - z));
+    const d = vec.ajout(vec.ajout([0, 0, 0], r.x, Math.cos(a * DEG)), r.y, Math.sin(a * DEG));
+    return orienter(forme, n, [0, 0, 0]).rotate(Math.atan2(vec.scal(vec.vect(X1, d), n), vec.scal(X1, d)) / DEG, [0, 0, 0], n);
+  };
   const enCoquille = (R, f) => f.constructor.name === "Face" ? R.makeCompound([f]) : f;
   const construitPar = (R, b) => { const s = R.cast(R.downcast(b.Shape())); b.delete(); return s; };      // un constructeur brut n'est jamais ramassé
   const positif = (R, s) => R.measureVolume(s) < 0 ? R.cast(s.wrapped.Reversed()) : s;
@@ -154,8 +162,8 @@ export function operationsPlus(H){
   const plaqueSurPlan = (R, o, x, n, D) => R.drawRectangle(D, D).sketchOnPlane(new R.Plane(o, x, n)).face();
 
   /** Les lignes d'une esquisse en coques verticales, de part et d'autre du plan. */
-  const voilesEsquisse = (R, esq, v, D) => {
-    const oc = R.getOC(), r = repere(esq.plan, v), { plan } = planNoyau(R, esq, v);
+  const voilesEsquisse = (R, esq, v, bb) => {
+    const oc = R.getOC(), r = repere(esq.plan, v), { plan } = planNoyau(R, esq, v), D = portee(bb, r.o);
     const sorties = profils(esq).ouverts.map(o => {
       const w = tracer(R, o.segments).done().sketchOnPlane(plan).wire.clone().translate(r.n.map(c => -c * D));
       return construitPar(R, new oc.BRepPrimAPI_MakePrism(w.wrapped, new R.Vector(r.n.map(c => c * 2 * D)).wrapped, false, true));
@@ -191,7 +199,8 @@ export function operationsPlus(H){
     const d = (o) => { const x = dessinRegions(R, esq, op.contours); return o ? x.offset(o) : x; };
     const dessin = d(ext).cut(d(int));
     const n = op.inverse ? r.n.map(c => -c) : r.n, base = enlever ? vec.ajout(r.o, n, -hauteur) : r.o;
-    const outil = dessin.sketchOnPlane(new R.Plane(base, r.x, n)).extrude(hauteur + (enlever ? 0.01 : 0));
+    /* Plan gardé tel quel (retourner sa normale mettrait le dessin en miroir) : c'est la longueur qui change de signe. */
+    const outil = dessin.sketchOnPlane(new R.Plane(base, r.x, r.n)).extrude((hauteur + (enlever ? 0.01 : 0)) * (op.inverse ? -1 : 1));
     return remplacer(etat, cible, enlever ? cible.shape.cut(outil) : cible.shape.fuse(outil));
   };
 
@@ -282,15 +291,15 @@ export function operationsPlus(H){
     },
 
     diviser(R, etat, op, ctx){
-      const { v } = ctx, cible = corpsCible(etat, op.corps), D = 2 * diagonale(cible.shape.boundingBox.bounds) + 10;
+      const { v } = ctx, cible = corpsCible(etat, op.corps), bb = cible.shape.boundingBox.bounds;
       let outils;
       if(op.mode === "plan"){
         const pl = ctx.doc.operations.find(o => o.id === op.plan && o.type === "plan");
         if(!pl) throw new Error("plan de construction à choisir");
         const q = planConstruction(pl, v, ctx.doc);
-        outils = [plaqueSurPlan(R, q.origine, q.xdir, q.normale, D)];
+        outils = [plaqueSurPlan(R, q.origine, q.xdir, q.normale, portee(bb, q.origine))];
       }else if(op.mode === "esquisse"){
-        outils = voilesEsquisse(R, chercherEsquisse(ctx, op.esquisse), v, D);
+        outils = voilesEsquisse(R, chercherEsquisse(ctx, op.esquisse), v, bb);
       }else{
         const s = etat.corps.find(c => c.nom === op.outil && c !== cible);
         if(!s) throw new Error("surface qui coupe à choisir");
@@ -305,9 +314,8 @@ export function operationsPlus(H){
 
     diviserFace(R, etat, op, ctx){
       const { v } = ctx, cible = corpsCible(etat, op.corps), esq = chercherEsquisse(ctx, op.esquisse);
-      const D = 2 * diagonale(cible.shape.boundingBox.bounds) + 10;
       const visees = designes(R, cible.shape, "faces", op.faces, op, ctx), ids = new Set(visees.map(f => f.hashCode));
-      const outils = voilesEsquisse(R, esq, v, D);
+      const outils = voilesEsquisse(R, esq, v, cible.shape.boundingBox.bounds);
       const nouvelles = visees.flatMap(f => fendre(R, f, outils).faces);
       if(nouvelles.length <= visees.length) throw new Error("les lignes de l'esquisse ne coupent pas ces faces");
       return remplacer(etat, cible, positif(R, R.makeSolid([...cible.shape.faces.filter(f => !ids.has(f.hashCode)), ...nouvelles])));
@@ -317,8 +325,11 @@ export function operationsPlus(H){
       const { v } = ctx, cible = corpsCible(etat, op.corps), chem = chercherEsquisse(ctx, op.chemin), n = Math.round(v(op.nombre));
       if(!(n >= 2 && n <= 500)) throw new Error("nombre d'exemplaires entre 2 et 500");
       const { ouverts, regions } = profils(chem), suite = ouverts[0] || regions[0]?.exterieur;
-      if(!suite?.segments) throw new Error(`« ${chem.nom} » n'a pas de chemin`);
-      const re = repere(chem.plan, v), pose = repartir(echantillonnerChemin(suite.segments), n, !ouverts[0]);
+      /* Un cercle n'a pas de segments : deux demi-arcs, dans le sens trigonométrique. */
+      const k = suite?.cercle, segs = k ? [{ type:"arc", a:[k.c[0] + k.r, k.c[1]], m:[k.c[0], k.c[1] + k.r], b:[k.c[0] - k.r, k.c[1]] },
+        { type:"arc", a:[k.c[0] - k.r, k.c[1]], m:[k.c[0], k.c[1] - k.r], b:[k.c[0] + k.r, k.c[1]] }] : suite?.segments;
+      if(!segs) throw new Error(`« ${chem.nom} » n'a pas de chemin`);
+      const re = repere(chem.plan, v), pose = repartir(echantillonnerChemin(segs), n, !ouverts[0]);
       const P0 = versMonde(re, ...pose[0].p);
       const copies = pose.slice(1).map(q => {
         let f = cible.shape.clone();
@@ -335,7 +346,7 @@ export function operationsPlus(H){
       if(!(ep > 0)) throw new Error("épaisseur positive");
       const lignes = profils(esq).ouverts.flatMap(o => o.segments);
       if(!lignes.length || lignes.some(s => s.type !== "ligne")) throw new Error(`« ${esq.nom} » : un voile suit des lignes droites ouvertes`);
-      const bb = cible.shape.boundingBox.bounds, D = diagonale(bb) + 10;
+      const bb = cible.shape.boundingBox.bounds, r = repere(esq.plan, v), D = portee(bb, r.o);
       let dessin = null;
       for(const s of lignes){
         const L = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) || 1, ux = (s.b[0] - s.a[0]) / L, uy = (s.b[1] - s.a[1]) / L, nx = -uy * ep / 2, ny = ux * ep / 2;
@@ -343,7 +354,6 @@ export function operationsPlus(H){
         const d = R.draw([a[0] + nx, a[1] + ny]).lineTo([b[0] + nx, b[1] + ny]).lineTo([b[0] - nx, b[1] - ny]).lineTo([a[0] - nx, a[1] - ny]).close();
         dessin = dessin ? dessin.fuse(d) : d;
       }
-      const r = repere(esq.plan, v);
       const brut = dessin.sketchOnPlane(new R.Plane(vec.ajout(r.o, r.n, -D), r.x, r.n)).extrude(2 * D).intersect(R.makeBox(bb[0], bb[1]));
       const milieux = lignes.map(s => versMonde(r, (s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2));
       const morceaux = brut.cut(cible.shape).solids.filter(s => milieux.some(m => dansMatiere(R, s, m)));
@@ -415,7 +425,7 @@ export function operationsPlus(H){
           f = f.fuse(g.rotate(i * 360 / nb, [0, 0, 0], [0, 0, 1]));
         }
       }
-      const modele = orienter(f, n, [0, 0, 0]);
+      const modele = orienterEsquisse(f, n, n0, 0);       // nervure à 0° sur l'axe x de l'esquisse, quel que soit le plan
       const copies = points.map(([x, y]) => modele.clone().translate(versMonde(n0, x, y)));
       const cible = etat.corps.some(c => !c.reference) && op.corps !== "nouveau" ? corpsCible(etat, op.corps) : null;
       const plein = reunirOutils(R, modele, copies, points);
@@ -430,7 +440,7 @@ export function operationsPlus(H){
     levre(R, etat, op, ctx){
       const { v } = ctx, l = v(op.largeur), h = v(op.hauteur), j = v(op.jeu ?? 0);
       if(!(l > 0 && h > 0 && j >= 0)) throw new Error("largeur et hauteur positives");
-      return op.mode === "rainure" ? couronne(R, etat, op, ctx, -j || 0, -l - j, h + j, true) : couronne(R, etat, op, ctx, 0, -l, h, false);
+      return op.mode === "rainure" ? couronne(R, etat, op, ctx, j, -l - j, h + j, true) : couronne(R, etat, op, ctx, 0, -l, h, false);
     },
     repos(R, etat, op, ctx){
       const { v } = ctx, l = v(op.largeur), h = v(op.hauteur);
@@ -450,8 +460,7 @@ export function operationsPlus(H){
         f = R.draw([0, 0]).lineTo([e, 0]).lineTo([e, L - hc]).lineTo([e + s, L - hc]).lineTo([e, L]).lineTo([0, L]).close()
           .sketchOnPlane(new R.Plane([0, w / 2, 0], [1, 0, 0], [0, -1, 0])).extrude(w);
       }
-      if(a) f = f.rotate(a, [0, 0, 0], [0, 0, 1]);
-      const modele = orienter(f, n, [0, 0, 0]);
+      const modele = orienterEsquisse(f, n, rp, a);
       const copies = points.map(([x, y]) => modele.clone().translate(versMonde(rp, x, y)));
       const outil = reunirOutils(R, modele, copies, points);
       return remplacer(etat, cible, op.mode === "logement" ? cible.shape.cut(outil) : cible.shape.fuse(outil));
@@ -480,7 +489,7 @@ export function operationsPlus(H){
       if(!trous.length) throw new Error("aucun trou ne tient dans ce contour");
       if(trous.length > 5000) throw new Error(`${trous.length} trous : 5000 au plus`);
       ctx.note.trous = trous.length;
-      const r = repere(esq.plan, v), D = 2 * diagonale(cible.shape.boundingBox.bounds) + 10;
+      const r = repere(esq.plan, v), D = portee(cible.shape.boundingBox.bounds, r.o);
       const modele = orienter(R.makeCylinder(d / 2, 2 * D, [0, 0, -D]), r.n, [0, 0, 0]);
       const copies = trous.map(([x, y]) => modele.clone().translate(versMonde(r, x, y)));
       return remplacer(etat, cible, cible.shape.cut(copies.length === 1 ? copies[0] : R.makeCompound(copies)));
@@ -496,7 +505,9 @@ export function operationsPlus(H){
       const relief = op.mode === "relief", r = repere(esq.plan, v);
       const n = op.inverse ? r.n.map(c => -c) : r.n;
       /* Le prisme part du plan et s'arrête à l'axe : l'autre côté du cylindre n'est pas touché. */
-      const c = op.cylindre.centre, D = vec.scal(moins(r.o, c), n);
+      /* Un point de l'axe pris sur la face retrouvée : le centre noté au clic ne suit pas un cylindre qui bouge. */
+      const ax = new (R.getOC().BRepAdaptor_Surface)(f.wrapped, false).Cylinder().Axis().Location();
+      const c = [ax.X(), ax.Y(), ax.Z()], D = vec.scal(moins(r.o, c), n);
       if(D <= 0) throw new Error("le plan de l'esquisse doit être devant le cylindre, côté normale (ou cochez Inverser)");
       const prisme = dessinRegions(R, esq, op.contours).sketchOnPlane(new R.Plane(vec.ajout(r.o, n, -D), r.x, r.n)).extrude(op.inverse ? -D : D);
       const motif = prisme.intersect(couronneCylindre(R, cible.shape, f, p, !relief));
@@ -573,7 +584,7 @@ export function comparerCorps(R, a, b){
 export function sectionPlan(R, corps, r){
   const sortie = [];
   for(const c of corps){
-    const bb = c.shape.boundingBox.bounds, D = 2 * diagonale3(bb) + 10;
+    const bb = c.shape.boundingBox.bounds, D = portee(bb, r.o);
     const plaque = R.makeCompound([R.drawRectangle(D, D).sketchOnPlane(new R.Plane(r.o, r.x, r.n)).face()]);
     let coupe;
     try{ coupe = c.shape.intersect(plaque); }catch(_){ continue; }
@@ -590,6 +601,8 @@ export function sectionPlan(R, corps, r){
   return sortie;
 }
 const diagonale3 = (bb) => Math.hypot(bb[1][0] - bb[0][0], bb[1][1] - bb[0][1], bb[1][2] - bb[0][2]);
+/** Taille d'un outil centré en `o` (plaque D×D, prisme ±D) qui couvre tout le corps, même loin de `o`. */
+const portee = (bb, o) => 2 * (diagonale3(bb) + Math.hypot(...[0, 1, 2].map(k => (bb[0][k] + bb[1][k]) / 2 - o[k]))) + 10;
 
 /** Les arêtes vues depuis une caméra, à plat : visibles et cachées, comme un dessin. */
 export function arretesVue(R, formes, { position, direction, xdir }){

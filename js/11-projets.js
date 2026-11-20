@@ -31,8 +31,8 @@ export function nomProjet(nom){
   nom = String(nom).normalize("NFC");
   const i = nom.lastIndexOf(".");
   // 100 caractères au plus : le serveur refuse au-delà de 150, la marge laisse place à « (2) »
-  const base = (i > 0 ? nom.slice(0, i) : nom).replace(/[^\p{L}\p{N}_ .()+-]/gu, "_").slice(0, 100).trim() || "modele";
-  return (/^[\p{L}\p{N}_(]/u.test(base) ? "" : "_") + base + (i > 0 ? nom.slice(i).toLowerCase() : "");
+  const base = (i > 0 ? nom.slice(0, i) : nom).replace(/[^\p{L}\p{Nd}_ .()+-]/gu, "_").slice(0, 100).trim() || "modele";
+  return (/^[\p{L}\p{Nd}_(]/u.test(base) ? "" : "_") + base + (i > 0 ? nom.slice(i).toLowerCase() : "");
 }
 
 /** Le nom d'un STEP rangé par « Ranger dans le projet » : toujours .stp, accepté par le serveur (100 caractères au plus). */
