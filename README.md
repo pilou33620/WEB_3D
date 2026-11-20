@@ -27,7 +27,7 @@ La visionneuse ne modifie aucun fichier ; à côté d'elle, le **mode conception
 
 Il faut git, pour l'installation et les mises à jour. Plus de Python : le serveur est un exécutable
 Rust, `bin/web_3d`. Le script de démarrage le télécharge depuis GitHub (publication « binaires »,
-compilée à chaque envoi sur `main` pour Linux x86_64 et aarch64, macOS aarch64 et Windows x86_64),
+compilée à chaque envoi sur `main` pour Linux x86_64 et aarch64, macOS aarch64 et x86_64, et Windows x86_64),
 ou le compile sur place si `cargo` est installé ([rustup.rs](https://rustup.rs)) : voir *Dépendances*.
 
 | Système | Installer | Lancer |
