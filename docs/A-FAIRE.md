@@ -5,17 +5,13 @@ d'autre (les essais sont repoussés à plus tard).
 
 ## Bugs
 
-La revue complète du 20/11/2026 a corrigé une soixantaine de défauts, puis neuf des dix qu'elle avait
-laissés ouverts (voir l'historique git). Reste :
+Aucun bug connu ouvert dans WEB_3D. La revue complète du 20/11/2026 a corrigé une soixantaine de défauts,
+puis les dix qu'elle avait laissés ouverts (voir l'historique git). Une limite propre au format reste : dans
+un STEP, un sous-ensemble répété est une seule définition ; garder l'écrou d'un exemplaire et la vis d'un
+autre exporte les deux exemplaires entiers, et la page le dit.
 
-- `js/pilote.js` : deux écoutes simultanées possibles si l'onglet perd puis reprend le relais pendant
-  que le serveur est en panne. Corrigé, avec son banc, sur la branche `claude/pilote-une-seule-boucle`
-  de web_suite ; à recopier en même temps dans WEB_CAO, WEB_ANTENNA et ici (la CI de web_suite compare
-  les quatre copies).
-
- Une limite propre au format reste : dans un STEP,
-un sous-ensemble répété est une seule définition ; garder l'écrou d'un exemplaire et la vis d'un autre
-exporte les deux exemplaires entiers, et la page le dit.
+`js/pilote.js` porte le correctif de web_suite (une seule boucle d'écoute) ; WEB_CAO et WEB_ANTENNA sont à
+mettre à jour avec la même copie, sans quoi la CI de web_suite signale la différence.
 
 ## Fonctionnalités
 
