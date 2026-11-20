@@ -72,6 +72,9 @@ pub fn lister_projets(projets: &Path) -> Vec<Value> {
             // vers l'extérieur, il n'est de toute façon pas servi (chemin_projet)
             } else if NOM_PROJET.is_match(nom) && !genre.is_symlink() {
                 let Ok(st) = entree.metadata() else { continue };
+                if st.len() == 0 {
+                    continue; // un envoi en cours (nom réservé) : rien à ouvrir
+                }
                 let date = st.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
                 sortie.push((date, json!({"chemin": relatif(&entree.path(), racine), "taille": st.len(), "date": date})));
             }
@@ -388,8 +391,19 @@ impl Visionneuse {
                     Err(e) => return detail(500, &e.to_string()),
                 }
             }
-            let Some((c, f)) = ouvert else { return detail(400, "Nom refusé") };
-            (cible, sortie, temporaire) = (c, f, None);
+            let Some((c, reserve)) = ouvert else { return detail(400, "Nom refusé") };
+            drop(reserve);
+            // Le nom reste réservé par ce fichier vide (ni listé, ni compté) ; le contenu va dans un
+            // temporaire caché, renommé à la fin : un envoi coupé, même par l'arrêt du serveur, ne
+            // laisse jamais un fichier tronqué sous le nom final.
+            let dossier = c.parent().map(Path::to_path_buf).unwrap_or_else(|| projets.to_path_buf());
+            match fichier_temporaire(&dossier, &creer) {
+                Ok((f, t)) => (cible, sortie, temporaire) = (c, f, Some(t)),
+                Err(e) => {
+                    let _ = fs::remove_file(&c);
+                    return detail(500, &e.to_string());
+                }
+            }
         }
         let ecrit = temporaire.as_ref().unwrap_or(&cible);
         let (mut reste, mut illisible, mut panne) = (taille as usize, false, None);
@@ -408,20 +422,26 @@ impl Visionneuse {
         }
         drop(sortie);
         let mut complet = reste == 0 && panne.is_none();
-        if complet && temporaire.is_some() {
+        if complet && remplacer {
             // une pièce tronquée ou illisible n'écrase pas la bonne
             // sans construire l'arbre : 200 Mo de « [0,0,… » en prendraient plusieurs Go
             let valide = |f| serde_json::from_reader::<_, serde::de::IgnoredAny>(std::io::BufReader::new(f)).is_ok();
             match fs::File::open(ecrit).map(valide) {
-                Ok(true) => panne = fs::rename(ecrit, &cible).err(),
+                Ok(true) => {}
                 Ok(false) => illisible = true,
                 Err(e) => panne = Some(e),
             }
-            complet = !illisible && panne.is_none();
         }
+        if complet && !illisible && panne.is_none() {
+            panne = fs::rename(ecrit, &cible).err();
+        }
+        complet = complet && !illisible && panne.is_none();
         if !complet {
             // fin prématurée, coupure, disque plein : pas de fichier tronqué dans le dossier
             let _ = fs::remove_file(ecrit);
+            if !remplacer {
+                let _ = fs::remove_file(&cible); // la réservation vide
+            }
         }
         if illisible {
             return detail(400, "Pièce illisible (JSON invalide) : rien n'a été remplacé");
@@ -435,6 +455,27 @@ impl Visionneuse {
         // chemins réels des deux côtés : un chemin court Windows (PIERRE~1) ne se compare pas au long
         let racine = fs::canonicalize(projets).unwrap_or_else(|_| projets.to_path_buf());
         rendre_json(200, json!({ "chemin": self::relatif(&cible, &racine) }))
+    }
+}
+
+/// Au démarrage : les restes d'un serveur arrêté en plein envoi (temporaires cachés, noms réservés
+/// restés vides) de plus d'une heure. Plus récents, ils peuvent être ceux d'un autre serveur en cours.
+pub fn nettoyer_projets(dossier: &Path) {
+    let Ok(entrees) = fs::read_dir(dossier) else { return };
+    for entree in entrees.flatten() {
+        let (Some(nom), Ok(genre)) = (entree.file_name().to_str().map(str::to_string), entree.file_type()) else { continue };
+        if genre.is_dir() {
+            if !nom.starts_with('.') {
+                nettoyer_projets(&entree.path());
+            }
+            continue;
+        }
+        let Ok(st) = entree.metadata() else { continue };
+        let vieux = st.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() > 3600);
+        let reste = (nom.starts_with('.') && nom.ends_with(".tmp")) || (NOM_PROJET.is_match(&nom) && st.len() == 0);
+        if genre.is_file() && vieux && reste {
+            let _ = fs::remove_file(entree.path());
+        }
     }
 }
 
@@ -471,6 +512,28 @@ mod essais {
         }
         assert!(NOM_PROJET.is_match("t (2).stl") && NOM_PROJET.is_match("p.JSON"));
         assert!(!NOM_PROJET.is_match(".cache.stl") && !NOM_PROJET.is_match("x.txt") && !NOM_PROJET.is_match("a/b.stl"));
+    }
+
+    #[test]
+    fn restes_d_envoi() {
+        let tmp = std::env::temp_dir().join(format!("web3d-restes-{}", std::process::id()));
+        fs::create_dir_all(tmp.join("sous")).unwrap();
+        let vieillir = |nom: &str, contenu: &str| {
+            fs::write(tmp.join(nom), contenu).unwrap();
+            let ancien = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+            fs::File::options().write(true).open(tmp.join(nom)).unwrap().set_modified(ancien).unwrap();
+        };
+        vieillir("sous/.abc.tmp", "x");
+        vieillir("reserve.stl", "");
+        vieillir("vraie.stl", "solid");
+        fs::write(tmp.join("en-cours.stl"), "").unwrap(); // récent : peut-être l'envoi d'un autre serveur
+        let noms = || lister_projets(&tmp).iter().map(|v| v["chemin"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(noms(), ["vraie.stl"]); // un nom réservé (vide) n'est pas listé
+        nettoyer_projets(&tmp);
+        let mut restent: Vec<_> = ["sous/.abc.tmp", "reserve.stl", "vraie.stl", "en-cours.stl"].into_iter().filter(|n| tmp.join(n).exists()).collect();
+        restent.sort();
+        assert_eq!(restent, ["en-cours.stl", "vraie.stl"]);
+        fs::remove_dir_all(&tmp).unwrap();
     }
 
     #[test]

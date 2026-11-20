@@ -5,28 +5,17 @@ d'autre (les essais sont repoussés à plus tard).
 
 ## Bugs
 
-Revue complète du 20/11/2026 : une soixantaine de défauts corrigés (voir l'historique git). Restent
-ouverts, relevés par la revue et non corrigés :
+La revue complète du 20/11/2026 a corrigé une soixantaine de défauts, puis neuf des dix qu'elle avait
+laissés ouverts (voir l'historique git). Reste :
 
-- Envoi d'un fichier vers les projets : écrit directement sous son nom final ; un envoi interrompu
-  (Ctrl+C, fenêtre fermée) laisse un fichier tronqué. Il faudrait un fichier temporaire puis un renommage,
-  comme pour le remplacement des `.json` (`src/serveur_3d.rs`, le banc attend le comportement actuel).
-- Export STEP « pièces visibles » : le tri se fait par nom ; masquer un seul de huit écrous identiques
-  les exporte tous.
-- `js/pilote.js` (copie de web_suite) : deux écoutes simultanées possibles si l'onglet perd puis reprend
-  le relais en moins de deux secondes. À corriger dans l'original.
-- Bossage et clip (`js/c3d-operations-plus.js`) : comme le perçage avant correction, des exemplaires qui
-  se recouvrent sont réunis d'un coup et peuvent rendre un volume faux.
-- Une opération placée avant l'esquisse qu'elle cite (fichier écrit à la main seulement) garde un résultat
-  en cache périmé.
-- Esquisse sur une face « à suivre » : un résultat de reconstruction arrivé après un changement de plan
-  peut remettre l'ancien plan (fenêtre de temps étroite).
-- Fuites mineures d'objets OpenCascade (`Message_ProgressRange`, `BRepAdaptor_Surface`, listes du
-  découpage) : le noyau est relancé quand son tas dépasse 1,2 Go.
-- CSV (nomenclature, études) : un nom contenant « ; » décale les colonnes.
-- Tactile, outil d'esquisse actif : le second doigt ne pose plus de point, mais le pincement ne zoome pas.
-- Banc `banc-conception-retours` : le clic sur le cercle du haut d'un cylindre tombe, selon la taille de
-  fenêtre du navigateur, sur la couture du cylindre (deux vérifications).
+- `js/pilote.js` : deux écoutes simultanées possibles si l'onglet perd puis reprend le relais pendant
+  que le serveur est en panne. Corrigé, avec son banc, sur la branche `claude/pilote-une-seule-boucle`
+  de web_suite ; à recopier en même temps dans WEB_CAO, WEB_ANTENNA et ici (la CI de web_suite compare
+  les quatre copies).
+
+ Une limite propre au format reste : dans un STEP,
+un sous-ensemble répété est une seule définition ; garder l'écrou d'un exemplaire et la vis d'un autre
+exporte les deux exemplaires entiers, et la page le dit.
 
 ## Fonctionnalités
 

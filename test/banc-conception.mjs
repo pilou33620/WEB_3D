@@ -303,6 +303,8 @@ const dessous = await volume([boite20, trous("0", [[10, 10]]), { id:"h", type:"p
 verifier("perçage traversant : esquisse sous le corps", [dessous.erreur, Math.round(dessous.vols[0])], [undefined, Math.round(8000 - 20 * Math.PI)]);
 const serre = await volume([boite20, { id:"r", type:"repetition", corps:"", mode:"lineaire", axe:"X", nombre:"3", pas:"10" }], "r");
 verifier("répétition : exemplaires qui se recouvrent", [serre.erreur, Math.round(serre.vols[0])], [undefined, 16000]);
+const apres = await volume([{ id:"x", type:"extrusion", esquisse:"e", distance:"5" }, esqLot1("e", { base:"XY" }, rectEls(0, 0, 10, 10))], "x");
+verifier("une extrusion avant son esquisse : refusée (son cache ne suivrait pas l'esquisse)", /doit précéder/.test(apres.erreur || ""), true);
 const neg = await volume([esqLot1("e", { base:"XY" }, rectEls(0, 0, 10, 10)), { id:"x", type:"extrusion", esquisse:"e", distance:"5", sens:"deux", distance2:"-5" }], "x");
 verifier("extrusion deux sens : seconde distance négative refusée", /seconde distance/.test(neg.erreur || ""), true);
 const dec = await volume([boite20, { id:"k", type:"decouper", corps:"", plan:"XY", decalage:"5" }], "k");

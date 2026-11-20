@@ -94,7 +94,9 @@ try{
     const [clientX, clientY] = ecran(-30, 30, 0);      // le coin opposé à la caméra, derrière la plaque
     const cache = c.areteSous({ clientX, clientY });
     const msg = document.getElementById("msgOperation").textContent;
-    return { cache, msg, ecran:ecran(15, 0, 30) };`);
+    // Sur le cercle du haut, à −45° : face à la caméra, loin de la couture du cylindre (à 0°), où le clic
+    // tombait sur l'une ou l'autre arête selon quelques pixels de rendu
+    return { cache, msg, ecran:ecran(15 * Math.SQRT1_2, -15 * Math.SQRT1_2, 30) };`);
   verifier("arête cachée : pas prise, et pas de vieux message d'erreur pendant la désignation",
     [r3.cache, /aucune/.test(r3.msg), /Désignation en cours/.test(r3.msg)], [null, false, true]);
 

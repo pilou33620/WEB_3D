@@ -838,7 +838,14 @@ class Conception {
     for(const [id, n] of Object.entries(res.etats)){
       const op = (n.plan || n.corpsNom || n.refs) && this.doc.operations.find(o => o.id === id);
       if(op && n.refs) op.refs = n.refs;      // leurs descriptions à jour : c'est ainsi qu'arêtes et faces suivent la pièce
-      if(op && n.plan) op.plan = n.plan;
+      /* Le noyau ne fait que glisser l'origine le long de la normale : un plan changé pendant le calcul
+         (autre base, autre face) ne se fait pas écraser par la réponse arrivée après. */
+      const memeFace = (p, q) => {
+        if(!p?.suivre || p.base || p.ref || !p.normale?.every((c, k) => Math.abs(c - q.normale[k]) < 1e-9)) return false;
+        const d = q.origine.map((c, k) => c - p.origine[k]), t = d.reduce((s, c, k) => s + c * p.normale[k], 0);
+        return Math.hypot(...d.map((c, k) => c - t * p.normale[k])) < 1e-6;      // même face : seul l'écart le long de la normale
+      };
+      if(op && n.plan && memeFace(op.plan, n.plan)) op.plan = n.plan;
       if(op && n.corpsNom) op.corpsNom = n.corpsNom;
     }
     this.poserProjections(res);

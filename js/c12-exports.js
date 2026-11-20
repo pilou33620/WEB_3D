@@ -9,6 +9,14 @@
 import { zipSync, strToU8 } from "../vendor/three/addons/libs/fflate.module.js";
 import { indexer, rayonDe, cercle3Points, axePerpendiculaire, vec } from "./c2-esquisse.js";
 
+/** Un nom dans une case de CSV (« ; » séparateur) : un « ; » ou un guillemet ne décale plus les colonnes,
+    et un nom qui commence comme une formule (= + - @) n'est pas calculé par le tableur. */
+export const champCsv = (t) => {
+  let s = String(t ?? "");
+  if(/^[=+\-@]/.test(s)) s = "'" + s;
+  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
 export const echapperXml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&apos;" })[c]);
 const nombre = (x) => String(+x.toFixed(6));
 
@@ -156,7 +164,7 @@ export function nomenclature(corps, { matiereDe, densiteDe }){
   let r = 0;
   for(const g of groupes.values()){
     const masse = g.p.volume / 1000 * densiteDe(g.mat);
-    lignes.push([++r, g.noms.join(" + "), g.noms.length, g.mat, f(g.p.volume, 1), f(masse, 2), f(masse * g.noms.length, 2), g.dims.map(d => f(d, 2)).join(" x ")].join(";"));
+    lignes.push([++r, champCsv(g.noms.join(" + ")), g.noms.length, champCsv(g.mat), f(g.p.volume, 1), f(masse, 2), f(masse * g.noms.length, 2), g.dims.map(d => f(d, 2)).join(" x ")].join(";"));
   }
   return lignes.join("\n");
 }
@@ -229,7 +237,7 @@ function simplifierContour(pts, tol){
 /** Une table de valeurs d'un paramètre : ce que chaque valeur donne. En CSV. */
 export function csvBalayage(nom, lignes){
   const f = (x) => x === null || x === undefined || x === "" ? "" : String(+(+x).toFixed(4)).replace(".", ",");
-  return [`${nom};corps;volume (mm3);aire (mm2);X (mm);Y (mm);Z (mm);erreurs`,
+  return [`${champCsv(nom)};corps;volume (mm3);aire (mm2);X (mm);Y (mm);Z (mm);erreurs`,
     ...lignes.map(l => [f(l.valeur), l.corps, f(l.volume), f(l.aire), ...(l.dims || ["", "", ""]).map(f), l.erreurs].join(";"))].join("\n");
 }
 

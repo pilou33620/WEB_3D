@@ -195,7 +195,9 @@ export class EditeurEsquisse {
   pointeurBas(ev){
     if(ev.button !== 0 || ev.ctrlKey || ev.altKey) return false;
     if(this.outil){
-      if(ev.isPrimary === false) return true;      // le second doigt d'un pincement ne pose pas de point
+      /* Au doigt, le point se pose au relâcher d'un appui bref et immobile (selectionner, appelé par la
+         navigation) : prendre l'appui ici empêchait la navigation de voir le second doigt d'un pincement. */
+      if(ev.pointerType === "touch") return false;
       const m = this.accroche(ev);
       if(m) this.clic(m, ev);
       return true;
@@ -206,8 +208,9 @@ export class EditeurEsquisse {
     return true;
   }
 
-  /** Clic sans outil : sélection. */
+  /** Clic sans outil : sélection. Avec un outil, c'est un toucher bref (voir pointeurBas) : le point se pose. */
   selectionner(ev){
+    if(this.outil){ const m = this.accroche(ev); if(m) this.clic(m, ev); return; }
     const e = this.designer(ev);
     if(!ev.shiftKey) this.selection.clear();
     if(e){ if(this.selection.has(e.id) && ev.shiftKey) this.selection.delete(e.id); else this.selection.add(e.id); }

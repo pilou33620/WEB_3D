@@ -836,6 +836,7 @@ export class Interface {
     dlg.close();
     this.attendre(true, `Export ${format.toUpperCase()} en cours…`, "Préparation des données géométriques.");
 
+    let noteExport = "";
     try{
       if(format === "stp"){
         /* Le texte STEP est celui du fichier d'où viennent les pièces, pas du premier fichier ouvert. */
@@ -848,9 +849,19 @@ export class Interface {
         }else{
           if(fichiers.size > 1)
             throw new Error("Les pièces viennent de plusieurs fichiers : un STEP ne se tire que d'un seul fichier à la fois (masquez les autres, ou exportez en GLB).");
-          const stepTexte = [...fichiers][0].userData.stepTexte;
-          if(!stepTexte) throw new Error("Le texte source STEP n'est pas disponible pour ce fichier.");
-          contenuSortie = new StepExtractor(stepTexte).exportAssemblageFiltre(piecesCibles.map(p => p.name));
+          const fichier = [...fichiers][0];
+          if(!fichier.userData.stepTexte) throw new Error("Le texte source STEP n'est pas disponible pour ce fichier.");
+          /* Les pièces affichées suivent l'ordre des occurrences du STEP : on garde les exemplaires
+             visibles, pas tous ceux du même nom. Si l'ordre ne concorde pas (noms différents), repli sur les noms. */
+          const ex = new StepExtractor(fichier.userData.stepTexte), feuilles = ex.feuilles(), pieces = [];
+          fichier.traverse(o => { if(o.isMesh && o.userData.estPiece) pieces.push(o); });
+          const memeOrdre = feuilles.length === pieces.length && feuilles.every((f, i) => !f.nom || f.nom === pieces[i].name);
+          contenuSortie = ex.exportAssemblageFiltre(memeOrdre
+            ? { feuilles:new Set(piecesCibles.map(p => pieces.indexOf(p))) }
+            : piecesCibles.map(p => p.name));
+          if(ex.enTrop > 0) noteExport = ` ${ex.enTrop} pièce${ex.enTrop > 1 ? "s" : ""} masquée${ex.enTrop > 1 ? "s" : ""} incluse${ex.enTrop > 1 ? "s" : ""} : ` +
+            "elles appartiennent à un sous-ensemble répété dont un autre exemplaire est visible (le STEP ne les sépare pas).";
+          else if(!memeOrdre) noteExport = " Pièces triées par nom : tous les exemplaires d'un nom visible sont exportés.";
         }
 
         telechargerFichier(contenuSortie, nomFichier, "application/octet-stream");
@@ -897,7 +908,7 @@ export class Interface {
       }
 
       this.attendre(false);
-      const msg = `Export de ${piecesCibles.length} pièce${piecesCibles.length > 1 ? "s" : ""} vers "${nomFichier}" réussi.`;
+      const msg = `Export de ${piecesCibles.length} pièce${piecesCibles.length > 1 ? "s" : ""} vers "${nomFichier}" réussi.` + noteExport;
       $("etatStats").textContent = msg;
     }catch(e){
       this.attendre(false);

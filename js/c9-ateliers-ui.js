@@ -17,7 +17,7 @@ import { nomProjet } from "./11-projets.js";
 import { perimerCaches } from "./13-deplacement.js";
 import { repere, profils, dedans, axeConstruction, pointConstruction, pointsChemin3d, axePerpendiculaire } from "./c2-esquisse.js";
 import { VISSERIE } from "./c3b-ateliers.js";
-import { lireNuage } from "./c12-exports.js";
+import { lireNuage, champCsv } from "./c12-exports.js";
 import { demanderTexte, avertir } from "./c0-dialogues.js";
 
 const $ = (id) => document.getElementById(id);
@@ -686,13 +686,13 @@ export function brancherAteliers(c){
     const plis = c.doc.operations.filter(o => et[o.id]?.pli);
     if(!plis.length){ $("etatSel").textContent = "Aucun pli dans cette pièce."; return; }
     csv("pliage", ["opération;angle (°);rayon (mm);longueur dépliée (mm);longueur du pli (mm)",
-      ...plis.map(o => { const p = et[o.id].pli; return [o.nom, fx(p.angle), fx(p.rayon), fx(p.ba), fx(p.longueur)].join(";"); })]);
+      ...plis.map(o => { const p = et[o.id].pli; return [champCsv(o.nom), fx(p.angle), fx(p.rayon), fx(p.ba), fx(p.longueur)].join(";"); })]);
   };
   $("bDebit").onclick = () => {
     const et = c.resultat?.etats || {};
     const barres = c.doc.operations.filter(o => et[o.id]?.debit);
     if(!barres.length){ $("etatSel").textContent = "Aucun profilé dans cette pièce."; return; }
     csv("debit", ["opération;section;a (mm);b (mm);paroi (mm);longueur (mm)",
-      ...barres.flatMap(o => et[o.id].debit.map(d => [o.nom, d.section, fx(c.v()(o.a)), fx(c.v()(o.b ?? o.a)), fx(c.v()(o.ep ?? 0)), fx(d.longueur)].join(";")))]);
+      ...barres.flatMap(o => et[o.id].debit.map(d => [champCsv(o.nom), d.section, fx(c.v()(o.a)), fx(c.v()(o.b ?? o.a)), fx(c.v()(o.ep ?? 0)), fx(d.longueur)].join(";")))]);
   };
 }

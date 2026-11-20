@@ -161,14 +161,20 @@ async function traiter(ev){
       policeChargee = true;
     }
     const debut = performance.now();
+    /* Un calcul hors cache : ses états intermédiaires ne servent plus, le ramasse-miettes les rendrait trop tard au tas du noyau. */
+    const libererCalcul = (liste, corps) => {
+      for(const f of new Set([...liste.flatMap(e => e.etat.corps.map(c => c.shape)), ...corps.map(c => c.shape)])) f.delete();
+    };
     if(type === "developpe"){
-      const plat = await construire(R, doc, [], oc, { plat:true });
+      const jetable = [], plat = await construire(R, doc, jetable, oc, { plat:true });
       /* Le développé rejoue l'historique à plat : ce qui suit un pli ne s'y reporte pas toujours. */
       const PLIS = ["tole", "bride", "ourlet", "pli", "esquisse", "plan", "axe", "point", "image", "filetage"];
       const premier = doc.operations.findIndex(o => ["bride", "ourlet", "pli"].includes(o.type));
       const apres = premier < 0 ? [] : doc.operations.slice(premier).filter(o => !PLIS.includes(o.type) && !o.suspendue).map(o => o.nom);
       const enErreur = doc.operations.filter(o => plat.etats[o.id]?.erreur).map(o => o.nom);
-      postMessage({ id, type:"ok", dxf:developpe(plat), enErreur, apres });
+      let dxf;
+      try{ dxf = developpe(plat); }finally{ libererCalcul(jetable, plat.corps); }
+      postMessage({ id, type:"ok", dxf, enErreur, apres });
       return;
     }
     if(type === "planter") throw new WebAssembly.RuntimeError("panne simulée");     // pour le banc de la page
@@ -186,13 +192,13 @@ async function traiter(ev){
       for(const [i, valeur] of ev.data.valeurs.entries()){
         postMessage({ type:"progres", etape:`${ev.data.nom} = ${valeur} (${i + 1} / ${ev.data.valeurs.length})` });
         const d = { ...doc, parametres:doc.parametres.map(p => p.nom === ev.data.nom ? { ...p, expr:String(valeur) } : p) };
-        const r = await construire(R, d, [], oc);
+        const jetable = [], r = await construire(R, d, jetable, oc);
         const reels = r.corps.filter(c => !c.reference);
         const bornes = reels.map(c => c.shape.boundingBox.bounds);
         sortie.push({ valeur, corps:reels.length, erreurs:Object.values(r.etats).filter(n => n.erreur).length,
           volume:reels.reduce((s, c) => s + (c.surface ? 0 : Math.abs(R.measureVolume(c.shape))), 0), aire:reels.reduce((s, c) => s + R.measureArea(c.shape), 0),
           dims:bornes.length ? [0, 1, 2].map(k => Math.max(...bornes.map(b => b[1][k])) - Math.min(...bornes.map(b => b[0][k]))) : null });
-        for(const c of r.corps) c.shape.delete();    // à part du cache : rien d'autre ne tient ces formes
+        libererCalcul(jetable, r.corps);    // à part du cache : rien d'autre ne tient ces formes
       }
       postMessage({ id, type:"ok", lignes:sortie });
       return;

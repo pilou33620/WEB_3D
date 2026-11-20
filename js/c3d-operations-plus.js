@@ -89,7 +89,7 @@ export function grillePerforation(poly, pas, disposition, marge){
 }
 
 export function operationsPlus(H){
-  const { corpsCible, remplacer, nouveauCorps, appliquer, chercherEsquisse, planNoyau, tracer, dessinRegions, revolutionProfil, orienter, designes, plusProches, faceSuivie } = H;
+  const { corpsCible, remplacer, nouveauCorps, appliquer, chercherEsquisse, planNoyau, tracer, dessinRegions, revolutionProfil, orienter, designes, plusProches, faceSuivie, reunirOutils } = H;
   const enCoquille = (R, f) => f.constructor.name === "Face" ? R.makeCompound([f]) : f;
   const construitPar = (R, b) => { const s = R.cast(R.downcast(b.Shape())); b.delete(); return s; };      // un constructeur brut n'est jamais ramassé
   const positif = (R, s) => R.measureVolume(s) < 0 ? R.cast(s.wrapped.Reversed()) : s;
@@ -98,7 +98,9 @@ export function operationsPlus(H){
   const epaisseurDeFace = (R, f, d) => {
     const oc = R.getOC(), m = new oc.BRepOffsetAPI_MakeThickSolid();
     m.MakeThickSolidBySimple(f.wrapped, d);
-    m.Build(new oc.Message_ProgressRange());
+    const progres = new oc.Message_ProgressRange();
+    m.Build(progres);
+    progres.delete();      // objet brut : jamais ramassé
     return positif(R, construitPar(R, m));
   };
 
@@ -110,6 +112,7 @@ export function operationsPlus(H){
     const oc = R.getOC(), s = new oc.BRepAdaptor_Surface(f.wrapped, false), cyl = s.Cylinder(), ax = cyl.Axis();
     const lieu = ax.Location(), dir = ax.Direction(), r = cyl.Radius();
     const c = [lieu.X(), lieu.Y(), lieu.Z()], axe = vec.norm([dir.X(), dir.Y(), dir.Z()]);
+    for(const x of [dir, lieu, ax, cyl, s]) x.delete();      // objets bruts : jamais ramassés
     const rad = (u) => { const m = moins(pt(f.pointOnSurface(u, 0.5)), c); return vec.norm(vec.ajout(m, axe, -vec.scal(m, axe))); };
     const ts = f.edges.flatMap(e => [e.startPoint, e.endPoint]).map(q => vec.scal(moins(pt(q), c), axe));
     const t0 = Math.min(...ts), h = Math.max(...ts) - t0;
@@ -137,9 +140,14 @@ export function operationsPlus(H){
     for(const o of outils) t.Append(o.wrapped);
     const s = new oc.BRepAlgoAPI_Splitter();
     s.SetArguments(a); s.SetTools(t);
-    s.Build(new oc.Message_ProgressRange());
-    if(!s.IsDone()) throw new Error("le noyau n'a pas pu fendre cette forme");
-    return R.cast(R.downcast(s.Shape()));
+    const progres = new oc.Message_ProgressRange();
+    s.Build(progres);
+    try{
+      if(!s.IsDone()) throw new Error("le noyau n'a pas pu fendre cette forme");
+      return R.cast(R.downcast(s.Shape()));
+    }finally{
+      for(const x of [progres, s, a, t]) x.delete();      // objets bruts : jamais ramassés
+    }
   };
 
   const diagonale = (bb) => Math.hypot(bb[1][0] - bb[0][0], bb[1][1] - bb[0][1], bb[1][2] - bb[0][2]);
@@ -410,12 +418,12 @@ export function operationsPlus(H){
       const modele = orienter(f, n, [0, 0, 0]);
       const copies = points.map(([x, y]) => modele.clone().translate(versMonde(n0, x, y)));
       const cible = etat.corps.some(c => !c.reference) && op.corps !== "nouveau" ? corpsCible(etat, op.corps) : null;
-      const plein = copies.length === 1 ? copies[0] : R.makeCompound(copies);
+      const plein = reunirOutils(R, modele, copies, points);
       let forme = cible ? cible.shape.fuse(plein) : plein;
       if(Di > 0 && p > 0){
         const trou = orienter(revolutionProfil(R, [[0, h - p], [Di / 2, h - p], [Di / 2, h + 1], [0, h + 1]]), n, [0, 0, 0]);
         const trous = points.map(([x, y]) => trou.clone().translate(versMonde(n0, x, y)));
-        forme = forme.cut(trous.length === 1 ? trous[0] : R.makeCompound(trous));
+        forme = forme.cut(reunirOutils(R, trou, trous, points));
       }
       return cible ? remplacer(etat, cible, forme) : nouveauCorps(etat, forme);
     },
@@ -445,7 +453,7 @@ export function operationsPlus(H){
       if(a) f = f.rotate(a, [0, 0, 0], [0, 0, 1]);
       const modele = orienter(f, n, [0, 0, 0]);
       const copies = points.map(([x, y]) => modele.clone().translate(versMonde(rp, x, y)));
-      const outil = copies.length === 1 ? copies[0] : R.makeCompound(copies);
+      const outil = reunirOutils(R, modele, copies, points);
       return remplacer(etat, cible, op.mode === "logement" ? cible.shape.cut(outil) : cible.shape.fuse(outil));
     },
 
@@ -510,8 +518,8 @@ function rayonFace(R, f){
   if(f.geomType === "PLANE") return Infinity;
   if(f.geomType === "CYLINDRE" || f.geomType === "SPHERE"){
     const s = new oc.BRepAdaptor_Surface(f.wrapped, false);
-    const r = f.geomType === "SPHERE" ? s.Sphere().Radius() : s.Cylinder().Radius();
-    s.delete();
+    const g = f.geomType === "SPHERE" ? s.Sphere() : s.Cylinder(), r = g.Radius();
+    g.delete(); s.delete();
     return r;
   }
   let m = Infinity;

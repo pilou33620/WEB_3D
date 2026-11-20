@@ -62,6 +62,33 @@ for(const [nom, attendu] of Object.entries(STEP)){
   });
 }
 
+/* --- Export STEP filtré : les exemplaires visibles, pas tous ceux du même nom ---------- */
+const { StepExtractor } = await import(pathToFileURL(path.join(RACINE, "js", "10-export-step.js")).href);
+const centres = (r) => r.meshes.map(m => {
+  const p = m.attributes.position.array, s = [0, 0, 0];
+  for(let i = 0; i < p.length; i += 3){ s[0] += p[i]; s[1] += p[i+1]; s[2] += p[i+2]; }
+  return s.map(x => x / (p.length / 3));
+});
+verifier("export STEP : un seul des écrous, à sa place", () => {
+  const texte = lire("assemblage-as1.stp").toString("latin1");
+  const origine = occt.ReadStepFile(new Uint8Array(lire("assemblage-as1.stp")), null);
+  const ex = new StepExtractor(texte), f = ex.feuilles();
+  assert.deepEqual(f.map(x => x.nom), origine.meshes.map(m => m.name), "ordre des pièces : celui d'OpenCascade");
+  const sortie = ex.exportAssemblageFiltre({ feuilles:new Set([1]) });     // le second écrou de la tige
+  assert.equal(ex.enTrop, 0);
+  const r = occt.ReadStepFile(new TextEncoder().encode(sortie), null);
+  assert.ok(r.success);
+  /* À 0,5 mm près : la triangulation suit la taille du modèle, le centre des sommets bouge un peu. */
+  const memePiece = (r, i) => r.meshes.length === 1 && centres(r)[0].every((x, k) => Math.abs(x - centres(origine)[i][k]) < 0.5);
+  assert.ok(memePiece(r, 1), "une pièce, celle demandée");
+  /* Sous-ensemble vis-écrou répété : un écrou seul sort seul ; l'écrou d'un exemplaire et la vis d'un autre
+     ne se séparent pas (une même définition), les deux exemplaires sortent entiers, et c'est compté. */
+  const seul = occt.ReadStepFile(new TextEncoder().encode(ex.exportAssemblageFiltre({ feuilles:new Set([4]) })), null);
+  assert.ok(ex.enTrop === 0 && memePiece(seul, 4), "un écrou d'un sous-ensemble répété sort seul");
+  ex.exportAssemblageFiltre({ feuilles:new Set([4, 5]) });
+  assert.equal(ex.enTrop, 2);
+});
+
 /* --- OBJ et STL, par three.js ---------------------------------------------- */
 verifier("equerre.obj", () => {
   const g = new OBJLoader().parse(lire("equerre.obj").toString("utf8"));

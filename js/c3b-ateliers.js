@@ -269,7 +269,9 @@ export function ateliers(H){
       /* Un composé d'une seule face n'est pas accepté : on lui donne la face. */
       const f0 = cible.shape.faces;
       m.MakeThickSolidBySimple(f0.length === 1 ? f0[0].wrapped : cible.shape.wrapped, op.inverse ? -ep : ep);
-      m.Build(new oc.Message_ProgressRange());
+      const progres = new oc.Message_ProgressRange();
+      m.Build(progres);
+      progres.delete();      // objet brut : jamais ramassé
       let s = construitPar(R, m);
       /* Le noyau rend parfois un solide retourné, de volume négatif : les booléens suivants le refuseraient. */
       if(R.measureVolume(s) < 0) s = R.cast(s.wrapped.Reversed());
@@ -511,6 +513,7 @@ export function ateliers(H){
       const surf = new (R.getOC().BRepAdaptor_Surface)(f.wrapped, false), cyl = surf.Cylinder(), ax = cyl.Axis();
       const lieu = ax.Location(), dir = ax.Direction();
       const c = [lieu.X(), lieu.Y(), lieu.Z()], axe = vec.norm([dir.X(), dir.Y(), dir.Z()]), r = cyl.Radius();
+      for(const x of [dir, lieu, ax, cyl, surf]) x.delete();      // objets bruts : jamais ramassés
       const ts = f.edges.flatMap(e => [e.startPoint, e.endPoint]).map(q => vec.scal(moins(pt(q), c), axe));
       const t0 = Math.min(...ts), L = Math.max(...ts) - t0;
       if(!(L > 0)) throw new Error("face cylindrique sans hauteur");

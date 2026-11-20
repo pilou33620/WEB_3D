@@ -152,6 +152,10 @@ function chercherEsquisse(ctx, id){
   const esq = ctx.doc.operations.find(o => o.id === id && o.type === "esquisse");
   if(!esq) throw new Error("esquisse à choisir");
   if(ctx.ignorees.has(id)) throw new Error(`« ${esq.nom} » est suspendue ou après le curseur`);
+  /* Placée après l'opération (fichier écrit à la main, script) : la clé du cache ne couvre que ce qui
+     précède, le résultat ne suivrait plus les changements de l'esquisse. La frise refuse cet ordre. */
+  const ici = ctx.doc.operations.indexOf(opCourante);
+  if(ici >= 0 && ctx.doc.operations.indexOf(esq) > ici) throw new Error(`« ${esq.nom} » doit précéder l'opération qui s'en sert`);
   return esq;
 }
 
@@ -268,6 +272,16 @@ function orienter(forme, n, p){
 }
 
 /** Un profil (r, z) tourné autour de Z : outils de perçage, cône. */
+/** Des copies d'un même outil, posées en `points` (coordonnées de l'esquisse) : en un composé, le noyau
+    les traite d'un coup, mais rend un résultat faux, sans erreur, si elles se recouvrent. Alors on les
+    réunit une à une. `modele` : l'outil avant déplacement, dont l'encombrement dit jusqu'où il porte. */
+function reunirOutils(R, modele, copies, points){
+  if(copies.length === 1) return copies[0];
+  const bb = modele.boundingBox, portee = Math.hypot(bb.width, bb.height, bb.depth);
+  const mordent = points.some(([x, y], i) => points.slice(i + 1).some(([x2, y2]) => Math.hypot(x2 - x, y2 - y) <= portee));
+  return mordent ? copies.reduce((a, b) => a.fuse(b)) : R.makeCompound(copies);
+}
+
 function revolutionProfil(R, pts){
   let pen = R.draw(pts[0]);
   for(const q of pts.slice(1)) pen = pen.lineTo(q);
@@ -441,9 +455,7 @@ const OPERATIONS = {
     const modele = orienter(revolutionProfil(R, pts), rp.n, [0, 0, 0]);    // un seul outil, déplacé : tourner 120 profils coûte cher
     const outils = points.map(([x, y]) => modele.clone().translate(versMonde(rp, x, y)));
     /* Sauf s'ils se recouvrent : le noyau rend alors un résultat faux (rien de percé), sans erreur. On les réunit d'abord. */
-    const large = 2 * Math.max(...pts.map(p => p[0]));
-    const mordent = points.some(([x, y], i) => points.slice(i + 1).some(([x2, y2]) => Math.hypot(x2 - x, y2 - y) <= large));
-    return remplacer(etat, cible, cible.shape.cut(outils.length === 1 ? outils[0] : mordent ? outils.reduce((a, b) => a.fuse(b)) : R.makeCompound(outils)));
+    return remplacer(etat, cible, cible.shape.cut(reunirOutils(R, modele, outils, points)));
   },
 
   boite(R, etat, op, { v }){
@@ -710,7 +722,7 @@ const OPERATIONS = {
  */
 Object.assign(TYPES, TYPES_ATELIERS, TYPES_PLUS);
 const AIDES_OPERATIONS = { corpsCible, remplacer, nouveauCorps, appliquer, chercherEsquisse, plusProches, planNoyau,
-  tracer, dessinRegions, revolutionProfil, orienter, construire, designes, faceSuivie };
+  tracer, dessinRegions, revolutionProfil, orienter, construire, designes, faceSuivie, reunirOutils };
 Object.assign(OPERATIONS, ateliers(AIDES_OPERATIONS), operationsPlus(AIDES_OPERATIONS));
 
 /** options.plat : les plis de tôle restent à plat (développé). */

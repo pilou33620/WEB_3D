@@ -267,10 +267,47 @@ export class StepExtractor {
   }
 
   /**
+   * Les pièces de l'assemblage, une par chemin d'occurrences de la racine à une pièce sans enfants,
+   * dans l'ordre où OpenCascade les rend : occurrences par numéro d'entité, en profondeur.
+   * Rend [{ nom, chemin:[occurrence…] }].
+   */
+  feuilles() {
+    const enfants = new Map();
+    for (const o of this.occurrences) {
+      if (!enfants.has(o.parentDefId)) enfants.set(o.parentDefId, []);
+      enfants.get(o.parentDefId).push(o);
+    }
+    for (const l of enfants.values()) l.sort((a, b) => a.id - b.id);
+    const parDef = new Map([...this.produits.values()].filter(p => p.defId).map(p => [p.defId, p]));
+    const enfantsIds = new Set(this.occurrences.map(o => o.childDefId));
+    const sortie = [];
+    const descendre = (defId, chemin) => {
+      if (chemin.length > 64) return;                    // un fichier qui se cite lui-même
+      const sous = enfants.get(defId);
+      if (!sous?.length) { sortie.push({ nom: parDef.get(defId)?.nom ?? "", chemin }); return; }
+      for (const o of sous) descendre(o.childDefId, [...chemin, o]);
+    };
+    for (const p of parDef.values()) if (!enfantsIds.has(p.defId)) descendre(p.defId, []);
+    return sortie;
+  }
+
+  /**
    * Export de l'assemblage filtré ne conservant que les pièces visibles (autorisées).
    * Les coordonnées et transformations spatiales dans l'assemblage sont préservées.
+   * `choix` : { feuilles:Set d'indices dans feuilles() } pour garder des exemplaires précis,
+   * ou une liste de noms (tous les exemplaires d'un nom). Après l'appel, `this.enTrop` compte les
+   * pièces gardées sans avoir été demandées : un sous-ensemble répété (une même définition) ne se
+   * sépare pas d'un exemplaire à l'autre dans un STEP.
    */
-  exportAssemblageFiltre(nomsPiecesAutorisees) {
+  exportAssemblageFiltre(choix) {
+    this.enTrop = 0;
+    if (choix.feuilles) {
+      const f = this.feuilles(), ids = new Set();
+      for (const i of choix.feuilles) for (const o of f[i]?.chemin || []) ids.add(o.id);
+      this.enTrop = f.filter(x => x.chemin.every(o => ids.has(o.id))).length - choix.feuilles.size;
+      return this.assemblerOccurrences(this.occurrences.filter(o => ids.has(o.id)));
+    }
+    const nomsPiecesAutorisees = choix;
     const autorises = new Set(nomsPiecesAutorisees.map(n => n.trim().toLowerCase()));
 
     const occurrencesConservees = [];
@@ -305,6 +342,11 @@ export class StepExtractor {
         }
       }
     }
+    return this.assemblerOccurrences(occurrencesConservees);
+  }
+
+  /** Le fichier de l'assemblage réduit à ces occurrences (chacune avec ses parents, déjà comprises). */
+  assemblerOccurrences(occurrencesConservees) {
 
     // Trouver le produit racine (celui qui n'est pas enfant dans une occurrence)
     const enfantsIds = new Set(this.occurrences.map(o => o.childDefId));

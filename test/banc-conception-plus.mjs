@@ -10,7 +10,7 @@ const oc = await opencascade({ locateFile:() => ici("../vendor/replicad/replicad
 R.setOC(oc);
 const { construire } = await import("../js/c3-operations.js");
 const { analyserCorps, comparerCorps, sectionPlan, arretesVue, repartir, grillePerforation } = await import("../js/c3d-operations-plus.js");
-const { ecrireObj, ecrire3mf, ecrireUrdf, dxfCalques, dxfEsquisse, nomenclature, operationsCollees, csvBalayage } = await import("../js/c12-exports.js");
+const { ecrireObj, ecrire3mf, ecrireUrdf, dxfCalques, dxfEsquisse, nomenclature, operationsCollees, csvBalayage, champCsv } = await import("../js/c12-exports.js");
 const { repere, profils, resoudre, echantillonSpline, controlesSpline } = await import("../js/c2-esquisse.js");
 const Plus = await import("../js/c2c-esquisse-plus.js");
 
@@ -149,6 +149,11 @@ async function bati(ops, id, parametres = []){
   const bo = await bati([fond, c, { id:"s", type:"bossage", esquisse:"e", corps:"", de:"8", di:"3", hauteur:"10", profondeur:"8", depouille:"0", nervures:"0" }], "s");
   const attendu = 40 * 40 * 2 + 2 * (Math.PI * 16 * 10 - Math.PI * 2.25 * 8);
   verifier("bossage : tube percé à profondeur", [bo.erreur, Math.round(bo.vol())], [undefined, Math.round(attendu)]);
+  /* Deux bossages pleins qui se recouvrent (entraxe 5, ⌀10) : réunis d'un coup, le noyau rendait un volume faux. */
+  const serres = await bati([fond, pts("e", { base:"XY", decalage:"2" }, [[15, 20], [20, 20]]),
+    { id:"s", type:"bossage", esquisse:"e", corps:"", de:"10", di:"0", hauteur:"10", profondeur:"0", depouille:"0", nervures:"0" }], "s");
+  const lentille = 2 * 25 * Math.acos(0.5) - 2.5 * Math.sqrt(75);
+  verifier("bossage : deux qui se recouvrent", [serres.erreur, Math.round(serres.vol())], [undefined, Math.round(40 * 40 * 2 + (2 * Math.PI * 25 - lentille) * 10)]);
   const dep = await bati([fond, c, { id:"s", type:"bossage", esquisse:"e", corps:"", de:"8", di:"3", hauteur:"10", profondeur:"8", depouille:"2", nervures:"0" }], "s");
   vrai("bossage : la dépouille élargit le pied", !dep.erreur && dep.vol() > bo.vol() + 1, dep.erreur);
   const ne = await bati([fond, c, { id:"s", type:"bossage", esquisse:"e", corps:"", de:"8", di:"3", hauteur:"10", profondeur:"8", depouille:"0", nervures:"4", epNervure:"1", largeurNervure:"3" }], "s");
@@ -522,6 +527,8 @@ async function bati(ops, id, parametres = []){
   const doc = { compteur:5, operations:[] };
   const coll = operationsCollees(doc, [{ id:"e", type:"esquisse", nom:"E", plan:{ ref:"pl" }, elements:[], contraintes:[] }, { id:"x", type:"extrusion", nom:"X", esquisse:"e", corpsNom:"Corps 1", refs:{ a:1 } }, { id:"y", type:"extrusion", nom:"Y", esquisse:"ailleurs" }]);
   verifier("copier-coller : renvois suivis, le reste inchangé", [coll.map(o => o.id), coll[1].esquisse, coll[2].esquisse, coll[1].corpsNom, coll[1].refs, coll[0].plan.ref, coll[1].nom], [["op6", "op7", "op8"], "op6", "ailleurs", undefined, undefined, "pl", "X (copie)"]);
+  verifier("CSV : un nom avec « ; », un guillemet, une formule", ["Capot; v2", 'dit "A"', "=1+1", "Corps 1"].map(champCsv),
+    ['"Capot; v2"', '"dit ""A"""', "'=1+1", "Corps 1"]);
   vrai("balayage : CSV", csvBalayage("L", [{ valeur:10, corps:1, volume:1000.5, aire:600, dims:[10, 10, 10], erreurs:0 }]).includes("10;1;1000,5;600;10;10;10;0"));
 }
 

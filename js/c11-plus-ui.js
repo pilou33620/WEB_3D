@@ -13,7 +13,7 @@ import { telechargerFichier } from "./10-export-step.js";
 import { nomProjet } from "./11-projets.js";
 import { chercherCollisions } from "./12-collisions.js";
 import { demander, avertir, confirmer } from "./c0-dialogues.js";
-import { nomenclature, operationsCollees, csvBalayage, archive, dxfEsquisse, contoursImage, reconnaitrePrisme, memeApparence } from "./c12-exports.js";
+import { nomenclature, operationsCollees, csvBalayage, champCsv, archive, dxfEsquisse, contoursImage, reconnaitrePrisme, memeApparence } from "./c12-exports.js";
 import { echantillonSpline, nouvelleEsquisse, ajouterPrimitives, resoudre, nouvelId } from "./c2-esquisse.js";
 import { autoContraindre } from "./c2c-esquisse-plus.js";
 import { repereImage } from "./c9-ateliers-ui.js";
@@ -520,7 +520,7 @@ async function jouerEtude(c, etude){
 }
 
 function csvEtude({ etude, tableau }, doc){
-  const noms = etude.lignes.map(l => doc.operations.find(o => o.id === l.liaison)?.nom || l.liaison);
+  const noms = etude.lignes.map(l => champCsv(doc.operations.find(o => o.id === l.liaison)?.nom || l.liaison));
   const f = (x) => String(+(+x).toFixed(4)).replace(".", ",");
   return [["pas", ...noms, "X (mm)", "Y (mm)", "Z (mm)", "contacts"].join(";"),
     ...tableau.map(l => [l.pas, ...etude.lignes.map(k => f(l.valeurs[k.liaison])), ...(l.centre ? l.centre.map(f) : ["", "", ""]), l.contacts].join(";"))].join("\n");

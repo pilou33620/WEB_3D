@@ -345,6 +345,7 @@ fn principal(argv: &[String]) -> i32 {
     println!("Visionneuse 3D — serveur local");
     println!("  dossier : {}", dossier.display());
     if let Some(p) = &projets {
+        serveur_3d::nettoyer_projets(p);
         println!("  projets : {}", p.display());
     }
     println!("  adresse : {}", url);
