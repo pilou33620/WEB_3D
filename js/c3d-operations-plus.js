@@ -76,6 +76,7 @@ export function grillePerforation(poly, pas, disposition, marge){
     return m;
   };
   const sortie = [], quinconce = disposition === "quinconce", py = quinconce ? pas * Math.sqrt(3) / 2 : pas;
+  if((x1 - x0) * (y1 - y0) / (pas * py) > 2e5) throw new Error("pas trop fin pour ce contour");      // avant de tout parcourir
   const nl = Math.floor((y1 - y0) / py), yc = (y0 + y1) / 2;
   for(let j = -nl; j <= nl; j++){
     const dec = quinconce && j % 2 ? pas / 2 : 0, nc = Math.floor((x1 - x0) / pas) + 1, xc = (x0 + x1) / 2;
@@ -90,7 +91,7 @@ export function grillePerforation(poly, pas, disposition, marge){
 export function operationsPlus(H){
   const { corpsCible, remplacer, nouveauCorps, appliquer, chercherEsquisse, planNoyau, tracer, dessinRegions, revolutionProfil, orienter, designes, plusProches, faceSuivie } = H;
   const enCoquille = (R, f) => f.constructor.name === "Face" ? R.makeCompound([f]) : f;
-  const construitPar = (R, b) => R.cast(R.downcast(b.Shape()));
+  const construitPar = (R, b) => { const s = R.cast(R.downcast(b.Shape())); b.delete(); return s; };      // un constructeur brut n'est jamais ramassé
   const positif = (R, s) => R.measureVolume(s) < 0 ? R.cast(s.wrapped.Reversed()) : s;
 
   /** Le morceau de corps entre une face et sa copie décalée : solide, de volume positif. */

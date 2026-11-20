@@ -84,7 +84,7 @@ export function evaluer(texte, valeur = () => { throw new Error("aucun paramètr
     if(jt.t === "id"){
       const nom = jt.v;
       if(voir() === "("){
-        const f = FONCTIONS[nom.toLowerCase()];
+        const f = Object.hasOwn(FONCTIONS, nom.toLowerCase()) && FONCTIONS[nom.toLowerCase()];      // pas « constructor »
         if(!f) throw new Error(`fonction inconnue « ${nom} »`);
         i++;
         const args = [somme()];
@@ -92,7 +92,7 @@ export function evaluer(texte, valeur = () => { throw new Error("aucun paramètr
         prendre(")");
         return f(...args);
       }
-      if(nom.toLowerCase() in CONSTANTES) return CONSTANTES[nom.toLowerCase()];
+      if(Object.hasOwn(CONSTANTES, nom.toLowerCase())) return CONSTANTES[nom.toLowerCase()];
       return valeur(nom);
     }
     throw new Error(`« ${jt.t} » inattendu`);

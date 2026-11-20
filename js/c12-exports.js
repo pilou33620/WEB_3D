@@ -89,7 +89,11 @@ export function ecrireUrdf(nom, corps, liaisons, v = Number){
     const axe = (l.repereA.axe || l.repereA.normale).map(nombre).join(" ");
     const pivot = l.mode === "pivot", bas = l.min !== undefined && l.min !== "" ? v(l.min) : null, haut = l.max !== undefined && l.max !== "" ? v(l.max) : null;
     const k = pivot ? Math.PI / 180 : 0.001;
-    const borne = bas !== null && haut !== null ? `<limit lower="${nombre(bas * k)}" upper="${nombre(haut * k)}" effort="10" velocity="1"/>` : "";
+    if((bas === null) !== (haut === null)) throw new Error(`« ${l.nom} » : l'URDF demande les deux limites, ou aucune`);
+    if(bas !== null && bas > haut) throw new Error(`« ${l.nom} » : limite basse plus grande que la haute`);
+    /* Les maillages sortent dans la pose courante : c'est le zéro du joint, les limites se comptent depuis elle. */
+    const v0 = l.valeur !== undefined && l.valeur !== "" ? v(l.valeur) : 0;
+    const borne = bas !== null ? `<limit lower="${nombre((bas - v0) * k)}" upper="${nombre((haut - v0) * k)}" effort="10" velocity="1"/>` : "";
     const genre = pivot && !borne ? "continuous" : type;
     if(type === "prismatic" && !borne) throw new Error(`« ${l.nom} » : une glissière demande ses limites en URDF`);
     return `  <joint name="${echapperXml(ident(l.nom))}" type="${genre}">
@@ -167,7 +171,8 @@ export function operationsCollees(doc, copiees){
   const sorties = copiees.map(o => { const c = structuredClone(o); c.id = ids(o); delete c.corpsNom; delete c.refs; return c; });
   const renvoi = (x) => table.get(x) ?? x;
   for(const c of sorties){
-    for(const k of ["esquisse", "chemin", "pilote"]) if(c[k]) c[k] = renvoi(c[k]);
+    for(const k of ["esquisse", "chemin", "pilote", "plan1", "plan2", "plan3"]) if(c[k]) c[k] = renvoi(c[k]);
+    if(c.type === "point" && c.axe) c.axe = renvoi(c.axe);
     if(c.esquisses) c.esquisses = c.esquisses.map(renvoi);
     if(c.plan?.ref) c.plan.ref = renvoi(c.plan.ref);
     if(typeof c.plan === "string") c.plan = renvoi(c.plan);
@@ -223,7 +228,7 @@ function simplifierContour(pts, tol){
 
 /** Une table de valeurs d'un paramètre : ce que chaque valeur donne. En CSV. */
 export function csvBalayage(nom, lignes){
-  const f = (x) => x === null || x === undefined ? "" : String(+(+x).toFixed(4)).replace(".", ",");
+  const f = (x) => x === null || x === undefined || x === "" ? "" : String(+(+x).toFixed(4)).replace(".", ",");
   return [`${nom};corps;volume (mm3);aire (mm2);X (mm);Y (mm);Z (mm);erreurs`,
     ...lignes.map(l => [f(l.valeur), l.corps, f(l.volume), f(l.aire), ...(l.dims || ["", "", ""]).map(f), l.erreurs].join(";"))].join("\n");
 }
@@ -240,7 +245,9 @@ export function lireNuage(texte, plafond = 200000){
   }
   const pts = [];
   for(const l of lignes){
-    const n = l.trim().split(/[\s,;]+/).slice(0, 3).map(Number);
+    /* Avec des « ; », la virgule est décimale (tableur français, et les CSV de cette page). */
+    const s = l.trim(), champs = s.includes(";") ? s.split(/\s*;\s*/).map(x => x.replace(",", ".")) : s.split(/[\s,]+/);
+    const n = champs.slice(0, 3).map(Number);
     if(n.length === 3 && n.every(Number.isFinite)) pts.push(n);
   }
   if(!pts.length) throw new Error("aucun point lisible : trois nombres par ligne");
@@ -257,7 +264,9 @@ export function ajusterBoucle(pts, tol){
   const surCercle = (k, p) => Math.abs(Math.hypot(p[0] - k.c.x, p[1] - k.c.y) - k.r) <= tol;
   if(n >= 6){
     const k = cercle3Points(O(pts[0]), O(pts[Math.floor(n / 3)]), O(pts[Math.floor(2 * n / 3)]));
-    if(k && pts.every(p => surCercle(k, p))) return [{ type:"cercle", c:[k.c.x, k.c.y], r:k.r }];
+    /* Un cercle : assez de facettes, toutes de même longueur. Sinon un hexagone (inscriptible) ou un arbre à méplat le devenaient. */
+    const cordes = pts.map((p, i) => Math.hypot(p[0] - pts[(i + 1) % n][0], p[1] - pts[(i + 1) % n][1]));
+    if(k && n >= 12 && Math.max(...cordes) < 1.5 * Math.min(...cordes) && pts.every(p => surCercle(k, p))) return [{ type:"cercle", c:[k.c.x, k.c.y], r:k.r }];
   }
   /* Le départ : un vrai coin, là où le contour change le plus de direction ; jamais au milieu d'un arc ou d'une ligne. */
   const angleEn = (i) => {
@@ -274,8 +283,11 @@ export function ajusterBoucle(pts, tol){
     if(k){
       const signe = Math.sign(angleEn((depart + i + 1) % n));
       j = i + 2;
-      while(j < n && surCercle(k, P(j + 1)) && Math.sign(angleEn((depart + j) % n)) === signe && Math.abs(angleEn((depart + j) % n)) < Math.PI / 3) j++;
+      const corde = (q) => Math.hypot(P(q + 1)[0] - P(q)[0], P(q + 1)[1] - P(q)[1]);      // la corde d'un méplat n'est pas une facette de l'arc
+      if(corde(i + 1) > 1.5 * corde(i) || corde(i) > 1.5 * corde(i + 1)) j = n + 1;
+      while(j < n && corde(j) < 1.5 * corde(i) && surCercle(k, P(j + 1)) && Math.sign(angleEn((depart + j) % n)) === signe && Math.abs(angleEn((depart + j) % n)) < Math.PI / 3) j++;
       if(Math.abs(angleEn((depart + i + 1) % n)) >= Math.PI / 3) j = i;
+      if(j > n) j = i;
     }
     if(k && j - i >= 3){
       /* Le milieu suivant le sens de parcours : l'arc peut dépasser le demi-tour. */

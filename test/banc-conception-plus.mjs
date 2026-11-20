@@ -445,6 +445,9 @@ async function bati(ops, id, parametres = []){
   const carre = [[0, 0], [5, 0], [10, 0], [10, 10], [0, 10]];
   verifier("contour : les points alignés ne font qu'une ligne", ajusterBoucle(carre, 0.01).map(q => q.type), ["ligne", "ligne", "ligne", "ligne"]);
 
+  const hexa = [0, 1, 2, 3, 4, 5].map(i => [10 * Math.cos(i * Math.PI / 3), 10 * Math.sin(i * Math.PI / 3)]);
+  verifier("contour : un hexagone n'est pas un cercle", ajusterBoucle(hexa, 0.01).map(q => q.type), Array(6).fill("ligne"));
+
   const doc = { apparences:{ A:{ couleur:"#111111", metal:1, rugosite:0.2, opacite:1 }, B:{ couleur:"#111111", metal:1, rugosite:0.2, opacite:1, materiau:"Laiton" }, C:{ couleur:"#222222", metal:1, rugosite:0.2, opacite:1 } } };
   verifier("même apparence : le matériau physique ne compte pas", memeApparence(doc, ["A", "B", "C", "D"], "A"), ["A", "B"]);
   verifier("même apparence : les corps sans apparence vont ensemble", memeApparence(doc, ["A", "D", "E"], "D"), ["D", "E"]);

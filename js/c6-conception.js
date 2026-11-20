@@ -284,7 +284,7 @@ class Conception {
 
     this.editeur = new EditeurEsquisse({
       vue, nav, gcs, ctr:$("ctr"),
-      memoriser:(avant) => this.memoriser(avant),
+      memoriser:(avant) => this.memoriser(avant ?? JSON.stringify(this.doc)),
       surModif:() => this.marquerModifie(),
       surStatut:(t) => { $("etatSel").textContent = t; },
       surListe:() => this.editeur.ouvert && this.editeur.remplirListe($("props")),
@@ -466,7 +466,11 @@ class Conception {
   /* ==========================================================================
      Annuler / refaire, état modifié, brouillon
      ========================================================================== */
-  memoriser(avant = JSON.stringify(this.doc)){
+  memoriser(avant){
+    /* Panneau d'opération ouvert : le document contient l'opération en cours, pas encore validée. L'empiler la
+       ferait revenir par Ctrl+Z après un abandon ; l'état d'avant (edition.avant) couvrira tout à la validation. */
+    if(avant === undefined && this.edition && !this.edition.plan) return;
+    avant ??= JSON.stringify(this.doc);
     const instant = JSON.parse(avant);
     if(!instant.operations){                    // l'éditeur d'esquisse n'envoie que l'esquisse d'avant
       const doc = JSON.parse(JSON.stringify(this.doc));
@@ -490,6 +494,7 @@ class Conception {
       const esq = this.doc.operations.find(o => o.id === this.editeur.esq.id);
       if(esq) this.editeur.remplacer(esq);
       else this.terminerEsquisse();
+      if(this.editeur.ouvert) this.editeur.v = this.v();      // les paramètres ont pu changer avec le document
     }
     this.marquerModifie();
     this.majHistorique();
@@ -506,6 +511,7 @@ class Conception {
   }
 
   refaire(){
+    if(this.edition && !this.edition.plan) return;      // comme annuler : pas d'opération à moitié créée dans la pile
     if(!this.pileRefaire.length) return;
     this.pileAnnuler.push(JSON.stringify(this.doc));
     this.restaurer(this.pileRefaire.pop());
@@ -610,7 +616,7 @@ class Conception {
     this.sauverOnglet();
     const o = this.onglets[i];
     if(o.modifie && !await confirmer(`« ${o.doc.nom} » n'est pas enregistrée. La fermer quand même ?`, "Fermer sans enregistrer")) return;
-    i = this.onglets.indexOf(o);               // la boîte a laissé la page vivre : un autre onglet a pu se fermer
+    i = this.onglets.findIndex(x => x.doc === o.doc);      // par document : le brouillon refait l'objet de l'onglet actif ; la boîte a laissé la page vivre : un autre onglet a pu se fermer
     if(i < 0) return;
     if(i !== this.ongletActif){               // en arrière-plan : la pièce active et sa vue ne bougent pas
       this.onglets.splice(i, 1);
@@ -1762,6 +1768,7 @@ class Conception {
     }
     this.designation = quoi;
     this.rangSommet = 0;
+    this.pointsCalibre = [];      // un calibrage abandonné ne laisse pas son premier point
     this.montrerSurvol(null);
     this.vue.canvas.classList.toggle("mesure", !!quoi);
     $("etatSel").textContent = quoi === "aretes" ? "Cliquez les arêtes (un second clic retire), Échap pour finir."
@@ -2126,12 +2133,14 @@ class Conception {
      Paramètres
      ========================================================================== */
   ouvrirParametres(){
+    if(this.edition && !this.edition.plan) return;      // comme le bouton du ruban, éteint pendant une opération
     this.avantParametres = JSON.stringify(this.doc);
     this.remplirParametres();
     const dlg = $("dlgParametres");
     dlg.onclose = () => {
       if(JSON.stringify(this.doc) === this.avantParametres) return;
       this.memoriser(this.avantParametres);
+      if(this.editeur.ouvert){ this.editeur.v = this.v(); this.editeur.resoudre(); this.editeur.redessiner(); }   // un paramètre ajouté se saisit aussitôt
       this.marquerModifie();
       this.reconstruire();
     };
@@ -2257,6 +2266,7 @@ class Conception {
     /* Le nom d'une pièce enregistrée est celui de son fichier : « Enregistrer sous » l'a peut-être changé. */
     const propre = { ...this.docVide(), ...doc, ...(chemin ? { nom:chemin.split("/").pop().replace(/\.json$/i, "") } : {}), parametres:doc.parametres || [], dossiers:Array.isArray(doc.dossiers) ? doc.dossiers : [],
       vues:Array.isArray(doc.vues) ? doc.vues : [], configurations:Array.isArray(doc.configurations) ? doc.configurations : [] };
+    if(!Object.hasOwn(UNITES, propre.unite)) propre.unite = "mm";      // affichée en HTML : jamais le texte d'un fichier reçu
     normaliserDossiers(propre);
     $("accueil").hidden = true;
     /* Une pièce vide et intacte cède sa place ; sinon, on ouvre à côté : rien n'est perdu. */
@@ -2327,6 +2337,7 @@ class Conception {
       this.sauverBrouillon();
       return;
     }
+    const doc = this.doc;      // la réponse du serveur revient à cette pièce, même si l'onglet a changé entre-temps
     let chemin = this.cheminProjet, remplacer = !sous && !!chemin;
     if(!remplacer){
       nom ??= await demanderTexte("Enregistrer la pièce", "Nom (dossier des projets)", this.doc.nom || "piece");
@@ -2339,8 +2350,10 @@ class Conception {
       });
       const j = await r.json().catch(() => ({}));
       if(!r.ok) throw new Error(j.detail || r.status);
+      doc.nom = j.chemin.split("/").pop().replace(/\.json$/i, "");
+      const autre = doc !== this.doc && this.onglets.find(o => o.doc === doc);
+      if(autre){ autre.chemin = j.chemin; autre.modifie = false; this.majTitre(); this.sauverBrouillon(); return; }
       this.cheminProjet = j.chemin;
-      this.doc.nom = j.chemin.split("/").pop().replace(/\.json$/i, "");
       this.modifie = false;
       this.majTitre();
       this.majNavigateur();
@@ -2695,14 +2708,13 @@ async function demarrer(){
   /* ?projet=chemin.json (depuis les projets de la visionneuse), sinon le brouillon de ce navigateur. */
   const projet = new URLSearchParams(location.search).get("projet");
   try{
-    if(projet) await conception.ouvrirProjet(projet);
-    else{
-      const b = JSON.parse(localStorage.getItem(CLE_BROUILLON) || "null");
-      for(const p of b?.onglets || []) await conception.ouvrirDocument(p.doc, p.chemin, { brouillon:true });
-      if(!b?.onglets?.length){
-        await conception.reconstruire();          // charge le noyau d'avance
-        conception.montrerAccueil();
-      }
+    /* Le brouillon d'abord, même avec ?projet= : sinon la première modification l'écrasait, travail perdu. */
+    const b = JSON.parse(localStorage.getItem(CLE_BROUILLON) || "null");
+    for(const p of b?.onglets || []) await conception.ouvrirDocument(p.doc, p.chemin, { brouillon:true });
+    if(projet && !b?.onglets?.some(p => p.chemin === projet)) await conception.ouvrirProjet(projet);
+    else if(!b?.onglets?.length){
+      await conception.reconstruire();          // charge le noyau d'avance
+      conception.montrerAccueil();
     }
   }catch(e){
     conception.statutErreur(e.message);

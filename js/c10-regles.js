@@ -73,7 +73,7 @@ function grille(doc, ops, v, valeurs, erreurs, maillages){
         if(!multiple(v(d), 0.2)) ecarts.push(`${nom} : hauteur de ${mm(v(d))} hors du pas de 0,2 mm.`);
     }catch(_){ ecarts.push(`${nom} : valeur illisible, non contrôlée.`); }
   }
-  for(const m of maillages){
+  for(const m of maillages.filter(m => !m.reference)){      // un corps de référence n'est pas imprimé
     const b = m.proprietes?.boite;
     if(b && !multiple(b[1][2] - b[0][2], 0.2)) ecarts.push(`Corps « ${sur(m.nom)} » : hauteur hors-tout de ${mm(b[1][2] - b[0][2])} hors du pas de 0,2 mm.`);
   }
@@ -97,7 +97,7 @@ function plastique(doc, ops, v){
         if((v(op.de) - v(op.di)) / 2 > 0.6 * paroi) ecarts.push(`${nom} : fût de ${mm((v(op.de) - v(op.di)) / 2)}, plus de 60 % de la paroi de ${mm(paroi)} (retassure)`);
       }
       if(op.type === "depouille" && Math.abs(v(op.angle)) < dep) ecarts.push(`${nom} : ${deg(Math.abs(v(op.angle)))}, sous le minimum de ${deg(dep)}`);
-      if(op.type === "coque" && v(op.epaisseur) !== paroi) ecarts.push(`${nom} : épaisseur de ${mm(v(op.epaisseur))}, la paroi nominale est de ${mm(paroi)}`);
+      if(op.type === "coque" && Math.abs(v(op.epaisseur) - paroi) > 1e-6) ecarts.push(`${nom} : épaisseur de ${mm(v(op.epaisseur))}, la paroi nominale est de ${mm(paroi)}`);
     }catch(_){ ecarts.push(`${nom} : cote illisible, non contrôlée`); }
   }
   return ecarts;

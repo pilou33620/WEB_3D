@@ -17,6 +17,7 @@ import { nomenclature, operationsCollees, csvBalayage, archive, dxfEsquisse, con
 import { echantillonSpline, nouvelleEsquisse, ajouterPrimitives, resoudre, nouvelId } from "./c2-esquisse.js";
 import { autoContraindre } from "./c2c-esquisse-plus.js";
 import { repereImage } from "./c9-ateliers-ui.js";
+import { appliquerAnalyse } from "./c8-analyses.js";
 
 const $ = (id) => document.getElementById(id);
 const etat = (t) => { $("etatSel").textContent = t; };
@@ -238,6 +239,9 @@ const segments = (plat, couleur) => {
 /** Ce qui suit chaque reconstruction : apparences physiques, repère du centre de gravité. */
 export function apresAffichage(c){
   viderTrace(c);
+  /* Sous une analyse, le matériau des corps est son nuanceur : l'apparence se poserait sur lui et serait perdue à l'arrêt. */
+  const analyse = c.analyse;
+  if(analyse) appliquerAnalyse(c.vue, null);
   for(const m of c.vue.modele.children){
     const a = c.doc.apparences?.[m.name];
     if(!a || !m.isMesh) continue;
@@ -257,6 +261,7 @@ export function apresAffichage(c){
   if(c.centreGravite) montrerCentre(c);
   if((c.doc.composants || []).length) montrerComposants(c);
   else c.vue.recenserMateriaux?.();
+  if(analyse) appliquerAnalyse(c.vue, analyse);
 }
 
 function montrerCentre(c){
@@ -578,7 +583,10 @@ async function poserApparence(c){
       if(face && objet){
         const f = (table[nom] ||= {}).faces ||= [];
         f.push({ point:face.point, couleur:a.couleur });
-      }else table[nom] = { ...table[nom], ...a, ...(r[5] ? { materiau:r[5] } : {}) };
+      }else{
+        const { materiau, ...reste } = table[nom] || {};      // « Celui de la pièce » retire le matériau propre
+        table[nom] = { ...reste, ...a, ...(r[5] ? { materiau:r[5] } : {}) };
+      }
     }
   });
 }
@@ -723,7 +731,8 @@ export function brancherPlus(c){
   });
 
   si("bExportScript", () => {
-    const texte = `/* Pièce « ${c.doc.nom} » : à coller dans la console de la page de conception. */\nW3D.conception.ouvrirOnglet(${JSON.stringify(c.doc, null, 1)}, null, false);\n`;
+    // Pas le nom dans le commentaire : « */ » en sortirait, dans un fichier fait pour être exécuté
+    const texte = `/* Pièce à coller dans la console de la page de conception. */\nW3D.conception.ouvrirOnglet(${JSON.stringify(c.doc, null, 1)}, null, false);\n`;
     telechargerFichier(texte, `${nomProjet(c.doc.nom)}-script.js`, "text/javascript");
   });
 

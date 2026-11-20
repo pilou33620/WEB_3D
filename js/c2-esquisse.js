@@ -453,7 +453,7 @@ function unifierPoints(esq, idx){
   const parPosition = new Map();
   for(const e of esq.elements){
     if(e.type !== "point") continue;
-    const cle = `${e.x.toFixed(4)},${e.y.toFixed(4)}`;
+    const cle = `${Math.round(e.x * 1e4)},${Math.round(e.y * 1e4)}`;      // pas toFixed : « -0.0000 » n'est pas « 0.0000 »
     if(parPosition.has(cle)) unir(e.id, parPosition.get(cle));
     else parPosition.set(cle, e.id);
   }
@@ -606,7 +606,7 @@ export function profils(esq){
 export function ajouterPrimitives(esq, prims){
   const parCle = new Map();
   const point = ([x, y]) => {
-    const cle = `${x.toFixed(4)},${y.toFixed(4)}`;
+    const cle = `${Math.round(x * 1e4)},${Math.round(y * 1e4)}`;
     if(parCle.has(cle)) return parCle.get(cle);
     const id = nouvelId(esq, "p");
     esq.elements.push({ id, type:"point", x, y });
@@ -631,12 +631,14 @@ export function ajouterPrimitives(esq, prims){
     }
     if(p.type === "point") return { id:point(p.a) };
     if(p.type === "cercle"){
+      if(!(p.r > 0)) return null;      // CIRCLE de rayon nul d'un DXF
       const c = nouvelId(esq, "p");
       esq.elements.push({ id:c, type:"point", x:p.c[0], y:p.c[1] });
       return ajouter({ id:nouvelId(esq, "c"), type:"cercle", c, r:p.r });
     }
     if(p.type === "arc"){
       const k = cercle3Points({ x:p.a[0], y:p.a[1] }, { x:p.m[0], y:p.m[1] }, { x:p.b[0], y:p.b[1] });
+      if(!k && Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]) < 1e-6) return null;      // bouts confondus : ni arc ni ligne
       if(!k) return ajouter({ id:nouvelId(esq, "l"), type:"ligne", p1:point(p.a), p2:point(p.b) });
       const c = nouvelId(esq, "p");
       esq.elements.push({ id:c, type:"point", x:k.c.x, y:k.c.y });
@@ -690,7 +692,7 @@ export function lireDxf(texte){
       for(let i = 0; i < n; i++){
         const s = sommets[i], t = sommets[(i + 1) % sommets.length];
         const a = [s.x, s.y], b = [t.x, t.y];
-        prims.push(Math.abs(s.bulge) > 1e-9 ? { type:"arc", a, m:milieuBulge(a, b, s.bulge), b } : { type:"ligne", a, b });
+        prims.push(Math.abs(s.bulge) > 1e-9 && Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-9 ? { type:"arc", a, m:milieuBulge(a, b, s.bulge), b } : { type:"ligne", a, b });
       }
     }
     ent = null;

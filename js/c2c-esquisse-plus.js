@@ -282,7 +282,7 @@ export function echelleEsquisse(esq, ids, f, o){
     if(!["longueur", "distance", "distanceX", "distanceY", "rayon", "diametre"].includes(k.type)) continue;
     if(![k.a, k.b].filter(Boolean).every(x => choisis.has(x))) continue;
     /* Une cote qui cite un paramètre reste sa formule : à l'auteur de la changer. */
-    if(/^\s*-?\d+(\.\d+)?\s*$/.test(String(k.expr))) k.expr = String(+(parseFloat(k.expr) * f).toFixed(6));
+    if(/^\s*-?\d+([.,]\d+)?\s*(mm)?\s*$/.test(String(k.expr))) k.expr = String(+(parseFloat(String(k.expr).replace(",", ".")) * f).toFixed(6));
   }
   return null;
 }
@@ -344,7 +344,7 @@ export function autoContraindre(esq, tolDistance = 0.05, tolAngle = 1){
   const points = esq.elements.filter(e => e.type === "point");
   const unis = new Map();
   const racine = (id) => { while(unis.has(id)) id = unis.get(id); return id; };
-  for(const k of esq.contraintes) if(k.type === "coincident") unis.set(racine(k.a), racine(k.b));
+  for(const k of esq.contraintes) if(k.type === "coincident"){ const ra = racine(k.a), rb = racine(k.b); if(ra !== rb) unis.set(ra, rb); }      // a=b puis b=a : sans ce test, racine() tournait sans fin
   points.forEach((a, i) => {
     for(const b of points.slice(i + 1)){
       if(Math.hypot(a.x - b.x, a.y - b.y) > tolDistance || racine(a.id) === racine(b.id)) continue;
@@ -367,7 +367,7 @@ export function autoContraindre(esq, tolDistance = 0.05, tolAngle = 1){
 /** Les points où une chaîne s'arrête : ce qui empêche un contour de se fermer. */
 export function boutsLibres(esq){
   const compte = new Map(), parPos = new Map(), idx = indexer(esq);
-  const cle = (id) => { const p = idx.get(id); return `${p.x.toFixed(4)},${p.y.toFixed(4)}`; };
+  const cle = (id) => { const p = idx.get(id); return `${Math.round(p.x * 1e4)},${Math.round(p.y * 1e4)}`; };
   for(const e of esq.elements){
     if(e.constr || !["ligne", "arc", "spline"].includes(e.type)) continue;
     for(const p of [e.p1, e.p2]){

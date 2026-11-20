@@ -353,6 +353,8 @@ const OPERATIONS = {
       return appliquer(etat, dessinRegions(R, esq, op.contours).sketchOnPlane(new R.Plane(r.o, r.x, r.n)).extrudeUntil(lim, { extrusionDirection:dir }), op);
     }
     const d2 = sens === "deux" ? v(op.distance2) : 0;
+    /* -d : longueur nulle, le noyau ne rend jamais la main ; au-delà, un solide hors du plan. */
+    if(!(d2 >= 0)) throw new Error("la seconde distance doit être positive ou nulle");
     /* départ et longueur le long de la normale du plan */
     const [depart, longueur] = sens === "sym" ? [-d / 2, d] : sens === "deux" ? [-d2, d + d2] : op.inverse ? [-d, d] : [0, d];
     const { r } = planNoyau(R, esq, v);
@@ -376,6 +378,7 @@ const OPERATIONS = {
       dir = vec.norm(vec.ajout(versMonde(r, b.x, b.y), origine, -1));
     }
     const angle = v(op.angle ?? 360);
+    if(!angle || Math.abs(angle) > 360) throw new Error("angle de révolution entre 0 et 360°, non nul");
     return appliquer(etat, dessinRegions(R, esq, op.contours).sketchOnPlane(plan).revolve(dir, { origin:origine, angle }), op);
   },
 
@@ -425,14 +428,22 @@ const OPERATIONS = {
     }else if(op.forme === "fraisure"){
       const rt = v(op.diamTete) / 2, a = v(op.angleTete ?? 90) * Math.PI / 360;
       const h = (rt - r) / Math.tan(a);
+      if(!(a > 0 && a < Math.PI / 2)) throw new Error("angle de fraisure entre 0 et 180°");
       if(!(rt > r && h < prof)) throw new Error("fraisure : diamètre de tête > diamètre du trou, et pas plus profonde que le trou");
       pts = [[0, 1], [rt, 1], [rt, 0], [r, -h], [r, -prof], [0, -prof]];
-    }else pts = [[0, 1], [r, 1], [r, -prof], [0, -prof]];
+    }else{
+      /* Traversant : des deux côtés du plan. Une esquisse sous le corps ne perçait que le millimètre de garde, sans erreur. */
+      const haut = op.traversant ? prof : 1;
+      pts = [[0, haut], [r, haut], [r, -prof], [0, -prof]];
+    }
     const rp = repere(esq.plan, v);
     /* Tous les outils d'un coup : un booléen par trou repart à chaque fois d'une forme plus lourde. */
     const modele = orienter(revolutionProfil(R, pts), rp.n, [0, 0, 0]);    // un seul outil, déplacé : tourner 120 profils coûte cher
     const outils = points.map(([x, y]) => modele.clone().translate(versMonde(rp, x, y)));
-    return remplacer(etat, cible, cible.shape.cut(outils.length === 1 ? outils[0] : R.makeCompound(outils)));
+    /* Sauf s'ils se recouvrent : le noyau rend alors un résultat faux (rien de percé), sans erreur. On les réunit d'abord. */
+    const large = 2 * Math.max(...pts.map(p => p[0]));
+    const mordent = points.some(([x, y], i) => points.slice(i + 1).some(([x2, y2]) => Math.hypot(x2 - x, y2 - y) <= large));
+    return remplacer(etat, cible, cible.shape.cut(outils.length === 1 ? outils[0] : mordent ? outils.reduce((a, b) => a.fuse(b)) : R.makeCompound(outils)));
   },
 
   boite(R, etat, op, { v }){
@@ -676,8 +687,12 @@ const OPERATIONS = {
       else copies.push(copie);
     }
     if(op.separe) return suite;
-    /* Les exemplaires qui ne se touchent pas se réunissent d'un coup ; sinon, un par un. */
-    const espaces = op.mode !== "circulaire" && copies.length > 1;
+    /* Les exemplaires qui ne se touchent pas se réunissent d'un coup ; sinon, un par un : réunis d'un coup alors
+       qu'ils se recouvrent, le noyau rend un volume faux, sans erreur. Le pas doit dépasser l'encombrement. */
+    const bb = cible.shape.boundingBox, cote = [bb.width, bb.height, bb.depth];
+    const etendue = (d) => { const u = vec.norm(d); return Math.abs(u[0]) * cote[0] + Math.abs(u[1]) * cote[1] + Math.abs(u[2]) * cote[2]; };
+    const espaces = op.mode !== "circulaire" && copies.length > 1
+      && Math.abs(pas) > etendue(axe) && (!axe2 || n2 < 2 || Math.abs(pas2) > etendue(axe2));
     return remplacer(etat, cible, espaces ? cible.shape.fuse(R.makeCompound(copies)) : copies.reduce((f, c) => f.fuse(c), cible.shape));
   },
 

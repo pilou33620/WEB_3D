@@ -195,6 +195,7 @@ export class EditeurEsquisse {
   pointeurBas(ev){
     if(ev.button !== 0 || ev.ctrlKey || ev.altKey) return false;
     if(this.outil){
+      if(ev.isPrimary === false) return true;      // le second doigt d'un pincement ne pose pas de point
       const m = this.accroche(ev);
       if(m) this.clic(m, ev);
       return true;
@@ -227,6 +228,8 @@ export class EditeurEsquisse {
     let bouge = false, attente = false, dernier = ev0;
     const bouger = (ev) => {
       dernier = ev;
+      // même seuil que la navigation : un clic qui tremble sélectionne, il ne déplace pas le point
+      if(!bouge && Math.hypot(ev.clientX - ev0.clientX, ev.clientY - ev0.clientY) < 4) return;
       if(attente) return;
       attente = true;
       requestAnimationFrame(() => {
@@ -241,6 +244,7 @@ export class EditeurEsquisse {
     const lacher = (ev) => {
       removeEventListener("pointermove", bouger);
       removeEventListener("pointerup", lacher);
+      removeEventListener("pointercancel", lacher);
       if(!bouge){ this.selectionner(ev); return; }          // un clic sans glisser : sélection du point
       this.ctx.memoriser(avant);           // l'état d'avant le glissé : une seule étape d'annulation
       this.resoudre();
@@ -249,6 +253,7 @@ export class EditeurEsquisse {
     };
     addEventListener("pointermove", bouger);
     addEventListener("pointerup", lacher);
+    addEventListener("pointercancel", lacher);
     vue.invalider();
   }
 
@@ -327,6 +332,7 @@ export class EditeurEsquisse {
       }
       case "rectangle": case "rectangleCentre": {
         if(!c.length){ c.push(m); return; }
+        if(Math.abs(m.x - c[0].x) < 1e-6 || Math.abs(m.y - c[0].y) < 1e-6) return;      // double-clic : pas de rectangle plat
         modifier(() => this.rectangle(c[0], m, this.outil === "rectangleCentre"));
         fini();
         return;
@@ -356,6 +362,7 @@ export class EditeurEsquisse {
       case "arcCentre": {
         if(c.length < 2){ c.push(m); return; }
         const r = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y);
+        if(r < 1e-6){ fini(); return; }      // centre et départ confondus : pas d'arc de rayon nul
         const t = Math.atan2(m.y - c[0].y, m.x - c[0].x);
         const fin = { x:c[0].x + r * Math.cos(t), y:c[0].y + r * Math.sin(t), id:null };
         modifier(() => {

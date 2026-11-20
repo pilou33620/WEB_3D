@@ -96,7 +96,7 @@ export function ateliers(H){
   const surface = (etat, forme) => nouveauCorps(etat, forme, { surface:true });
   /** Une face seule n'a ni cut ni fuse : un composé d'une face, si. */
   const enCoquille = (R, f) => f.constructor.name === "Face" ? R.makeCompound([f]) : f;
-  const construitPar = (R, b) => R.cast(R.downcast(b.Shape()));
+  const construitPar = (R, b) => { const s = R.cast(R.downcast(b.Shape())); b.delete(); return s; };      // un constructeur brut n'est jamais ramassé
 
   /** Le solide d'un maillage insérable ou l'erreur : triangles → faces → coquille → solide si elle est fermée. */
   const polyedre = (R, tris) => {

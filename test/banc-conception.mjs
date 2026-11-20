@@ -295,6 +295,16 @@ const gr = await volume([boite20, esqLot1("e", { base:"XY", decalage:"20" }, rec
 verifier("gravure en creux", [gr.erreur, Math.round(gr.vols[0])], [undefined, 8000 - 25]);
 const gr2 = await volume([boite20, esqLot1("e", { base:"XY", decalage:"20" }, rectEls(5, 5, 10, 10)), { id:"g", type:"gravure", esquisse:"e", profondeur:"1", mode:"relief", corps:"" }], "g");
 verifier("gravure en relief", [gr2.erreur, Math.round(gr2.vols[0])], [undefined, 8000 + 25]);
+/* Revue : outils qui se recouvrent (le composé rendait un volume faux, sans erreur), trou traversant vu d'en dessous. */
+const trous = (z, pts) => esqLot1("t", { base:"XY", decalage:z }, pts.map(([x, y], i) => ({ id:"q" + i, type:"point", x, y, seul:true })));
+const mord = await volume([boite20, trous("20", [[5, 10], [6, 10]]), { id:"h", type:"percage", esquisse:"t", diametre:"4", traversant:true, corps:"" }], "h");
+verifier("perçage : deux trous qui se recouvrent percent bien", [mord.erreur, Math.round(mord.vols[0])], [undefined, Math.round(8000 - 20 * (8 * Math.PI - 8 * Math.acos(0.25) + 0.5 * Math.sqrt(15)))]);
+const dessous = await volume([boite20, trous("0", [[10, 10]]), { id:"h", type:"percage", esquisse:"t", diametre:"2", traversant:true, corps:"" }], "h");
+verifier("perçage traversant : esquisse sous le corps", [dessous.erreur, Math.round(dessous.vols[0])], [undefined, Math.round(8000 - 20 * Math.PI)]);
+const serre = await volume([boite20, { id:"r", type:"repetition", corps:"", mode:"lineaire", axe:"X", nombre:"3", pas:"10" }], "r");
+verifier("répétition : exemplaires qui se recouvrent", [serre.erreur, Math.round(serre.vols[0])], [undefined, 16000]);
+const neg = await volume([esqLot1("e", { base:"XY" }, rectEls(0, 0, 10, 10)), { id:"x", type:"extrusion", esquisse:"e", distance:"5", sens:"deux", distance2:"-5" }], "x");
+verifier("extrusion deux sens : seconde distance négative refusée", /seconde distance/.test(neg.erreur || ""), true);
 const dec = await volume([boite20, { id:"k", type:"decouper", corps:"", plan:"XY", decalage:"5" }], "k");
 verifier("découpe : deux corps de 2000 et 6000", [dec.erreur, dec.vols.map(Math.round)], [undefined, [2000, 6000]]);
 const ech = await volume([boite20, { id:"e", type:"echelle", corps:"", facteur:"2" }], "e");
@@ -310,7 +320,8 @@ const rn2 = await construire(R, nomsDoc, [], oc);
 verifier("corps : supprimer le premier ne fait pas viser un autre corps", [rn2.corps.map(c => c.nom), rn2.etats.c.erreur], [["Corps 2"], undefined]);
 const repSep = await construire(R, { operations:[{ id:"a", type:"boite", L:"5", l:"5", h:"5" }, { id:"r", type:"repetition", corps:"", axe:"X", nombre:"3", pas:"10", separe:true }] }, [], oc);
 verifier("corps : plusieurs corps créés par une opération", repSep.corps.map(c => c.nom), ["Corps 1", "Corps 2", "Corps 2 · 2"]);
-const { deplacementRefuse:refus } = await import("../js/c7-frise.js");
+const { deplacementRefuse:refus, dependances:deps } = await import("../js/c7-frise.js");
+verifier("frise : un maillage « référence » (true) n'est pas un nom de corps", deps({ id:"m", type:"maillage", reference:true }, []), []);
 verifier("frise : une opération ne passe pas avant le corps qu'elle vise", typeof refus([{ id:"a", nom:"A", corpsNom:"Corps 1" }, { id:"c", nom:"C", corps:"Corps 1" }], 1, 0), "string");
 
 /* ---------------- ateliers : surface, assemblage, tôlerie, soudures, visserie ---------------- */
