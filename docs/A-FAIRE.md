@@ -10,9 +10,6 @@ puis les dix qu'elle avait laissés ouverts (voir l'historique git). Une limite 
 un STEP, un sous-ensemble répété est une seule définition ; garder l'écrou d'un exemplaire et la vis d'un
 autre exporte les deux exemplaires entiers, et la page le dit.
 
-`js/pilote.js` porte le correctif de web_suite (une seule boucle d'écoute) ; WEB_CAO et WEB_ANTENNA sont à
-mettre à jour avec la même copie, sans quoi la CI de web_suite signale la différence.
-
 ## Fonctionnalités
 
 Côté pilotage par Claude (MCP), les fonctionnalités possibles sont listées dans
