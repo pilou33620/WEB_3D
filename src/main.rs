@@ -386,7 +386,8 @@ fn absolu_sans_tilde(chemin: &str) -> PathBuf {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // args() panique sur un nom de fichier non UTF-8 (vieille clé USB) : ici l'usage s'affiche au moins
+    let args: Vec<String> = std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
     let code = match args.first().map(String::as_str) {
         Some("ouvrir") => ouvrir::principal(&args[1..]),
         _ => principal(&args),

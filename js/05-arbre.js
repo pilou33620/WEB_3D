@@ -34,7 +34,7 @@ export class Arbre {
     this.el = elements;               // { arbre, props, cpt, rech, zoomSel, isoler }
     this.selection = null;
     this.isole = null;
-    this.replie = new Set();
+    this.replie = new WeakSet();      // ne retient pas les modèles fermés
     this.index = new Map();           // objet 3D -> ligne du DOM, remplie par reconstruire()
     this.cadre = new THREE.BoxHelper(new THREE.Object3D(), 0xf2c744);
     this.cadre.visible = false;
@@ -239,7 +239,9 @@ export class Arbre {
 
   isoler(objet = this.selection){
     if(!objet) return;
-    if(this.isole){ this.toutAfficher(); if(this.isole === objet){ this.isole = null; return; } }
+    const deja = this.isole === objet;      // toutAfficher oublie this.isole
+    if(this.isole) this.toutAfficher();
+    if(deja) return;
     this.vue.modele.traverse(o => {
       if(o.isMesh) this.basculerVisible(o, estDansBranche(o, objet), { heritage:false });
     });
@@ -267,7 +269,7 @@ export class Arbre {
       /* Un groupe reste visible si l'un de ses descendants correspond :
          sinon le filtre couperait la branche qui mène au résultat. */
       let ok = (objet.name || "").toLowerCase().includes(q);
-      if(!ok) objet.traverse(o => { if((o.name || "").toLowerCase().includes(q)) ok = true; });
+      if(!ok) objet.traverse(o => { if(!o.userData.estArete && (o.name || "").toLowerCase().includes(q)) ok = true; });
       nd.classList.toggle("filtre-off", !ok);
     }
   }

@@ -341,7 +341,7 @@ impl Visionneuse {
         if !NOM_PROJET.is_match(nom) {
             return detail(400, &format!("Nom ou format refusé : {}", nom));
         }
-        if nom.chars().count() > 150 {
+        if nom.chars().count() > 150 || nom.len() > 240 {
             // au-delà, le système refuse le fichier (erreur 36) : on le dit avant
             return detail(400, "Nom trop long (150 caractères au plus)");
         }

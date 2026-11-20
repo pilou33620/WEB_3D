@@ -63,8 +63,9 @@ pub fn verifier_et_appliquer_maj(racine: &Path) -> bool {
         essayer(args, Some(delai)).unwrap_or_else(|e| Sortie { code: 1, stdout: String::new(), stderr: e.to_string() })
     };
 
-    // Le dossier doit etre un depot Git
-    if !racine.join(".git").is_dir() && !essayer(&["rev-parse", "--is-inside-work-tree"], None).is_ok_and(|r| r.code == 0) {
+    // Le dossier doit etre la racine d'un depot Git : jamais un depot englobant (archive de
+    // production decompressee dans un autre clone), dont on mettrait les modifications en reserve.
+    if !essayer(&["rev-parse", "--show-prefix"], None).is_ok_and(|r| r.code == 0 && r.stdout.trim().is_empty()) {
         return false;
     }
 
@@ -86,6 +87,11 @@ pub fn verifier_et_appliquer_maj(racine: &Path) -> bool {
             println!("[*] Demarrage normal de l'outil...");
             return false;
         }
+    }
+
+    // HEAD detachee (version figee sur une etiquette) : on n'y touche pas
+    if git(&["symbolic-ref", "-q", "HEAD"], 5).code != 0 {
+        return false;
     }
 
     // Determination de la branche amont (upstream) ou repli sur origin/main
@@ -123,6 +129,11 @@ pub fn verifier_et_appliquer_maj(racine: &Path) -> bool {
     if modifie {
         println!("  Modifications locales detectees : mise en reserve temporaire...");
         reserve = git(&["stash", "push", "-m", "Auto-stash WEB_3D avant mise a jour"], 10).code == 0;
+        if !reserve {
+            // tirer quand meme laisserait les modifications dans la reserve, sans le dire
+            println!("[!] Mise en reserve impossible : mise a jour reportee (voir « git stash list »).");
+            return false;
+        }
     }
 
     // --ff-only : on n'applique que la suite exacte de ce qu'on a. Un historique
@@ -130,7 +141,9 @@ pub fn verifier_et_appliquer_maj(racine: &Path) -> bool {
     // silence dans le code qu'on va executer.
     // Un pull trop long (reseau lent, carte SD) levait une erreur : le
     // serveur ne demarrait pas et la reserve n'etait jamais reappliquee.
-    let pull = essayer(&["pull", "--ff-only"], Some(120))
+    // Sans branche amont, « git pull » nu echoue : on avance sur origin/main, deja recupere.
+    let tirer: &[&str] = if upstream == "@{u}" { &["pull", "--ff-only"] } else { &["merge", "--ff-only", "origin/main"] };
+    let pull = essayer(tirer, Some(120))
         .unwrap_or_else(|e| Sortie { code: 1, stdout: String::new(), stderr: format!("git pull interrompu ({})", e) });
 
     if reserve {

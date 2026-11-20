@@ -6,7 +6,7 @@ attrib +h "%~dp0*.sh" >nul 2>nul
 rem Le serveur sort avec le code 75 quand il vient de se mettre a jour (git pull) :
 rem on reprend les executables de la nouvelle version, puis on le relance.
 set WEB_3D_RELANCEUR=1
-set WEB_3D_DEPOT=%CD%
+set "WEB_3D_DEPOT=%CD%"
 :encore
 call scripts\binaires.cmd
 if errorlevel 1 goto echec

@@ -42,6 +42,7 @@
 
 import * as THREE from "three";
 import { prefs } from "./00-config.js";
+import { visibleEnLignee } from "./01-scene.js";
 import { encombrement } from "./05-arbre.js";
 import { analyser, areteSous, faceSous, tailleParPixel, geometrieArete, geometrieFace, contourFace,
          mesurerAretes, mesurerFaces, mesurerEntites, mesurerEntiteSeule, resumer, cote, mm, degres,
@@ -367,6 +368,7 @@ export class Mesure {
     this.pointsMaillages = [];
     this.pointsTypes = [];
     this.entites = [];
+    this.maillageSurvole = null;      // sinon l'accroche visait encore une pièce fermée ou recalculée
     this.masquerAccroche();
     this.poserConstruction(null);
     this.ligne.visible = false;
@@ -682,8 +684,9 @@ export class Mesure {
       return t ? { point:t.point.clone(), type:"libre", maillage:t.object } : null;
     }
 
-    const m = t?.object || this.maillageSurvole;
     if(t) this.maillageSurvole = t.object;
+    else if(this.maillageSurvole && !visibleEnLignee(this.maillageSurvole)) this.maillageSurvole = null;   // masquée entre-temps
+    const m = this.maillageSurvole;
     const nbTri = m?.userData?.triangles || 0;
     const topoPossible = m && (this.topoPrete(m) || analyse || nbTri <= PLAFOND_ANALYSE_SURVOL);
     const accroches = topoPossible ? pointsAccroche(m) : null;
@@ -1303,6 +1306,7 @@ export class Mesure {
 
     const surBouge = (ev) => {
       if(!enGlisse) return;
+      if(!et.isConnected){ surHaut(ev); return; }      // mesure annulée (Échap) pendant le glissement
       ev.preventDefault();
       ev.stopPropagation();
 

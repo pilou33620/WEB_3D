@@ -14,6 +14,11 @@ on:
 permissions:
   contents: write
 
+# Deux envois rapprochés : la publication du plus ancien ne repasse pas sur celle du plus récent
+concurrency:
+  group: binaires
+  cancel-in-progress: false
+
 jobs:
   compiler:
     strategy:
@@ -24,6 +29,7 @@ jobs:
           - { os: ubuntu-latest, cible: x86_64-unknown-linux-musl, nom: linux-x86_64 }
           - { os: ubuntu-24.04-arm, cible: aarch64-unknown-linux-musl, nom: linux-aarch64 }
           - { os: macos-latest, cible: aarch64-apple-darwin, nom: macos-aarch64 }
+          - { os: macos-latest, cible: x86_64-apple-darwin, nom: macos-x86_64 }
           - { os: windows-latest, cible: x86_64-pc-windows-msvc, nom: windows-x86_64 }
     runs-on: ${{ matrix.os }}
     steps:

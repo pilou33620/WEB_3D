@@ -23,7 +23,7 @@ obtenir_binaires() {
     for f in target/release/*; do
       if [ -f "$f" ] && [ -x "$f" ]; then
         # copie puis renommage : un executable en cours d'usage ne se reecrit pas
-        cp "$f" "bin/.neuf" && mv -f "bin/.neuf" "bin/$(basename "$f")"
+        cp "$f" "bin/.neuf" && mv -f "bin/.neuf" "bin/$(basename "$f")" || return 1
       fi
     done
     return 0

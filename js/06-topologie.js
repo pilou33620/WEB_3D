@@ -428,7 +428,8 @@ export function formeChaine(pts, tol){
     if(Math.sqrt(axes[0].valeur / n) < tol){
       const { u, w } = repere(normale);
       const c = cerclePlan(pts, centre0, u, w);
-      if(c && c.ecart < tol && c.rayon > tol){
+      if(c && c.ecart < tol && c.ecart < 0.05 * c.rayon){
+        let pasMax = 0;
         /* Angle balayé : somme des incréments angulaires déroulés le long de la chaîne */
         let balaye = 0;
         let tPrec = Math.atan2(c.ys[0] - c.cy, c.xs[0] - c.cx);
@@ -437,11 +438,11 @@ export function formeChaine(pts, tol){
           let dt = t - tPrec;
           while(dt > Math.PI) dt -= 2 * Math.PI;
           while(dt < -Math.PI) dt += 2 * Math.PI;
-          balaye += Math.abs(dt);
+          balaye += Math.abs(dt); pasMax = Math.max(pasMax, Math.abs(dt));
           tPrec = t;
         }
         const estComplet = ferme || balaye >= 2 * Math.PI - 0.15;
-        return { type:"cercle", centre:c.centre, normale, rayon:c.rayon,
+        if(pasMax < 0.9) return { type:"cercle", centre:c.centre, normale, rayon:c.rayon,
                  ferme:estComplet,
                  balaye:estComplet ? 2*Math.PI : balaye,
                  longueur, milieu:pts[Math.floor(n/2)].clone() };
@@ -469,7 +470,7 @@ export function formeNappe(sommets, normales, aires, tol){
   let ecartPlan = 0;
   const v = new THREE.Vector3();
   for(const p of sommets) ecartPlan = Math.max(ecartPlan, Math.abs(v.subVectors(p, centre).dot(normale)));
-  if(ecartPlan < tol){
+  if(ecartPlan < tol && normales.every(n => n.lengthSq() < 0.5 || Math.abs(n.dot(normale)) > 0.999)){
     /* On oriente la normale comme la matière, c'est-à-dire comme les triangles,
        dont le sens vient du fichier : une épaisseur mesurée à l'envers change
        de signe, et le texte annoncerait un décalage là où il y a de la tôle. */
@@ -482,7 +483,7 @@ export function formeNappe(sommets, normales, aires, tol){
     const axe = proprer(covariance(normales, new THREE.Vector3(0,0,0), aires))[0].vecteur;
     const { u, w } = repere(axe);
     const c = cerclePlan(sommets, centre, u, w);
-    if(c && c.ecart < tol && c.rayon > tol){
+    if(c && c.ecart < tol && c.ecart < 0.05 * c.rayon){
       let mini = Infinity, maxi = -Infinity;
       for(const p of sommets){
         const t = v.subVectors(p, c.centre).dot(axe);
@@ -490,11 +491,8 @@ export function formeNappe(sommets, normales, aires, tol){
       }
       /* Couverture angulaire des normales autour de l'axe : cylindre fermé vs congé */
       const angles = [];
-      const nbN = Math.floor(normales.length / 3);
-      for(let k = 0; k < nbN; k++){
-        const nx = normales[k*3], ny = normales[k*3+1], nz = normales[k*3+2];
-        const x = nx * u.x + ny * u.y + nz * u.z;
-        const y = nx * w.x + ny * w.y + nz * w.z;
+      for(const nv of normales){
+        const x = nv.dot(u), y = nv.dot(w);
         if(x*x + y*y > 0.01) angles.push(Math.atan2(y, x));
       }
       let fermeCyl = true;
@@ -1472,7 +1470,7 @@ export function mesurerAretes(A, B){
     const mini = polyPoly(A.pts, B.pts);
 
     /* 1. Sécantes (se touchent ou presque) : angle et point de contact */
-    if(mini.d < Math.max(A.tol, B.tol, 1e-3)){
+    if(sinus >= 1e-3 && mini.d < Math.max(A.tol, B.tol, 1e-3)){
       /* L'angle est déjà l'étiquette de la cote : l'arc se dessine sans la sienne. */
       const construction = constructionAngle(A, B);
       if(construction) construction.etiquette = null;
@@ -1988,9 +1986,9 @@ export function mesurerAreteFace(A, B){
 
   /* ---- Arête droite et cylindre ---- */
   if(arete.type === "droite" && face.type === "cylindre"){
-    const w = new THREE.Vector3().subVectors(face.centre, arete.a);
-    const t = Math.max(0, Math.min(arete.longueur, w.dot(arete.dir)));
-    const p1 = arete.a.clone().addScaledVector(arete.dir, t);
+    const dh = face.hauteur / 2;
+    const p1 = segmentSegment(arete.a, arete.b, face.centre.clone().addScaledVector(face.axe, -dh),
+                              face.centre.clone().addScaledVector(face.axe, dh)).c1;
     const wAxe = new THREE.Vector3().subVectors(p1, face.point);
     const tAxe = wAxe.dot(face.axe);
     const pAxe = face.point.clone().addScaledVector(face.axe, tAxe);

@@ -344,7 +344,12 @@ export class Interface {
     $("fichier").click();
   }
 
-  async charger(fichiers, ajout = false){
+  /** Un chargement à la fois : un second dépôt pendant la lecture attend la fin du premier. */
+  charger(fichiers, ajout = false){
+    return this.fileCharge = (this.fileCharge || Promise.resolve()).catch(() => {}).then(() => this.chargerSeul(fichiers, ajout));
+  }
+
+  async chargerSeul(fichiers, ajout){
     ajout = ajout && this.vue.modele.children.length > 0;
     /* Un .mtl ou une image n'est pas un modèle, mais ce n'est pas une erreur
        non plus : c'est ce qui accompagne un .obj. */
@@ -363,7 +368,7 @@ export class Interface {
       const { groupes, stats } = await ouvrirFichiers(fichiers, {
         surProgres:(txt) => this.attendre(true, "Lecture du fichier…", txt),
       });
-      if(!groupes.some(g => g.children.length)){
+      if(!stats.pieces){      // des lignes ou des points seuls ne s'affichent pas
         throw new Error("Le fichier a été lu, mais ne contient aucune géométrie affichable.");
       }
 
@@ -433,7 +438,9 @@ export class Interface {
     this.vue.viderModele();
     this.mesure.annuler();
     this.coupe?.definirActif(false);
+    if(this.coupe) this.coupe.faceSelectionnee = false;      // la face retenue était celle de l'ancien modèle
     if(vraiment){
+      this.derniersFichiers = [];      // « Ranger » ne copie pas un modèle fermé
       this.arbre.reconstruire();
       $("accueil").hidden = false;
       $("nomFichier").hidden = true;
@@ -1048,7 +1055,7 @@ export class Interface {
         }
         /* Sur un maillage sans topologie B-Rep, c'est ce même angle qui décide
            où s'arrête une face : l'analyse gardée n'est plus la bonne. */
-        if(o.isMesh) delete o.geometry.userData.topo;
+        if(o.isMesh){ delete o.geometry.userData.topo; delete o.userData.accroches; }
       });
       this.mesure.annuler();
       if(prefs.aretes){

@@ -74,6 +74,7 @@ export function perimerCaches(g){
   g.traverse(o => {
     const topo = o.geometry?.userData.topo;
     if(topo){ topo.cacheAretes.clear(); topo.cacheFaces.clear(); }
+    delete o.userData.reperePropre;      // le repère propre de la pièce a tourné avec elle
   });
 }
 

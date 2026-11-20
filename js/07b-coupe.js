@@ -150,20 +150,23 @@ export class CoupeManager {
     this.panneau.hidden = !this.actif;
 
     if(!this.actif){
-      this.enChoixFace = false;
+      this.desactiverChoixFace();      // rend aussi le curseur et retire l'invite
       this.groupe3D.visible = false;
       this.etiquette.hidden = true;
-      this.viderSurbrillanceFace();
       this.vue.definirCoupe(false);
       this.vue.invalider();
       return;
     }
 
-    if(this.mode === "face" && !this.faceSelectionnee){
-      this.activerChoixFace();
-    }else{
-      this.appliquer();
+    if(this.mode === "face"){
+      if(this.faceSelectionnee) this.appliquer(); else this.activerChoixFace();
+      return;
     }
+    /* Première coupe, ou autre modèle depuis la dernière : le plan passait par l'ancien point
+       (l'origine au départ) et pouvait couper tout le modèle, hors de portée du curseur. */
+    const b = this.vue.boite();
+    if(b && !b.containsPoint(this.pointRef)) this.definirAxe(this.mode);
+    else{ this.majBornes(); this.appliquer(); }
   }
 
   /* ==========================================================================
@@ -171,19 +174,15 @@ export class CoupeManager {
      ========================================================================== */
   definirAxe(axe){
     if(axe === "face"){
-      this.mode = "face";
-      this.majPanneauAxes();
-      if(!this.faceSelectionnee){
-        this.activerChoixFace();
-      }else{
-        this.appliquer();
-      }
+      // Toujours redemander : la face gardée n'est plus le plan courant après un passage par X/Y/Z
+      this.faceSelectionnee = false;
+      this.activerChoixFace();
       return;
     }
 
     this.mode = axe;
-    this.enChoixFace = false;
-    this.viderSurbrillanceFace();
+    this.desactiverChoixFace();
+    this.faceSelectionnee = false;
     this.descriptionFace = "";
 
     const b = this.vue.boite() || new THREE.Box3(new THREE.Vector3(-1,-1,-1), new THREE.Vector3(1,1,1));

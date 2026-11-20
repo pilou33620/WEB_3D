@@ -58,7 +58,7 @@ fn copier(source: &Path, dossier: &Path) -> io::Result<String> {
     for ancien in fs::read_dir(dossier)?.flatten() {
         let Ok(st) = ancien.metadata() else { continue }; // sans suivre les liens
         if st.is_file() && st.modified().ok().and_then(|t| SystemTime::now().duration_since(t).ok()).is_some_and(|age| age.as_secs() > GARDE_COPIES) {
-            fs::remove_file(ancien.path())?;
+            let _ = fs::remove_file(ancien.path()); // un autre « ouvrir » l'a peut-être déjà retirée
         }
     }
     let nom = nom_sur(source);

@@ -121,7 +121,7 @@ export function fabriqueMateriaux(){
   return (rvb) => {
     const couleur = rvb
       ? new THREE.Color(rvb[0], rvb[1], rvb[2]).convertSRGBToLinear()
-      : new THREE.Color(COULEUR_DEFAUT).convertSRGBToLinear();
+      : new THREE.Color(COULEUR_DEFAUT);      // un hexadécimal est déjà converti par three.js
     const cle = couleur.getHexString();
     if(cache.has(cle)) return cache.get(cle);
     const m = new THREE.MeshStandardMaterial({
@@ -142,6 +142,7 @@ export function fabriqueMateriaux(){
 /** Les repères dont le reste de la visionneuse a besoin sur un matériau. */
 function marquerMateriau(m){
   m.userData.opaciteDorigine = m.opacity ?? 1;
+  m.userData.coteDorigine = m.side;                          // une tôle double face du fichier le reste
   m.userData.transparentDorigine = m.transparent === true;   // rayons X éteints : la transparence du fichier revient
   /* Une couleur de three.js ne survit pas à `Material.clone()` : le clone
      sérialise userData en JSON et n'en rapporte qu'un objet nu. On garde donc
@@ -171,7 +172,7 @@ function normaliserMateriaux(racine){
     }else{
       n = new THREE.MeshStandardMaterial({
         name:m.name || "",
-        color:m.color ? m.color.clone() : new THREE.Color(COULEUR_DEFAUT).convertSRGBToLinear(),
+        color:m.color ? m.color.clone() : new THREE.Color(COULEUR_DEFAUT),
         map:m.map || null,
         vertexColors:m.vertexColors === true,
         flatShading:m.flatShading === true,
@@ -289,9 +290,12 @@ export function calculerAretes(maillage, angle = prefs.angleAretes){
 export function replier(objet){
   for(const enfant of [...objet.children]) replier(enfant);
   if(objet.isGroup && objet.children.length === 1 && !objet.name){
+    if(!objet.parent) return;
     const seul = objet.children[0];
-    objet.parent?.add(seul);
-    objet.parent?.remove(objet);
+    objet.updateMatrix();
+    seul.applyMatrix4(objet.matrix);     // la pose du groupe supprimé (3MF, glTF) passe à son enfant
+    objet.parent.add(seul);
+    objet.parent.remove(objet);
   }
 }
 
@@ -321,6 +325,8 @@ async function lireGltf(tampon, nomFichier){
   let scene;
   try{ ({ scene } = await new GLTFLoader().parseAsync(tampon, "")); }
   catch(e){ throw new Error(`${nomFichier} : glTF illisible (${e.message}). Un .gltf doit embarquer ses données, sinon utilisez un .glb.`); }
+  // Un nœud de pure hiérarchie est un Object3D nu : l'arbre ne montre que maillages et groupes
+  scene.traverse(o => { if(o.type === "Object3D") o.isGroup = true; });
   scene.name = nomFichier;
   scene.scale.setScalar(1000);
   scene.updateMatrixWorld(true);

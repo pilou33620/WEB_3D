@@ -226,8 +226,9 @@ export class Navigation {
     if(!this.geste){ this.survoler(ev); return; }
     if(!suivi) return;
 
-    const dx = ev.movementX ?? (ev.clientX - (this.dernierX ?? ev.clientX));
-    const dy = ev.movementY ?? (ev.clientY - (this.dernierY ?? ev.clientY));
+    // Pas movementX/Y : Safari iOS les laisse à zéro pour un doigt
+    const dx = ev.clientX - (this.dernierX ?? ev.clientX);
+    const dy = ev.clientY - (this.dernierY ?? ev.clientY);
     this.dernierX = ev.clientX; this.dernierY = ev.clientY;
     if(this.depart && (Math.abs(ev.clientX - this.depart.x) > 3 || Math.abs(ev.clientY - this.depart.y) > 3))
       this.depart.bouge = true;

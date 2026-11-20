@@ -271,7 +271,9 @@ export class CubeVue {
 
   /** Glisser sur le cube fait tourner la scène, comme dans un modeleur. */
   glisser(e){
-    const dx = e.movementX || 0, dy = e.movementY || 0;
+    // Pas movementX/Y : Safari iOS les laisse à zéro pour un doigt
+    const d = this.depart, dx = e.clientX - (d.gx ?? e.clientX), dy = e.clientY - (d.gy ?? e.clientY);
+    d.gx = e.clientX; d.gy = e.clientY;
     if(dx || dy) this.nav.orbiter(dx * 1.6, dy * 1.6);
   }
 

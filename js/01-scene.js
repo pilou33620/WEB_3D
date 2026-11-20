@@ -408,7 +408,7 @@ export class Vue3D {
       m.transparent = this.modeTransparent || m.userData?.transparentDorigine || false;
       m.opacity = this.modeTransparent ? 0.28 : (m.userData?.opaciteDorigine ?? 1);
       m.depthWrite = !this.modeTransparent;
-      m.side = this.modeTransparent ? THREE.DoubleSide : THREE.FrontSide;
+      m.side = this.modeTransparent ? THREE.DoubleSide : (m.userData?.coteDorigine ?? THREE.FrontSide);
       m.needsUpdate = true;
     }
     this.invalider();
@@ -437,7 +437,7 @@ export class Vue3D {
       this.plansCoupe = [];
       for(const m of this.materiaux){
         m.clippingPlanes = null;
-        m.side = this.modeTransparent ? THREE.DoubleSide : THREE.FrontSide;
+        m.side = this.modeTransparent ? THREE.DoubleSide : (m.userData?.coteDorigine ?? THREE.FrontSide);
         m.needsUpdate = true;
       }
       surAretes(m => { m.clippingPlanes = null; m.needsUpdate = true; });
@@ -506,8 +506,11 @@ export class Vue3D {
     if(!this._rc) this._rc = new THREE.Raycaster();
     this._rc.setFromCamera(this.ndc(ev), this.camera());
     this._rc.params.Line.threshold = (this.rayonModele || 1) * 0.005;
+    /* Le rayon de three.js ignore les plans de coupe : sans ce tri, on désignait la matière coupée,
+       invisible, au lieu de ce qu'on voit derrière. (Seulement sur le modèle, pas sur les poignées.) */
+    const coupes = objets === this.modele.children ? this.plansCoupe || [] : [];
     return this._rc.intersectObjects(objets, true)
-      .filter(i => i.object.isMesh && visibleEnLignee(i.object));
+      .filter(i => i.object.isMesh && visibleEnLignee(i.object) && coupes.every(p => p.distanceToPoint(i.point) >= 0));
   }
 
   /** Capture PNG de l'image affichée. */
